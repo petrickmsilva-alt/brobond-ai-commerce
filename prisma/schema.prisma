@@ -102,9 +102,9 @@ model User {
   role          UserRole  @default(MEMBER)
   emailVerified DateTime?
 
-  // Tenant
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   // NextAuth relations (adapter-ready)
   accounts Account[]
@@ -132,9 +132,9 @@ model Product {
   imageUrl    String?
   status      ProductStatus @default(DRAFT)
 
-  // Tenant
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   campaigns CampaignProduct[]
   sales     Sale[]
@@ -159,9 +159,9 @@ model Creator {
   // Reserved for future TikTok integration (PR002/PR004) — NOT implemented here.
   externalId String? @unique
 
-  // Tenant
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   campaigns CampaignCreator[]
   messages  Message[]         @relation("MessageCreator")
@@ -185,9 +185,9 @@ model Campaign {
   startsAt    DateTime?
   endsAt      DateTime?
 
-  // Tenant
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   ownerId String?
   owner   User?   @relation("CampaignOwner", fields: [ownerId], references: [id], onDelete: SetNull)

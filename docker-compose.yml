@@ -35,7 +35,7 @@ services:
       DATABASE_URL: postgresql://brobond:brobond@db:5432/brobond?schema=public
       AUTH_SECRET: ${AUTH_SECRET:-dev-secret-change-me}
       AUTH_TRUST_HOST: "true"
-      APP_URL: http://localhost:3000
+      NEXTAUTH_URL: http://localhost:3000
     ports:
       - "3000:3000"
 

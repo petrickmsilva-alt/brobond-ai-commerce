@@ -1,17 +1,41 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { assertSameTenant, tenantWhere, scopedWhere } from "@/lib/tenant";
 
 /**
  * Creators module — roster data access.
+ *
+ * TENANT ISOLATION: every function takes `organizationId` as its first
+ * argument and injects it into the `where` clause. No query may run without
+ * an organization scope.
  */
 export const creatorsService = {
-  list() {
-    return prisma.creator.findMany({ orderBy: { followers: "desc" } });
+  list(organizationId: string) {
+    return prisma.creator.findMany({
+      where: tenantWhere(organizationId),
+      orderBy: { followers: "desc" },
+    });
   },
-  getByHandle(handle: string) {
-    return prisma.creator.findUnique({ where: { handle } });
+
+  /**
+   * `handle` is globally unique, so the record is re-checked against the
+   * caller's tenant and `null` is returned for foreign records (no leak).
+   */
+  async getByHandle(organizationId: string, handle: string) {
+    const creator = await prisma.creator.findFirst({
+      where: scopedWhere(organizationId, { handle }),
+    });
+    return assertSameTenant(creator, organizationId);
   },
-  count() {
-    return prisma.creator.count();
+
+  async getById(organizationId: string, id: string) {
+    const creator = await prisma.creator.findFirst({
+      where: scopedWhere(organizationId, { id }),
+    });
+    return assertSameTenant(creator, organizationId);
+  },
+
+  count(organizationId: string) {
+    return prisma.creator.count({ where: tenantWhere(organizationId) });
   },
 };
