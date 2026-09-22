@@ -178,7 +178,7 @@ brobond-ai-commerce/
 │   ├── commerce/    products/ (PR001)
 │   ├── trends/      hunter (collectors · factory · scorer · scheduler) · repositories · dto · validators · interfaces (PR002/PR002.1)
 │   ├── creators/     discovery (collectors · factory · scorer · scheduler) · crm (repositories · dto · validators) · interfaces (PR003)
-│   ├── campaigns/    campaigns.service.ts
+│   ├── campaigns/    campaigns.service.ts · matching (matcher · scorer · match-source) · repositories · dto · validators (PR005.1)
 │   ├── sales/        sales.service.ts
 │   ├── analytics/    analytics.interface.ts        (PR007)
 │   └── integrations/
@@ -341,15 +341,15 @@ Deployment is defined as code in [`render.yaml`](./render.yaml) (a Render Bluepr
 
 ## Module map
 
-| Module                        | Responsibility                                                           | Status                          |
-| ----------------------------- | ------------------------------------------------------------------------ | ------------------------------- |
-| `modules/commerce/products`   | Product Intelligence Core (services/repositories/dto/pricing/validators) | ✅ PR001                        |
-| `modules/creators`            | Creator Discovery Engine + CRM (discovery/crm/interfaces)                | ✅ PR003                        |
-| `modules/campaigns`           | Campaign orchestration                                                   | ✅ Tenant-scoped service        |
-| `modules/sales`               | Revenue records                                                          | ✅ Tenant-scoped service        |
-| `modules/analytics`           | Metrics & reporting                                                      | 🧩 Interface only (PR006)       |
-| `modules/integrations/tiktok` | TikTok API / OAuth                                                       | 🧩 Interface only (PR004/PR005) |
-| `modules/integrations/ai`     | AI provider (OpenAI, …)                                                  | 🧩 Interface only (PR004)       |
+| Module                        | Responsibility                                                                | Status                          |
+| ----------------------------- | ----------------------------------------------------------------------------- | ------------------------------- |
+| `modules/commerce/products`   | Product Intelligence Core (services/repositories/dto/pricing/validators)      | ✅ PR001                        |
+| `modules/creators`            | Creator Discovery Engine + CRM (discovery/crm/interfaces)                     | ✅ PR003                        |
+| `modules/campaigns`           | Campaign orchestration + Product Match (matching/repositories/dto/validators) | ✅ PR005.1                      |
+| `modules/sales`               | Revenue records                                                               | ✅ Tenant-scoped service        |
+| `modules/analytics`           | Metrics & reporting                                                           | 🧩 Interface only (PR006)       |
+| `modules/integrations/tiktok` | TikTok API / OAuth                                                            | 🧩 Interface only (PR004/PR005) |
+| `modules/integrations/ai`     | AI provider (OpenAI, …)                                                       | 🧩 Interface only (PR004)       |
 
 ---
 
@@ -553,20 +553,21 @@ o dashboard já estão prontos e testados.
 
 ## Roadmap
 
-| PR          | Title                    | Scope                                                                        |
-| ----------- | ------------------------ | ---------------------------------------------------------------------------- |
-| **PR000**   | Bootstrap Foundation     | Infra, architecture, dark UI shell, Prisma schema, Docker, CI/CD ✅          |
-| **PR000.1** | Architecture Hotfix      | BRL currency, `Organization` tenant model, initial RBAC ✅                   |
-| **PR000.2** | Tenant & Auth Hardening  | Required tenancy, credentials auth, RBAC guards, tests ✅                    |
-| **PR001**   | Products CRUD            | Full product management (create/edit/list), server actions, tables ✅        |
-| **PR002**   | Trend Hunter AI          | Trend collection (mock), score engine, scheduler, dashboard ✅               |
-| **PR002.1** | Multi-Source Data Arch.  | TrendSource enum, collector factory, origem no dashboard ✅                  |
-| **PR003**   | Creator Discovery Engine | Creator CRM multi-source (mock), score engine, pipeline Kanban, dashboard ✅ |
-| **PR004**   | AI Assistant             | OpenAI provider implementation, content & outreach generation                |
-| **PR005**   | Campaign Engine          | Campaign builder, product/creator assignment, scheduling                     |
-| **PR006**   | Messaging & Inbox        | Conversations, notifications, multi-channel delivery                         |
-| **PR007**   | Analytics & Reporting    | Metrics pipeline, dashboards, revenue attribution                            |
-| **PR008**   | Billing & Multi-tenancy  | Subscriptions, workspaces, roles & permissions hardening                     |
+| PR          | Title                        | Scope                                                                        |
+| ----------- | ---------------------------- | ---------------------------------------------------------------------------- |
+| **PR000**   | Bootstrap Foundation         | Infra, architecture, dark UI shell, Prisma schema, Docker, CI/CD ✅          |
+| **PR000.1** | Architecture Hotfix          | BRL currency, `Organization` tenant model, initial RBAC ✅                   |
+| **PR000.2** | Tenant & Auth Hardening      | Required tenancy, credentials auth, RBAC guards, tests ✅                    |
+| **PR001**   | Products CRUD                | Full product management (create/edit/list), server actions, tables ✅        |
+| **PR002**   | Trend Hunter AI              | Trend collection (mock), score engine, scheduler, dashboard ✅               |
+| **PR002.1** | Multi-Source Data Arch.      | TrendSource enum, collector factory, origem no dashboard ✅                  |
+| **PR003**   | Creator Discovery Engine     | Creator CRM multi-source (mock), score engine, pipeline Kanban, dashboard ✅ |
+| **PR004**   | Outreach AI & Sales Pipeline | Deterministic outreach pipeline, outbox, templates (no OpenAI) ✅            |
+| **PR005**   | Connector Framework          | Multi-platform content ingestion architecture (mock-only) ✅                 |
+| **PR005.1** | Product Match Architecture   | Deterministic content ⇄ product matching engine ✅                           |
+| **PR006**   | Messaging & Inbox            | Conversations, notifications, multi-channel delivery                         |
+| **PR007**   | Analytics & Reporting        | Metrics pipeline, dashboards, revenue attribution                            |
+| **PR008**   | Billing & Multi-tenancy      | Subscriptions, workspaces, roles & permissions hardening                     |
 
 ---
 
@@ -613,3 +614,82 @@ PR005 may add delivery-provider adapters, campaign automation, audit trails and
 observability for `READY` records. Real channels and AI providers must remain
 opt-in adapters with consent, rate limiting and tenant isolation; none are part
 of PR004.
+
+---
+
+## Product Matching Engine (PR005.1)
+
+PR005.1 adds the layer that relates imported external content (videos and
+posts from the Connector Framework) to the internal product catalog — the
+answer to **"este vídeo vende este produto?"**.
+
+It is **deterministic by rules only**: no OpenAI, no computer vision, no
+embeddings and no TikTok integration. Every correspondence is decided by
+four text rules and normalized to a `0.00–1.00` confidence that is never
+above `1`.
+
+### Flow
+
+```text
+ExternalContent          (imported by the Connector Framework, PR005)
+        ↓
+      Matcher            (modules/campaigns/matching/matcher.ts — rules)
+        ↓
+   ProductMatch          (persisted with confidence + MatchSource)
+        ↓
+  Campaign Engine        (PR006 — consumes approved matches)
+```
+
+### Rules
+
+| Rule                                 | Points |
+| ------------------------------------ | -----: |
+| Product keyword in the content title |    +40 |
+| Category coincidence                 |    +25 |
+| Product slug in the content text     |    +20 |
+| Partial word (≥ 4 chars)             |    +15 |
+
+The accumulated points (0–100) are normalized by
+`calculateMatchConfidence()` (`matching/scorer.ts`) into a two-decimal
+float (`0.98`, `0.76`, `0.52`…), clamped to the `0.00–1.00` range.
+
+### Architecture
+
+```text
+modules/campaigns/
+├── matching/       matcher.ts (rules engine) · scorer.ts (confidence)
+│                   match-source.ts (client-safe enum mirrors + status)
+├── repositories/   product-match.repository.ts — organizationId is
+│                   ALWAYS the first argument
+├── dto/            CreateProductMatchDTO + serializable RSC shapes
+└── validators/     Zod schemas (create / approve / remove / list query)
+```
+
+Prisma persists `ProductMatch` (`MatchSource` enum: AI · MANUAL · RULE).
+`(externalContentId, productId)` is unique — the same video may match
+several products and vice-versa, but never the same pair twice. Deleting
+either endpoint deletes the match (Cascade).
+
+### Review lifecycle
+
+1. The rules engine stamps automatic matches as `RULE` (AI is reserved
+   for a future provider — no AI call exists today).
+2. `MANUAL` matches are created or approved by a human — a MANUAL match
+   is, by definition, **Aprovado**; AI/RULE matches are **Pendente**.
+3. `approveMatch()` promotes a pending match to `MANUAL` with confidence
+   `1.00` — the human word is definitive.
+
+### Dashboard `/dashboard/matches`
+
+KPIs: **Conteúdos importados · Matches automáticos · Pendentes
+(conteúdos ainda sem nenhum match) · Confiança média**. Table: **Vídeo ·
+Produto · Confidence · Origem · Status**, ordered by confidence, with
+URL-state search and pagination. ADMIN and MANAGER may aprovar/remover;
+MEMBER is read-only (re-asserted server-side on every action).
+
+### Seed
+
+`npm run db:seed` ships 18 topic-aligned catalog products and **50
+matches** generated through the real matcher engine — 20 `AI` · 20
+`RULE` · 10 `MANUAL`, confidence between `0.55` and `0.99` — using the
+existing `ExternalContent` rows. Idempotent.

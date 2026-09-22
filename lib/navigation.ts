@@ -8,6 +8,7 @@ import {
   BarChart3,
   MessagesSquare,
   Plug,
+  Link2,
   Settings,
 } from "lucide-react";
 
@@ -30,6 +31,7 @@ export const sidebarNav: NavItem[] = [
   { label: "Creators", href: "/dashboard/creators", icon: Users },
   { label: "Outreach AI", href: "/dashboard/outreach", icon: MessagesSquare },
   { label: "Conectores", href: "/dashboard/connectors", icon: Plug },
+  { label: "Matches", href: "/dashboard/matches", icon: Link2 },
   { label: "Campanhas", href: "/dashboard/campaigns", icon: Megaphone, planned: true },
   { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3, planned: true },
   { label: "Configurações", href: "/settings", icon: Settings },

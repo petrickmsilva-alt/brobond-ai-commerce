@@ -153,6 +153,17 @@ enum ExternalContentStatus {
   FAILED
 }
 
+/// Origin of a product match (PR005.1 — Product Match Architecture).
+/// `RULE` = produced by the deterministic rules engine (`matcher.ts`) —
+/// the only automatic producer today; `MANUAL` = created or approved by a
+/// human (a MANUAL match is, by definition, approved); `AI` = reserved for
+/// the future AI provider — NO AI call exists in PR005.1, by design.
+enum MatchSource {
+  AI
+  MANUAL
+  RULE
+}
+
 // ------------------------------------------------------------------
 // Tenancy
 // ------------------------------------------------------------------
@@ -189,6 +200,8 @@ model Organization {
 
   connectorStatuses ConnectorStatus[]
   externalContents  ExternalContent[]
+
+  productMatches ProductMatch[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -264,6 +277,8 @@ model Product {
   campaigns        CampaignProduct[]
   sales            Sale[]
   outreachMessages OutreachMessage[]
+
+  productMatches ProductMatch[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -795,18 +810,18 @@ model ConnectorStatus {
    */
   enabled  Boolean           @default(false)
 
-  lastSyncAt      DateTime?
-  lastError       String?
+  lastSyncAt     DateTime?
+  lastError      String?
   /**
    * Cumulative counters across every sync run (KPI source of truth).
    */
-  importedCount   Int       @default(0)
-  duplicateCount  Int       @default(0)
-  failedCount     Int       @default(0)
+  importedCount  Int       @default(0)
+  duplicateCount Int       @default(0)
+  failedCount    Int       @default(0)
   /**
    * How many sync runs have been executed for this connector.
    */
-  syncCount       Int       @default(0)
+  syncCount      Int       @default(0)
 
   // Tenant — REQUIRED. No domain record may exist without an Organization.
   organizationId String
@@ -839,8 +854,8 @@ model ExternalContent {
   type       ExternalContentType   @default(VIDEO)
   status     ExternalContentStatus @default(IMPORTED)
 
-  title       String
-  url         String?
+  title        String
+  url          String?
   thumbnailUrl String?
   authorHandle String?
   caption      String?
@@ -865,6 +880,9 @@ model ExternalContent {
   connectorStatusId String?
   connectorStatus   ConnectorStatus? @relation(fields: [connectorStatusId], references: [id], onDelete: SetNull)
 
+  // Product Matching Engine (PR005.1).
+  productMatches ProductMatch[]
+
   // Tenant — REQUIRED. No domain record may exist without an Organization.
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -878,6 +896,45 @@ model ExternalContent {
   @@index([organizationId, status])
   @@index([organizationId, createdAt])
   @@index([connectorStatusId])
+}
+
+// ------------------------------------------------------------------
+// Product Matching Engine (PR005.1)
+// ------------------------------------------------------------------
+
+/// The link between one imported external content and one internal product
+/// (PR005.1) — the answer to "este vídeo vende este produto?".
+///
+/// Deterministic by rules only: NO OpenAI, NO computer vision and NO
+/// embeddings are used anywhere in PR005.1. `confidence` is a 0.00–1.00
+/// float produced by the rules engine (`modules/campaigns/matching/`),
+/// never a client-supplied value.
+///
+/// One row per `(externalContentId, productId)` pair; deleting either
+/// endpoint deletes the match (Cascade), same contract as the join tables.
+model ProductMatch {
+  id String @id @default(cuid())
+
+  organizationId    String
+  externalContentId String
+  productId         String
+
+  /// Match strength, normalized to the 0.00–1.00 range by the score engine.
+  confidence Float
+
+  /// Who produced the match (see `MatchSource`).
+  matchedBy MatchSource
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  externalContent ExternalContent @relation(fields: [externalContentId], references: [id], onDelete: Cascade)
+  product         Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([externalContentId, productId])
+  @@index([organizationId])
+  @@index([confidence])
 }
 
 // ------------------------------------------------------------------
