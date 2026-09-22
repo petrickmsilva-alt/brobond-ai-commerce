@@ -1,0 +1,43 @@
+# ------------------------------------------------------------------
+# Brobond AI Commerce OS — Local Development Stack
+# ------------------------------------------------------------------
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: brobond-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: brobond
+      POSTGRES_PASSWORD: brobond
+      POSTGRES_DB: brobond
+    ports:
+      - "5432:5432"
+    volumes:
+      - brobond-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brobond -d brobond"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: brobond-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://brobond:brobond@db:5432/brobond?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:-dev-secret-change-me}
+      AUTH_TRUST_HOST: "true"
+      APP_URL: http://localhost:3000
+    ports:
+      - "3000:3000"
+
+volumes:
+  brobond-db-data:
