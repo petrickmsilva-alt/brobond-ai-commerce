@@ -116,6 +116,43 @@ enum TemplateType {
   REENGAGEMENT
 }
 
+/// Platform a connector talks to (PR005 — Connector Framework).
+/// `MOCK` is the only implemented platform: TIKTOK, INSTAGRAM and SHOPEE are
+/// registered placeholders — NO real API is integrated in PR005, by design.
+enum ConnectorPlatform {
+  MOCK
+  TIKTOK
+  INSTAGRAM
+  SHOPEE
+}
+
+/// Operational state of one connector inside one workspace (PR005).
+/// `IDLE` = registered, never synced · `ACTIVE` = last sync succeeded ·
+/// `ERROR` = last sync failed · `DISABLED` = turned off by an ADMIN.
+enum ConnectorState {
+  IDLE
+  ACTIVE
+  ERROR
+  DISABLED
+}
+
+/// Kind of content a connector imports (PR005).
+enum ExternalContentType {
+  VIDEO
+  IMAGE
+  POST
+  PRODUCT
+  LIVE
+}
+
+/// Import outcome of one external content record (PR005) — the three
+/// dashboard KPIs (Importados · Duplicados · Falhas) are derived from it.
+enum ExternalContentStatus {
+  IMPORTED
+  DUPLICATE
+  FAILED
+}
+
 // ------------------------------------------------------------------
 // Tenancy
 // ------------------------------------------------------------------
@@ -149,6 +186,9 @@ model Organization {
   outreachMessages  OutreachMessage[]
   messageTemplates  MessageTemplate[]
   followUpSequences FollowUpSequence[]
+
+  connectorStatuses ConnectorStatus[]
+  externalContents  ExternalContent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -729,6 +769,115 @@ model FollowUpSequence {
   @@unique([organizationId, name])
   @@index([organizationId, active, daysAfter])
   @@index([templateId])
+}
+
+// ------------------------------------------------------------------
+// Connector Framework (PR005)
+// ------------------------------------------------------------------
+
+/// Per-tenant state of one platform connector (PR005 — Connector Framework).
+///
+/// One row per `(organizationId, platform)`: the workspace's view of the
+/// connector — is it enabled, when did it last sync, how did that run go and
+/// what are its cumulative counters (the dashboard KPIs).
+///
+/// NO real API is integrated in PR005. `MOCK` is the only implemented
+/// connector; TIKTOK/INSTAGRAM/SHOPEE are placeholders registered in the
+/// factory (`modules/connectors/core/connector.factory.ts`) that throw
+/// `Not implemented` on `fetchContent()`. Credentials are deliberately NOT
+/// modelled here — a future PR adds a secret reference, never a raw token.
+model ConnectorStatus {
+  id       String            @id @default(cuid())
+  platform ConnectorPlatform
+  state    ConnectorState    @default(IDLE)
+  /**
+   * Whether the workspace wants this connector to run at all (ADMIN toggle).
+   */
+  enabled  Boolean           @default(false)
+
+  lastSyncAt      DateTime?
+  lastError       String?
+  /**
+   * Cumulative counters across every sync run (KPI source of truth).
+   */
+  importedCount   Int       @default(0)
+  duplicateCount  Int       @default(0)
+  failedCount     Int       @default(0)
+  /**
+   * How many sync runs have been executed for this connector.
+   */
+  syncCount       Int       @default(0)
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  contents ExternalContent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, platform])
+  @@index([organizationId])
+  @@index([organizationId, state])
+  @@index([organizationId, enabled])
+}
+
+/// One piece of content imported from an external platform (PR005).
+///
+/// Dedupe contract: `(organizationId, platform, externalId)` is unique, so a
+/// re-import of the same item is recorded as `DUPLICATE` instead of creating
+/// a second row. `FAILED` rows keep `errorReason` so the dashboard can
+/// explain a failure without a log dive.
+model ExternalContent {
+  id         String                @id @default(cuid())
+  platform   ConnectorPlatform
+  /**
+   * Stable id of the item on the origin platform (dedupe key).
+   */
+  externalId String
+  type       ExternalContentType   @default(VIDEO)
+  status     ExternalContentStatus @default(IMPORTED)
+
+  title       String
+  url         String?
+  thumbnailUrl String?
+  authorHandle String?
+  caption      String?
+
+  views  Int @default(0)
+  likes  Int @default(0)
+  shares Int @default(0)
+
+  /**
+   * When the item was published on the origin platform (not the import time).
+   */
+  publishedAt DateTime?
+  /**
+   * Why this row failed to import — only set when `status = FAILED`.
+   */
+  errorReason String?
+  /**
+   * Raw provider payload, kept verbatim for future re-processing.
+   */
+  raw         Json?
+
+  connectorStatusId String?
+  connectorStatus   ConnectorStatus? @relation(fields: [connectorStatusId], references: [id], onDelete: SetNull)
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, platform, externalId])
+  @@index([organizationId])
+  @@index([organizationId, platform])
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt])
+  @@index([connectorStatusId])
 }
 
 // ------------------------------------------------------------------

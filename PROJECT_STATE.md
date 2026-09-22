@@ -4,10 +4,10 @@
 > Updated per PR. Source of truth for "what exists" vs. "what is planned".
 
 **Last updated:** 2026-09-22
-**Current PR:** PR004 — Outreach AI & Sales Pipeline
-**Status:** completed (awaiting review/merge)
-**Branch:** `arena/01a0caa7-brobond-ai-commerce` (Arena session branch; requested spec branch: `feature/pr004-outreach-ai`)
-**Next PR:** PR005 — Campaign Engine
+**Current PR:** PR005 — Connector Framework
+**Status:** completed (awaiting review/merge — **no merge performed**)
+**Branch:** `arena/01a0cabe-brobond-ai-commerce` (Arena session branch; requested spec branch: `feature/pr005-connector-framework`)
+**Next PR:** PR006 — Campaign Engine
 
 > **Workflow (instituted in PR001):** no more direct merges to `main`.
 > Feature branch → Pull Request → human audit → approval → merge → Render deploy.
@@ -16,20 +16,21 @@
 
 ## 1. Snapshot
 
-| Aspect       | State                                                                                                                    |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| Stage        | Second feature module shipped (Products + Trends) + PR002.1 datasource hotfix                                            |
-| Architecture | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models) · **multi-source trends** (PR002.1)              |
-| Modules      | `modules/commerce/products` — services / repositories / dto / pricing / validators                                       |
-|              | `modules/trends` — hunter (collectors / collector factory / scorer / scheduler) / repositories / dto / …                 |
-| Currency     | **BRL** (default across Product, Campaign, Sale) · money = integer cents · margin = basis points                         |
-| Auth         | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**                                               |
-| RBAC         | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura                    |
-| Database     | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                                                              |
-| Migrations   | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core` · `…_trend_hunter_ai` · `…_trend_source` |
-| Tests        | Vitest — 297 unit tests (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage, trends)         |
-| Deploy       | Render Blueprint (`render.yaml`) + GitHub Actions                                                                        |
-| Build/CI     | ✅ green (ci → validate → generate → lint → typecheck → test → build → format)                                           |
+| Aspect       | State                                                                                                                                                                                                              |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Stage        | Second feature module shipped (Products + Trends) + PR002.1 datasource hotfix                                                                                                                                      |
+| Architecture | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models) · **multi-source trends** (PR002.1)                                                                                                        |
+| Modules      | `modules/commerce/products` — services / repositories / dto / pricing / validators                                                                                                                                 |
+|              | `modules/trends` — hunter (collectors / collector factory / scorer / scheduler) / repositories / dto / …                                                                                                           |
+|              | `modules/connectors` — core (interface / factory / validator / dto / repository / sync) + mock / tiktok / instagram / shopee (PR005)                                                                               |
+| Currency     | **BRL** (default across Product, Campaign, Sale) · money = integer cents · margin = basis points                                                                                                                   |
+| Auth         | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**                                                                                                                                         |
+| RBAC         | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura                                                                                                              |
+| Database     | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                                                                                                                                                        |
+| Migrations   | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core` · `…_trend_hunter_ai` · `…_trend_source` · `…_creator_discovery_engine` · `…_outreach_ai_sales_pipeline` · `…_connector_framework` |
+| Tests        | Vitest — 785 unit tests (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage, trends, creators, outreach, connectors)                                                                   |
+| Deploy       | Render Blueprint (`render.yaml`) + GitHub Actions                                                                                                                                                                  |
+| Build/CI     | ✅ green (ci → validate → generate → lint → typecheck → test → build → format)                                                                                                                                     |
 
 ---
 
@@ -154,6 +155,8 @@ Session guards — `lib/session.ts`:
 | CampaignProduct                   | M:N join (campaign ⇄ product)                       | ↳ via campaign    |
 | CreatorMetric                     | Daily creator metrics (PR003)                       | ✅ required FK    |
 | CreatorTag                        | Creator labels (PR003)                              | ✅ required FK    |
+| ConnectorStatus                   | Per-platform connector state + counters (PR005)     | ✅ required FK    |
+| ExternalContent                   | Imported external content + dedupe (PR005)          | ✅ required FK    |
 | CampaignCreator                   | M:N join (campaign ⇄ creator)                       | ↳ via campaign    |
 | Account/Session/VerificationToken | NextAuth adapter                                    | —                 |
 
@@ -289,6 +292,77 @@ em URL-state, formulário manual (MANAGER+), Kanban do pipeline e botão
 distribuído (NEW 40% · QUALIFIED 20% · CONTACTED 15% · NEGOTIATING 10% ·
 ACTIVE 10% · ARCHIVED 5%), tags e 7 dias de métricas para o top 10.
 
+### Connector Framework (PR005)
+
+`modules/connectors` — the multi-platform ingestion architecture, prepared
+for TikTok, Instagram and Shopee. **PR005 delivers the ARCHITECTURE ONLY:
+no real API is integrated** — zero network calls, zero SDKs, zero scraping,
+zero credentials anywhere in the module.
+
+- **Multi-platform architecture.** Every adapter declares its
+  `ConnectorPlatform` (Prisma enum: MOCK · TIKTOK · INSTAGRAM · SHOPEE),
+  lives in `modules/connectors/<platform>/` and is resolved **exclusively**
+  by `getConnector(platform)` (`core/connector.factory.ts`) — no `switch`
+  outside the factory (pinned by test). MOCK is implemented (40
+  deterministic items: 36 unique + 4 deliberate duplicates);
+  TIKTOK/INSTAGRAM/SHOPEE are placeholders that throw
+  `ConnectorNotImplementedError`.
+- **Connector contract** (`core/connector.interface.ts`):
+  `platform` · `name` · `implemented` · `fetchContent(options?)` ·
+  `testConnection()`. `fetchContent` returns `NormalizedContent[]`
+  (externalId · type · title · url · thumbnail · author · caption ·
+  views/likes/shares · publishedAt · raw) — the adapter is the ONLY place
+  that knows a provider's payload shape. `testConnection()` **never
+  throws**: a placeholder reports `{ ok: false, implemented: false }` so
+  the dashboard renders calmly.
+- **Sync service** (`core/connector.sync.ts`): the `sync-connector` job —
+  fetch → validate each item (Zod) → dedupe → persist as IMPORTED /
+  DUPLICATE / FAILED → update the connector state and counters.
+  **Manual execution only — no cron** (`schedule` is deliberately
+  `undefined`, same contract as PR002/PR003). An adapter may only
+  _describe_ content; the import **outcome is decided by the service**,
+  never by the connector. A placeholder sync is a recorded ERROR, never a
+  crash; a partial failure keeps the connector ACTIVE.
+- **Dedupe contract:** `(organizationId, platform, externalId)` is UNIQUE.
+  A re-import is recorded as DUPLICATE and refreshes the known row's
+  engagement numbers instead of creating a second record — this is what
+  makes the "Duplicados" KPI meaningful. The key is tenant-scoped, so two
+  workspaces may import the same item independently.
+- **Repository** (`core/connector.repository.ts`): `listStatuses` ·
+  `findStatus` · `ensureStatus` · `setEnabled` · `recordSyncResult` ·
+  `createContent` · `findContentByExternalId` · `refreshContent` ·
+  `listContent` · `kpis`. `organizationId` is ALWAYS the first argument,
+  built through `tenantWhere`/`scopedWhere`. Factory
+  (`createConnectorRepository(db)`) keeps it unit-testable without a
+  database.
+- **Connector state:** IDLE (registered, never synced) · ACTIVE (last sync
+  succeeded) · ERROR (last sync failed) · DISABLED (ADMIN toggle). The
+  "Conectores ativos" KPI counts `enabled && state === ACTIVE` —
+  `isConnectorActive()` is the single source of truth.
+- **No credentials by design.** `ConnectorStatus` has no token/secret
+  column. A future PR must add a _secret reference_ resolved server-side,
+  never a raw token in the database or the client bundle.
+
+```
+modules/
+└── connectors/
+    ├── core/       connector.interface · connector.factory · connector.validator ·
+    │               connector.dto · connector.repository (server-only) ·
+    │               connector.sync (server-only, manual job)
+    ├── mock/       MockConnector — implemented (deterministic dataset)
+    ├── tiktok/     TikTokConnector — placeholder
+    ├── instagram/  InstagramConnector — placeholder
+    └── shopee/     ShopeeConnector — placeholder
+```
+
+**Dashboard `/dashboard/connectors`:** KPIs (Importados · Duplicados ·
+Falhas · Conectores ativos), grid com um card por conector (estado,
+contadores, última sincronização, erro) e ações ADMIN (Sincronizar ·
+Ativar/Desativar · Testar), além da tabela de conteúdo importado com
+busca/filtros (plataforma, status, tipo)/ordenação/paginação em URL-state.
+Seed: 36 itens importados + 4 duplicados no conector Mock (ativo) e os três
+placeholders registrados como IDLE/desativados.
+
 **Upload de imagens — interface preparada:** `services/media-storage.ts`
 defines `MediaStorageProvider` (`createUploadTicket`/`remove`), size/type
 policy (10 MB, image mime allowlist) and a `not-configured` placeholder.
@@ -299,13 +373,16 @@ behind `getMediaStorage()` with zero caller changes.
 
 ## 6. Migrations
 
-| Migration                                  | Purpose                                                                                                                                                        |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `20260922000000_init_multitenant`          | Initial schema (nullable `organizationId`)                                                                                                                     |
-| `20260922120000_require_organization`      | Promotes `organizationId` to `NOT NULL` on 4 models                                                                                                            |
-| `20260922180000_product_intelligence_core` | PR001: 4 new product tables, stock/cost/margin columns, tenant-scoped slug/SKU uniqueness, dashboard indexes                                                   |
-| `20260922230000_trend_hunter_ai`           | PR002: TrendSnapshot, TrendKeyword, TrendCategory — all tenant-required FKs, tenant-scoped uniqueness on keyword/category, dashboard indexes                   |
-| `20260923050000_trend_source`              | PR002.1: `TrendSource` enum + `TrendSnapshot.source` (`NOT NULL DEFAULT 'MOCK'`, purely additive — no existing row touched) + `(organizationId, source)` index |
+| Migration                                   | Purpose                                                                                                                                                                                                                                           |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `20260922000000_init_multitenant`           | Initial schema (nullable `organizationId`)                                                                                                                                                                                                        |
+| `20260922120000_require_organization`       | Promotes `organizationId` to `NOT NULL` on 4 models                                                                                                                                                                                               |
+| `20260922180000_product_intelligence_core`  | PR001: 4 new product tables, stock/cost/margin columns, tenant-scoped slug/SKU uniqueness, dashboard indexes                                                                                                                                      |
+| `20260922230000_trend_hunter_ai`            | PR002: TrendSnapshot, TrendKeyword, TrendCategory — all tenant-required FKs, tenant-scoped uniqueness on keyword/category, dashboard indexes                                                                                                      |
+| `20260923050000_trend_source`               | PR002.1: `TrendSource` enum + `TrendSnapshot.source` (`NOT NULL DEFAULT 'MOCK'`, purely additive — no existing row touched) + `(organizationId, source)` index                                                                                    |
+| `20260923120000_creator_discovery_engine`   | PR003: `Creator` → `CreatorProfile` (data preserved), `CreatorSource`, CRM columns, `CreatorMetric`, `CreatorTag`, tenant-scoped uniques                                                                                                          |
+| `20260922194600_outreach_ai_sales_pipeline` | PR004: `OutreachStatus`, `TemplateType`, `OutreachMessage`, `MessageTemplate`, `FollowUpSequence` — all tenant-required FKs                                                                                                                       |
+| `20260923180000_connector_framework`        | PR005: `ConnectorPlatform`/`ConnectorState`/`ExternalContentType`/`ExternalContentStatus` enums + `ConnectorStatus` + `ExternalContent` — purely ADDITIVE, dedupe unique `(organizationId, platform, externalId)`, no credential column by design |
 
 The PR000.2 migration is **safe and non-inventive**: it never fabricates an
 Organization and never guesses an owner. A `DO $$ … $$` guard counts tenant-less
@@ -327,6 +404,8 @@ correct tenant before re-running. On a fresh database the guard is a no-op.
 | `/dashboard/products/[id]` | ✅     | PR001 — detalhe/edição, mídia, variações, custos & margem                                          |
 | `/dashboard/trends`        | ✅     | PR002 — KPIs, tabela com busca/filtro/ordenação/paginação · filtro Origem (PR002.1)                |
 | `/dashboard/creators`      | ✅     | PR003 — KPIs, tabela com busca/filtros/ordenação/paginação, Kanban do pipeline, descoberta (ADMIN) |
+| `/dashboard/outreach`      | ✅     | PR004 — KPIs do outbox, workbench de geração/agendamento                                           |
+| `/dashboard/connectors`    | ✅     | PR005 — KPIs (Importados/Duplicados/Falhas/Ativos), cards por conector, tabela de conteúdo externo |
 | `/settings`                | ✅     | Profile + integrations status                                                                      |
 | `/api/auth/*`              | ✅     | NextAuth v5 handler (Credentials provider active)                                                  |
 
@@ -348,6 +427,12 @@ Server actions:
   `source: MANUAL` + `status: NEW`, score server-side) ·
   `changeCreatorStatusAction` (move o pipeline — MANAGER+, transição
   validada contra o mapa antes de qualquer write). All tenant-scoped.
+- `app/dashboard/connectors/actions.ts` → 3 actions (PR005):
+  `syncConnectorAction` (executa o job manual `sync-connector`) ·
+  `toggleConnectorAction` (ativa/desativa um conector) ·
+  `testConnectorAction` (diagnóstico — nunca acessa a rede em PR005). All
+  `requireAdmin()` + tenant-scoped repository; `organizationId` is never
+  accepted from the client.
 
 ### Products RBAC (PR001)
 
@@ -374,6 +459,20 @@ Server actions:
 | Criar profile manual | ✅    | ✅      | ❌                   |
 | Mover pipeline       | ✅    | ✅      | ❌                   |
 | Visualizar dashboard | ✅    | ✅      | ✅ (somente leitura) |
+
+### Connectors RBAC (PR005)
+
+| Ação                      | ADMIN | MANAGER | MEMBER               |
+| ------------------------- | ----- | ------- | -------------------- |
+| Sincronizar conector      | ✅    | ❌      | ❌                   |
+| Ativar/desativar conector | ✅    | ❌      | ❌                   |
+| Testar conector           | ✅    | ❌      | ❌                   |
+| Visualizar dashboard      | ✅    | ✅      | ✅ (somente leitura) |
+
+> Connectors are **infrastructure**, not content: MANAGER's write powers in
+> the CRM (PR003) and outreach (PR004) deliberately do NOT extend here —
+> every write action is `requireAdmin()` (pinned by
+> `tests/connectors-rbac.test.ts`).
 
 Enforced twice: UI affordances hidden per role **and** re-asserted in every
 server action (`requireAdmin`/`requireManager`).
@@ -417,29 +516,37 @@ never passed to a client component:
 
 ## 9. Tests
 
-`npm test` (Vitest, `tests/`) — 650+ unit tests, no database required:
+`npm test` (Vitest, `tests/`) — **785 unit tests** (42 files), no database
+required:
 
-| File                               | Covers                                                                                                                                                       |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `tests/rbac.test.ts`               | `hasRole`, `isAdmin`, `isManager`, `assertRole`, full hierarchy matrix                                                                                       |
-| `tests/session.test.ts`            | `getCurrentUser`, `getCurrentOrganization`, `requireUser`, `requireOrganization`, `requireRole`, `requireAdmin`, `requireManager`, no-secret-leak assertion  |
-| `tests/tenant.test.ts`             | `tenantWhere`, `scopedWhere`, `assertSameTenant`, cross-tenant isolation (a caller-supplied `organizationId` cannot override the scope)                      |
-| `tests/password.test.ts`           | bcrypt digest shape, salting, verification, no plaintext                                                                                                     |
-| `tests/pricing.test.ts`            | PR001 — `totalCostCents`, `profitCents`, `marginBps` (rounding, zero price, negative margin), display helpers                                                |
-| `tests/slug.test.ts`               | PR001 — `baseSlug` (accents, fallback, length cap), `resolveUniqueSlug` (`-2`/`-3` collision handling, max length)                                           |
-| `tests/product-validators.test.ts` | PR001 — every Zod schema incl. hostile inputs (client-supplied `organizationId` is stripped; hostile sort fields fall back)                                  |
-| `tests/product-list-where.test.ts` | PR001 — dashboard filter builder always injects the tenant scope; throws without one                                                                         |
-| `tests/products-rbac.test.ts`      | PR001 — products RBAC matrix (ADMIN cria/edita/exclui · MANAGER edita · MEMBER leitura)                                                                      |
-| `tests/media-storage.test.ts`      | PR001 — upload policy (mime allowlist, 10 MB cap) + placeholder provider contract                                                                            |
-| `tests/trend-scorer.test.ts`       | PR002 — score engine: weights (30/20/15/20/15), normalization to 0–100, clamping, rounding, guard errors                                                     |
-| `tests/trend-collector.test.ts`    | PR002 — mock collector: exactly 30 valid unique signals, 5 categories, scores 60–98, deterministic + defensive copies (+ PR002.1 `collect()` alias)          |
-| `tests/trend-validators.test.ts`   | PR002 — Zod schemas (signal/snapshot/list query) incl. hostile inputs + `keywordSlug`/`normalizeKeyword` (accents, fallback, length cap)                     |
-| `tests/trend-repository.test.ts`   | PR002 — repository against an in-memory fake Prisma: tenant always injected, blank tenant throws before ANY db call, cross-tenant invisibility, filters      |
-| `tests/trend-scheduler.test.ts`    | PR002 — `collect-daily-trends` job (collect → score → validate → persist → aggregate), failure handling, manual-only contract (+ PR002.1 multi-source)       |
-| `tests/trend-source.test.ts`       | PR002.1 — `TrendSource` enum ↔ `TREND_SOURCES` sync, labels, MOCK default, Zod source schemas (accept/reject/defaults), URL-state `?source=`                 |
-| `tests/collector-factory.test.ts`  | PR002.1 — `getCollector()` mapping per source, placeholder collectors throw "Not implemented", MANUAL/unknown throw, singleton cache, no-switch architecture |
-| `tests/trends-rbac.test.ts`        | PR002 — trends RBAC matrix (ADMIN coleta/cria · MANAGER visualiza · MEMBER leitura)                                                                          |
-| `tests/trend-dto.test.ts`          | PR002 — DTO mappers: ISO serialization across the RSC boundary, score computed engine-side                                                                   |
+| File                                 | Covers                                                                                                                                                                                                                                 |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/rbac.test.ts`                 | `hasRole`, `isAdmin`, `isManager`, `assertRole`, full hierarchy matrix                                                                                                                                                                 |
+| `tests/session.test.ts`              | `getCurrentUser`, `getCurrentOrganization`, `requireUser`, `requireOrganization`, `requireRole`, `requireAdmin`, `requireManager`, no-secret-leak assertion                                                                            |
+| `tests/tenant.test.ts`               | `tenantWhere`, `scopedWhere`, `assertSameTenant`, cross-tenant isolation (a caller-supplied `organizationId` cannot override the scope)                                                                                                |
+| `tests/password.test.ts`             | bcrypt digest shape, salting, verification, no plaintext                                                                                                                                                                               |
+| `tests/pricing.test.ts`              | PR001 — `totalCostCents`, `profitCents`, `marginBps` (rounding, zero price, negative margin), display helpers                                                                                                                          |
+| `tests/slug.test.ts`                 | PR001 — `baseSlug` (accents, fallback, length cap), `resolveUniqueSlug` (`-2`/`-3` collision handling, max length)                                                                                                                     |
+| `tests/product-validators.test.ts`   | PR001 — every Zod schema incl. hostile inputs (client-supplied `organizationId` is stripped; hostile sort fields fall back)                                                                                                            |
+| `tests/product-list-where.test.ts`   | PR001 — dashboard filter builder always injects the tenant scope; throws without one                                                                                                                                                   |
+| `tests/products-rbac.test.ts`        | PR001 — products RBAC matrix (ADMIN cria/edita/exclui · MANAGER edita · MEMBER leitura)                                                                                                                                                |
+| `tests/media-storage.test.ts`        | PR001 — upload policy (mime allowlist, 10 MB cap) + placeholder provider contract                                                                                                                                                      |
+| `tests/trend-scorer.test.ts`         | PR002 — score engine: weights (30/20/15/20/15), normalization to 0–100, clamping, rounding, guard errors                                                                                                                               |
+| `tests/trend-collector.test.ts`      | PR002 — mock collector: exactly 30 valid unique signals, 5 categories, scores 60–98, deterministic + defensive copies (+ PR002.1 `collect()` alias)                                                                                    |
+| `tests/trend-validators.test.ts`     | PR002 — Zod schemas (signal/snapshot/list query) incl. hostile inputs + `keywordSlug`/`normalizeKeyword` (accents, fallback, length cap)                                                                                               |
+| `tests/trend-repository.test.ts`     | PR002 — repository against an in-memory fake Prisma: tenant always injected, blank tenant throws before ANY db call, cross-tenant invisibility, filters                                                                                |
+| `tests/trend-scheduler.test.ts`      | PR002 — `collect-daily-trends` job (collect → score → validate → persist → aggregate), failure handling, manual-only contract (+ PR002.1 multi-source)                                                                                 |
+| `tests/trend-source.test.ts`         | PR002.1 — `TrendSource` enum ↔ `TREND_SOURCES` sync, labels, MOCK default, Zod source schemas (accept/reject/defaults), URL-state `?source=`                                                                                           |
+| `tests/collector-factory.test.ts`    | PR002.1 — `getCollector()` mapping per source, placeholder collectors throw "Not implemented", MANUAL/unknown throw, singleton cache, no-switch architecture                                                                           |
+| `tests/trends-rbac.test.ts`          | PR002 — trends RBAC matrix (ADMIN coleta/cria · MANAGER visualiza · MEMBER leitura)                                                                                                                                                    |
+| `tests/trend-dto.test.ts`            | PR002 — DTO mappers: ISO serialization across the RSC boundary, score computed engine-side                                                                                                                                             |
+| `tests/connector-platform.test.ts`   | PR005 — the four connector enums ↔ their client-safe mirrors ↔ the Zod schemas (23 tests): labels, MOCK default, placeholder list, `isConnectorActive` KPI predicate, type guards                                                      |
+| `tests/connector-factory.test.ts`    | PR005 — `getConnector()` mapping per platform, singleton cache, registry helpers, unregistered platform throws `ConnectorNotRegisteredError`, placeholders throw on `fetchContent()` but answer `testConnection()` calmly (18 tests)   |
+| `tests/connector-mock.test.ts`       | PR005 — the mock adapter: 36 unique + 4 deliberate duplicates, type distribution, determinism (identical across runs), defensive copies, `limit`/`since`/`type` options, zero network access (17 tests)                                |
+| `tests/connector-repository.test.ts` | PR005 — repository against an in-memory fake Prisma: tenant always injected, blank tenant throws before ANY db call, cross-tenant invisibility, tenant-scoped dedupe, status lifecycle, counter accumulation, the four KPIs (20 tests) |
+| `tests/connector-sync.test.ts`       | PR005 — the `sync-connector` job: import/dedupe/failure paths, counters, state transitions, placeholder handling (recorded ERROR, never a crash), `AuthorizationError` re-thrown, manual-only contract (22 tests)                      |
+| `tests/connector-dto.test.ts`        | PR005 — DTO mappers (ISO serialization, no tenant/raw leak, never-synced platform renders IDLE) + every validator incl. hostile inputs and malformed URL state (28 tests)                                                              |
+| `tests/connectors-rbac.test.ts`      | PR005 — connectors RBAC matrix: every write is ADMIN-only; MANAGER's powers elsewhere do not leak into connector infrastructure (6 tests)                                                                                              |
 
 ---
 
@@ -455,13 +562,88 @@ never passed to a client component:
 - Creator Discovery real sources (TikTok · Instagram · Shopee) —
   placeholders behind `getCreatorCollector()` since PR003; MOCK is the
   only implemented source (no external API, by design)
-- Cron/scheduler wiring for `collect-daily-trends` / `discover-creators` —
-  manual trigger only
+- **Connector real platforms (TikTok · Instagram · Shopee) — PR005 ships
+  the architecture only.** The three adapters are placeholders behind
+  `getConnector()`; MOCK is the only implemented connector. No API call,
+  no SDK, no scraping, no OAuth and **no credential storage** exists —
+  `ConnectorStatus` deliberately has no token column. A future PR must add
+  a server-only secret _reference_, never a raw secret.
+- Cron/scheduler wiring for `collect-daily-trends` / `discover-creators` /
+  `sync-connector` — manual trigger only
 - Analytics pipeline — `modules/analytics` (PR007)
 
 ---
 
 ## 11. Changelog
+
+### PR005 — Connector Framework (2026-09-22) — completed
+
+Multi-platform connector architecture for importing external content.
+**ARCHITECTURE ONLY — no real API is integrated** (no TikTok API, no
+Instagram Graph API, no Shopee, no scraping, no SDK, no OAuth, no
+credential storage; zero network calls).
+
+**Modules**
+
+- `modules/connectors/core` — `Connector` interface, `ConnectorFactory`
+  (`getConnector`), Zod validators, DTOs, tenant-scoped repository and the
+  `sync-connector` service (manual job, no cron).
+- `modules/connectors/mock` — `MockConnector`, the only IMPLEMENTED
+  adapter: 40 deterministic items (36 unique + 4 deliberate duplicates, so
+  the dedupe path and the "Duplicados" KPI have data out of the box).
+- `modules/connectors/tiktok` · `instagram` · `shopee` — placeholders that
+  throw `ConnectorNotImplementedError` on `fetchContent()` while answering
+  `testConnection()` calmly.
+
+**Architecture contracts**
+
+- A platform is resolved **only** through `getConnector(platform)` — no
+  `switch` outside the factory (pinned by test). Adding a real adapter is
+  a one-line factory registration with **zero caller changes**.
+- An adapter may only _describe_ content (`NormalizedContent`); the import
+  outcome (IMPORTED / DUPLICATE / FAILED) is decided by the sync service.
+- Every item is validated (Zod) **before** any write, so a misbehaving
+  adapter produces FAILED rows instead of corrupt content.
+- A placeholder sync is a recorded ERROR on `ConnectorStatus`, never a
+  crash; a partial failure keeps the connector ACTIVE.
+- `AuthorizationError` is re-thrown (401/403), never swallowed as a
+  "failed job".
+
+**Prisma**
+
+- Enums `ConnectorPlatform`, `ConnectorState`, `ExternalContentType`,
+  `ExternalContentStatus`.
+- `ConnectorStatus` — per-tenant per-platform state, enable toggle,
+  `lastSyncAt`/`lastError` and the cumulative counters. Unique
+  `(organizationId, platform)`. **No credential column, by design.**
+- `ExternalContent` — the imported item. Unique
+  `(organizationId, platform, externalId)`: the tenant-scoped dedupe key.
+- Migration `20260923180000_connector_framework` is purely ADDITIVE — no
+  existing table, column or row is touched.
+
+**Dashboard `/dashboard/connectors`**
+
+- KPIs: **Importados · Duplicados · Falhas · Conectores ativos**.
+- One card per registered connector (state badge, placeholder badge,
+  per-connector counters, last sync, last error) with the ADMIN actions
+  Sincronizar · Ativar/Desativar · Testar.
+- Table of imported content with busca, filtros (plataforma, status,
+  tipo), ordenação e paginação em URL-state; responsivo.
+
+**RBAC** — every write action is `requireAdmin()` (connectors are
+infrastructure); MANAGER and MEMBER are read-only.
+
+**Tests** — 135 new tests across 7 files (785 total, all green): enum/mirror
+sync, factory mapping and singleton behaviour, mock determinism, repository
+tenant isolation, sync orchestration (import/dedupe/failure/placeholder) and
+the RBAC matrix.
+
+**Seed** — registers the four connectors (Mock active, the three
+placeholders IDLE/disabled) and imports the mock dataset through the same
+dedupe rule the sync service uses. Idempotent.
+
+**Not performed:** no merge (PR left open for human audit, per the PR000
+workflow).
 
 ### PR003 — Creator Discovery Engine (2026-09-22) — completed
 
@@ -712,11 +894,12 @@ input), tenant filter builder, RBAC matrix, media-storage policy.
 | PR002                              | Trend Hunter AI                   | ✅ done |
 | PR002.1                            | Multi-Source Data Architecture    | ✅ done |
 | PR003                              | Creator Discovery Engine          | ✅ done |
-| PR004                              | Outreach AI & Sales Pipeline      | ✅ this |
-| PR005                              | Campaign Engine                   | ⏭ next  |
-| PR006                              | Messaging & Inbox                 | planned |
-| PR007                              | Analytics & Reporting             | planned |
-| PR008                              | Billing & Multi-tenancy hardening | planned |
+| PR004                              | Outreach AI & Sales Pipeline      | ✅ done |
+| PR005                              | Connector Framework               | ✅ this |
+| PR006                              | Campaign Engine                   | ⏭ next  |
+| PR007                              | Messaging & Inbox                 | planned |
+| PR008                              | Analytics & Reporting             | planned |
+| PR009                              | Billing & Multi-tenancy hardening | planned |
 | a guard that aborts on tenant-less |
 | rows instead of inventing data.    |
 
@@ -765,11 +948,12 @@ input), tenant filter builder, RBAC matrix, media-storage policy.
 | PR002   | Trend Hunter AI                   | ✅ done |
 | PR002.1 | Multi-Source Data Architecture    | ✅ done |
 | PR003   | Creator Discovery Engine          | ✅ done |
-| PR004   | Outreach AI & Sales Pipeline      | ✅ this |
-| PR005   | Campaign Engine                   | ⏭ next  |
-| PR006   | Messaging & Inbox                 | planned |
-| PR007   | Analytics & Reporting             | planned |
-| PR008   | Billing & Multi-tenancy hardening | planned |
+| PR004   | Outreach AI & Sales Pipeline      | ✅ done |
+| PR005   | Connector Framework               | ✅ this |
+| PR006   | Campaign Engine                   | ⏭ next  |
+| PR007   | Messaging & Inbox                 | planned |
+| PR008   | Analytics & Reporting             | planned |
+| PR009   | Billing & Multi-tenancy hardening | planned |
 
 ## PR004 — Outreach AI & Sales Pipeline (2026-09-22)
 
@@ -799,6 +983,40 @@ modules/outreach/
 └── interfaces/    outreach.interface.ts
 ```
 
-### Next: PR005
+### Next after PR004: PR005 (delivered)
 
-Delivery-provider interfaces, campaign automation and delivery observability may consume `READY` outbox records. PR005 must keep providers behind adapters and must not bypass tenant scope, server-side RBAC, consent or audit controls.
+PR005 shipped the Connector Framework — providers stay behind adapters
+(`getConnector()`), tenant scope and server-side RBAC are never bypassed and
+no real API/credential is wired. See the PR005 changelog entry above.
+
+## PR005 — Connector Framework (2026-09-22)
+
+### Status: implemented (no merge — PR open for human audit)
+
+- **Connectors:** `modules/connectors/{core,mock,tiktok,instagram,shopee}` — `Connector` interface, `ConnectorFactory`, `MockConnector` (implemented) and three placeholders.
+- **No real API:** no TikTok/Instagram/Shopee call, no SDK, no scraping, no OAuth, no credential storage — `ConnectorStatus` has no token column by design.
+- **Sync service:** `sync-connector` job — fetch → validate (Zod) → dedupe → persist IMPORTED/DUPLICATE/FAILED → update state + counters. Manual execution only, no cron.
+- **Dedupe:** tenant-scoped unique `(organizationId, platform, externalId)`; a re-import refreshes the known row instead of duplicating it.
+- **Prisma:** `ConnectorPlatform`, `ConnectorState`, `ExternalContentType`, `ExternalContentStatus`, `ConnectorStatus`, `ExternalContent` — all tenant-scoped; migration purely additive.
+- **Dashboard:** `/dashboard/connectors` with KPIs Importados · Duplicados · Falhas · Conectores ativos, connector cards and the external-content table (busca/filtros/ordenação/paginação em URL-state).
+- **RBAC:** every write is ADMIN-only; MANAGER/MEMBER read-only.
+- **Tests:** 135 new tests (785 total, all green).
+
+### PR005 module layout
+
+```text
+modules/connectors/
+├── core/       connector.interface · connector.factory · connector.validator ·
+│               connector.dto · connector.repository · connector.sync
+├── mock/       MockConnector (implemented — deterministic dataset)
+├── tiktok/     TikTokConnector (placeholder)
+├── instagram/  InstagramConnector (placeholder)
+└── shopee/     ShopeeConnector (placeholder)
+```
+
+### Next: PR006
+
+Campaign Engine may consume `ExternalContent` and the connector KPIs. A real
+adapter must plug in behind `getConnector()` with zero caller changes, resolve
+its secret through a server-only reference (never a raw token in the database
+or the client bundle) and must not bypass tenant scope or server-side RBAC.
