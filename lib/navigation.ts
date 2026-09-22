@@ -7,6 +7,7 @@ import {
   Megaphone,
   BarChart3,
   MessagesSquare,
+  Plug,
   Settings,
 } from "lucide-react";
 
@@ -28,6 +29,7 @@ export const sidebarNav: NavItem[] = [
   { label: "Trends", href: "/dashboard/trends", icon: TrendingUp },
   { label: "Creators", href: "/dashboard/creators", icon: Users },
   { label: "Outreach AI", href: "/dashboard/outreach", icon: MessagesSquare },
+  { label: "Conectores", href: "/dashboard/connectors", icon: Plug },
   { label: "Campanhas", href: "/dashboard/campaigns", icon: Megaphone, planned: true },
   { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3, planned: true },
   { label: "Configurações", href: "/settings", icon: Settings },

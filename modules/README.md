@@ -21,6 +21,14 @@ modules/
 │   ├── validators/        Zod schemas (+ trendSourceSchema) + keyword slug helpers
 │   └── interfaces/        TrendCandidate · TrendCollector · TREND_SOURCES ·
 │                          TREND_CATEGORIES
+├── connectors/   Connector Framework (PR005 — architecture only, no real API)
+│   ├── core/          connector.interface · connector.factory · connector.validator ·
+│   │                  connector.dto · connector.repository (server-only) ·
+│   │                  connector.sync (server-only, manual job)
+│   ├── mock/          MockConnector — the only IMPLEMENTED adapter (deterministic)
+│   ├── tiktok/        TikTokConnector — placeholder ("Not implemented")
+│   ├── instagram/     InstagramConnector — placeholder ("Not implemented")
+│   └── shopee/        ShopeeConnector — placeholder ("Not implemented")
 ├── creators/     Creator roster & relationships
 ├── campaigns/    Campaign orchestration
 ├── messaging/    Conversations & notifications
@@ -48,3 +56,14 @@ without a tenant scope.
   never by instantiating a collector or switching on the source outside the
   factory. `MANUAL` has no collector: manual trends come from the dashboard
   form and are stamped `source: MANUAL` server-side.
+- **Connectors (PR005)** follow the very same rule: a platform adapter
+  implements `Connector` (`modules/connectors/core/connector.interface.ts`),
+  lives in `modules/connectors/<platform>/` and is resolved by
+  `getConnector(platform)` (`core/connector.factory.ts`) — never by
+  instantiating an adapter or switching on the platform outside the factory.
+  PR005 delivers the **architecture only**: `MockConnector` is implemented,
+  TikTok/Instagram/Shopee are placeholders that throw
+  `ConnectorNotImplementedError`. Zero network calls, zero SDKs, zero
+  credentials. An adapter may only _describe_ content
+  (`NormalizedContent`) — the import outcome (IMPORTED / DUPLICATE /
+  FAILED) is decided by the sync service, never by the connector.

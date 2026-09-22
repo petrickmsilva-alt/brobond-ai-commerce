@@ -18,6 +18,7 @@ import {
   PrismaClient,
   UserRole,
   ProductStatus,
+  ConnectorPlatform,
   CreatorSource,
   CreatorStatus,
   TrendSource,
@@ -32,6 +33,7 @@ import { scoreTrend } from "../modules/trends/hunter/scorer";
 import { normalizeKeyword } from "../modules/trends/validators/trend.validator";
 import { MOCK_CREATOR_CANDIDATES } from "../modules/creators/discovery/collectors";
 import { scoreCreator } from "../modules/creators/discovery/scorer";
+import { MockConnector } from "../modules/connectors/mock/mock.connector";
 import { OUTREACH_TEMPLATES } from "../modules/outreach/prompts/templates";
 import { generateOutreachMessage } from "../modules/outreach/prompts/generator";
 
@@ -381,6 +383,101 @@ async function main() {
     }
   }
 
+  // PR005 — Connector Framework: register one ConnectorStatus row per
+  // platform and import the mock dataset through the SAME dedupe rule the
+  // sync service uses (first occurrence IMPORTED, repeats DUPLICATE), so
+  // the dashboard KPIs have realistic data on a fresh workspace.
+  //
+  // NO external API is called here — the mock connector is in-memory only.
+  // Idempotent: only inserts when the workspace has no external content
+  // yet, so real syncs are never wiped.
+  const existingContent = await prisma.externalContent.count({
+    where: { organizationId: organization.id },
+  });
+  let seededContent = 0;
+  if (existingContent === 0) {
+    const mockContent = await new MockConnector().fetchContent();
+
+    const status = await prisma.connectorStatus.upsert({
+      where: {
+        organizationId_platform: {
+          organizationId: organization.id,
+          platform: ConnectorPlatform.MOCK,
+        },
+      },
+      update: {},
+      create: {
+        platform: ConnectorPlatform.MOCK,
+        organizationId: organization.id,
+        enabled: true,
+        state: "IDLE",
+      },
+    });
+
+    const seen = new Set<string>();
+    let imported = 0;
+    let duplicates = 0;
+
+    for (const item of mockContent) {
+      const isDuplicate = seen.has(item.externalId);
+      if (isDuplicate) {
+        duplicates += 1;
+        continue;
+      }
+      seen.add(item.externalId);
+      imported += 1;
+      await prisma.externalContent.create({
+        data: {
+          platform: ConnectorPlatform.MOCK,
+          externalId: item.externalId,
+          type: item.type,
+          status: "IMPORTED",
+          title: item.title,
+          url: item.url,
+          thumbnailUrl: item.thumbnailUrl,
+          authorHandle: item.authorHandle,
+          caption: item.caption,
+          views: item.views ?? 0,
+          likes: item.likes ?? 0,
+          shares: item.shares ?? 0,
+          publishedAt: item.publishedAt,
+          connectorStatusId: status.id,
+          organizationId: organization.id,
+        },
+      });
+    }
+
+    // The duplicate hits are recorded on the connector counters — a
+    // duplicate never creates a second content row (that is the point).
+    await prisma.connectorStatus.update({
+      where: { id: status.id },
+      data: {
+        state: "ACTIVE",
+        lastSyncAt: new Date(),
+        importedCount: imported,
+        duplicateCount: duplicates,
+        syncCount: 1,
+      },
+    });
+
+    // The three placeholder platforms are registered but disabled — they
+    // render on the dashboard as IDLE / "placeholder" until a future PR
+    // implements the real adapters.
+    for (const platform of [
+      ConnectorPlatform.TIKTOK,
+      ConnectorPlatform.INSTAGRAM,
+      ConnectorPlatform.SHOPEE,
+    ]) {
+      await prisma.connectorStatus.upsert({
+        where: { organizationId_platform: { organizationId: organization.id, platform } },
+        update: {},
+        create: { platform, organizationId: organization.id, enabled: false, state: "IDLE" },
+      });
+    }
+
+    seededContent = imported;
+  }
+
   // eslint-disable-next-line no-console
   console.log("Seed complete:", {
     organization: organization.slug,
@@ -392,6 +489,7 @@ async function main() {
     creators: existingCreators > 0 ? existingCreators : seededCreators,
     campaign: campaign.slug,
     trends: existingTrends > 0 ? existingTrends : MOCK_TREND_SIGNALS.length,
+    externalContent: existingContent > 0 ? existingContent : seededContent,
   });
 }
 
