@@ -4,9 +4,9 @@
 > Updated per PR. Source of truth for "what exists" vs. "what is planned".
 
 **Last updated:** 2026-09-22
-**Current PR:** PR005 — Connector Framework
+**Current PR:** PR005.1 — Product Match Architecture
 **Status:** completed (awaiting review/merge — **no merge performed**)
-**Branch:** `arena/01a0cabe-brobond-ai-commerce` (Arena session branch; requested spec branch: `feature/pr005-connector-framework`)
+**Branch:** `arena/01a0caf8-brobond-ai-commerce` (Arena session branch; requested spec branch: `feature/pr005-1-product-match`)
 **Next PR:** PR006 — Campaign Engine
 
 > **Workflow (instituted in PR001):** no more direct merges to `main`.
@@ -16,21 +16,22 @@
 
 ## 1. Snapshot
 
-| Aspect       | State                                                                                                                                                                                                              |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Stage        | Second feature module shipped (Products + Trends) + PR002.1 datasource hotfix                                                                                                                                      |
-| Architecture | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models) · **multi-source trends** (PR002.1)                                                                                                        |
-| Modules      | `modules/commerce/products` — services / repositories / dto / pricing / validators                                                                                                                                 |
-|              | `modules/trends` — hunter (collectors / collector factory / scorer / scheduler) / repositories / dto / …                                                                                                           |
-|              | `modules/connectors` — core (interface / factory / validator / dto / repository / sync) + mock / tiktok / instagram / shopee (PR005)                                                                               |
-| Currency     | **BRL** (default across Product, Campaign, Sale) · money = integer cents · margin = basis points                                                                                                                   |
-| Auth         | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**                                                                                                                                         |
-| RBAC         | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura                                                                                                              |
-| Database     | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                                                                                                                                                        |
-| Migrations   | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core` · `…_trend_hunter_ai` · `…_trend_source` · `…_creator_discovery_engine` · `…_outreach_ai_sales_pipeline` · `…_connector_framework` |
-| Tests        | Vitest — 785 unit tests (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage, trends, creators, outreach, connectors)                                                                   |
-| Deploy       | Render Blueprint (`render.yaml`) + GitHub Actions                                                                                                                                                                  |
-| Build/CI     | ✅ green (ci → validate → generate → lint → typecheck → test → build → format)                                                                                                                                     |
+| Aspect       | State                                                                                                                                                                                                                                               |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stage        | Connector Framework (PR005) + Product Match Architecture (PR005.1) shipped                                                                                                                                                                          |
+| Architecture | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models) · **multi-source trends** (PR002.1)                                                                                                                                         |
+| Modules      | `modules/commerce/products` — services / repositories / dto / pricing / validators                                                                                                                                                                  |
+|              | `modules/trends` — hunter (collectors / collector factory / scorer / scheduler) / repositories / dto / …                                                                                                                                            |
+|              | `modules/connectors` — core (interface / factory / validator / dto / repository / sync) + mock / tiktok / instagram / shopee (PR005)                                                                                                                |
+|              | `modules/campaigns` — matching (matcher / scorer / match-source) · repositories · dto · validators (PR005.1)                                                                                                                                        |
+| Currency     | **BRL** (default across Product, Campaign, Sale) · money = integer cents · margin = basis points                                                                                                                                                    |
+| Auth         | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**                                                                                                                                                                          |
+| RBAC         | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura                                                                                                                                               |
+| Database     | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                                                                                                                                                                                         |
+| Migrations   | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core` · `…_trend_hunter_ai` · `…_trend_source` · `…_creator_discovery_engine` · `…_outreach_ai_sales_pipeline` · `…_connector_framework` · `…_product_match_architecture` |
+| Tests        | Vitest — 893 unit tests (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage, trends, creators, outreach, connectors, matches)                                                                                           |
+| Deploy       | Render Blueprint (`render.yaml`) + GitHub Actions                                                                                                                                                                                                   |
+| Build/CI     | ✅ green (ci → validate → generate → lint → typecheck → test → build → format)                                                                                                                                                                      |
 
 ---
 
@@ -136,29 +137,30 @@ Session guards — `lib/session.ts`:
 
 ## 5. Data Model
 
-| Model                             | Purpose                                             | Tenant-scoped     |
-| --------------------------------- | --------------------------------------------------- | ----------------- |
-| Organization                      | Tenant boundary                                     | — (is the tenant) |
-| User                              | Team members + roles                                | ✅ required FK    |
-| Product                           | Catalog (BRL, stock, cost, margin)                  | ✅ required FK    |
-| ProductMedia                      | Product images/videos (PR001)                       | ✅ required FK    |
-| ProductVariant                    | Sellable variations + stock (PR001)                 | ✅ required FK    |
-| ProductCost                       | Cost snapshots → margin (PR001)                     | ✅ required FK    |
-| ProductMetric                     | Daily performance metrics (PR001)                   | ✅ required FK    |
-| TrendSnapshot                     | Trend Hunter snapshots (PR002 + source PR002.1)     | ✅ required FK    |
-| TrendKeyword                      | Keyword frequency (PR002)                           | ✅ required FK    |
-| TrendCategory                     | Category score (PR002)                              | ✅ required FK    |
-| CreatorProfile                    | Creator CRM (PR003: source, niche, score, pipeline) | ✅ required FK    |
-| Campaign                          | Orchestration (BRL)                                 | ✅ required FK    |
-| Message                           | Conversations                                       | ↳ via relations   |
-| Sale                              | Revenue records (BRL)                               | ↳ via relations   |
-| CampaignProduct                   | M:N join (campaign ⇄ product)                       | ↳ via campaign    |
-| CreatorMetric                     | Daily creator metrics (PR003)                       | ✅ required FK    |
-| CreatorTag                        | Creator labels (PR003)                              | ✅ required FK    |
-| ConnectorStatus                   | Per-platform connector state + counters (PR005)     | ✅ required FK    |
-| ExternalContent                   | Imported external content + dedupe (PR005)          | ✅ required FK    |
-| CampaignCreator                   | M:N join (campaign ⇄ creator)                       | ↳ via campaign    |
-| Account/Session/VerificationToken | NextAuth adapter                                    | —                 |
+| Model                             | Purpose                                                 | Tenant-scoped     |
+| --------------------------------- | ------------------------------------------------------- | ----------------- |
+| Organization                      | Tenant boundary                                         | — (is the tenant) |
+| User                              | Team members + roles                                    | ✅ required FK    |
+| Product                           | Catalog (BRL, stock, cost, margin)                      | ✅ required FK    |
+| ProductMedia                      | Product images/videos (PR001)                           | ✅ required FK    |
+| ProductVariant                    | Sellable variations + stock (PR001)                     | ✅ required FK    |
+| ProductCost                       | Cost snapshots → margin (PR001)                         | ✅ required FK    |
+| ProductMetric                     | Daily performance metrics (PR001)                       | ✅ required FK    |
+| TrendSnapshot                     | Trend Hunter snapshots (PR002 + source PR002.1)         | ✅ required FK    |
+| TrendKeyword                      | Keyword frequency (PR002)                               | ✅ required FK    |
+| TrendCategory                     | Category score (PR002)                                  | ✅ required FK    |
+| CreatorProfile                    | Creator CRM (PR003: source, niche, score, pipeline)     | ✅ required FK    |
+| Campaign                          | Orchestration (BRL)                                     | ✅ required FK    |
+| Message                           | Conversations                                           | ↳ via relations   |
+| Sale                              | Revenue records (BRL)                                   | ↳ via relations   |
+| CampaignProduct                   | M:N join (campaign ⇄ product)                           | ↳ via campaign    |
+| CreatorMetric                     | Daily creator metrics (PR003)                           | ✅ required FK    |
+| CreatorTag                        | Creator labels (PR003)                                  | ✅ required FK    |
+| ConnectorStatus                   | Per-platform connector state + counters (PR005)         | ✅ required FK    |
+| ExternalContent                   | Imported external content + dedupe (PR005)              | ✅ required FK    |
+| ProductMatch                      | Content ⇄ product correspondence + confidence (PR005.1) | ✅ required FK    |
+| CampaignCreator                   | M:N join (campaign ⇄ creator)                           | ↳ via campaign    |
+| Account/Session/VerificationToken | NextAuth adapter                                        | —                 |
 
 ### Product Intelligence Core (PR001)
 
@@ -371,6 +373,67 @@ behind `getMediaStorage()` with zero caller changes.
 
 ---
 
+### Product Matching Engine (PR005.1)
+
+`modules/campaigns` — the layer that answers **"este vídeo vende este
+produto?"** by relating imported external content (PR005) to internal
+products (PR001). **Deterministic rules ONLY: no OpenAI, no computer
+vision, no embeddings, no TikTok integration** — every correspondence is
+decided by four text rules and normalized to a 0.00–1.00 confidence.
+
+- **Prisma.** `MatchSource` enum (AI · MANUAL · RULE) + `ProductMatch`
+  model — `organizationId` / `externalContentId` / `productId` (all
+  required FKs, Cascade), `confidence Float`, `matchedBy MatchSource`.
+  Unique `(externalContentId, productId)`: one row per content/product
+  pair; tenant + confidence indexes. Migration
+  `20260923220000_product_match_architecture` is purely ADDITIVE.
+- **Matcher Engine** (`matching/matcher.ts`, pure):
+  `matchProductsToContent(contents, products)` scores every pair with the
+  four rules — **+40** keyword in the title · **+25** category coincides ·
+  **+20** slug appears in the content text · **+15** partial word (≥ 4
+  chars) — discards zero-score pairs and returns drafts sorted by
+  confidence (desc, stable id tiebreakers). Accepts plain Prisma rows
+  (structural `MatchableContent`/`MatchableProduct` views); categories are
+  derived deterministically from the first significant token of the title
+  / slug until real category columns exist. Stamps `matchedBy: RULE`.
+- **Confidence Score** (`matching/scorer.ts`, pure):
+  `calculateMatchConfidence(points)` normalizes 0–100 → 0.00–1.00, rounds
+  to two decimals and clamps both ends — **the result is never above 1**
+  (garbage input collapses to 0 instead of throwing).
+- **Repository** (`repositories/product-match.repository.ts`):
+  `createMatch` · `listMatches` · `findByContent` · `findByProduct` ·
+  `approveMatch` · `deleteMatch` · `kpis`. `organizationId` is ALWAYS the
+  first argument; `createMatch` refuses foreign content/product ids (FK
+  ownership check before any write). Factory
+  (`createProductMatchRepository(db)`) keeps it unit-testable without a
+  database.
+- **DTO + Zod** (`dto/` + `validators/`): `CreateProductMatchDTO`
+  (externalContentId · productId · confidence · matchedBy) with the
+  confidence validated to 0–1 and rounded to 2 decimals;
+  `organizationId` is never accepted from the client. RSC-serializable
+  item/page/KPI DTOs derive the review **Status** from the origin
+  (MANUAL → Aprovado · AI/RULE → Pendente).
+- **Dashboard** `/dashboard/matches`: KPIs (**Conteúdos importados ·
+  Matches automáticos · Pendentes (conteúdos sem nenhum match) ·
+  Confiança média**) and a table **Vídeo · Produto · Confidence · Origem ·
+  Status** ordered by confidence, with URL-state search + pagination and
+  the Aprovar/Remover affordances.
+- **Server actions** (`app/dashboard/matches/actions.ts`):
+  `createProductMatch()` · `approveMatch()` · `removeMatch()` — every
+  write is `requireManager()`; approve promotes the match to MANUAL with
+  confidence 1.00 (the human word is definitive).
+
+```
+modules/
+└── campaigns/
+    ├── matching/        matcher.ts (rules engine) · scorer.ts (confidence) · match-source.ts (client-safe mirrors)
+    ├── repositories/    product-match.repository.ts — organizationId is ALWAYS the 1st arg
+    ├── dto/             CreateProductMatchDTO + serializable RSC shapes
+    └── validators/      Zod schemas (create / approve / remove / list query)
+```
+
+---
+
 ## 6. Migrations
 
 | Migration                                   | Purpose                                                                                                                                                                                                                                           |
@@ -383,6 +446,7 @@ behind `getMediaStorage()` with zero caller changes.
 | `20260923120000_creator_discovery_engine`   | PR003: `Creator` → `CreatorProfile` (data preserved), `CreatorSource`, CRM columns, `CreatorMetric`, `CreatorTag`, tenant-scoped uniques                                                                                                          |
 | `20260922194600_outreach_ai_sales_pipeline` | PR004: `OutreachStatus`, `TemplateType`, `OutreachMessage`, `MessageTemplate`, `FollowUpSequence` — all tenant-required FKs                                                                                                                       |
 | `20260923180000_connector_framework`        | PR005: `ConnectorPlatform`/`ConnectorState`/`ExternalContentType`/`ExternalContentStatus` enums + `ConnectorStatus` + `ExternalContent` — purely ADDITIVE, dedupe unique `(organizationId, platform, externalId)`, no credential column by design |
+| `20260923220000_product_match_architecture` | PR005.1: `MatchSource` enum + `ProductMatch` (content ⇄ product link, 0–1 confidence) — purely ADDITIVE, unique `(externalContentId, productId)`, Cascade on organization/content/product                                                         |
 
 The PR000.2 migration is **safe and non-inventive**: it never fabricates an
 Organization and never guesses an owner. A `DO $$ … $$` guard counts tenant-less
@@ -394,20 +458,21 @@ correct tenant before re-running. On a fresh database the guard is a no-op.
 
 ## 7. Routes
 
-| Route                      | Status | Notes                                                                                              |
-| -------------------------- | ------ | -------------------------------------------------------------------------------------------------- |
-| `/`                        | ✅     | Landing                                                                                            |
-| `/login`                   | ✅     | RHF + Zod → `loginAction` server action → Credentials                                              |
-| `/dashboard`               | ✅     | App shell, KPI placeholders                                                                        |
-| `/dashboard/products`      | ✅     | PR001 — tabela paginada, busca, filtros (status/margem/preço/estoque), ordenação, KPIs             |
-| `/dashboard/products/new`  | ✅     | PR001 — criação (ADMIN only)                                                                       |
-| `/dashboard/products/[id]` | ✅     | PR001 — detalhe/edição, mídia, variações, custos & margem                                          |
-| `/dashboard/trends`        | ✅     | PR002 — KPIs, tabela com busca/filtro/ordenação/paginação · filtro Origem (PR002.1)                |
-| `/dashboard/creators`      | ✅     | PR003 — KPIs, tabela com busca/filtros/ordenação/paginação, Kanban do pipeline, descoberta (ADMIN) |
-| `/dashboard/outreach`      | ✅     | PR004 — KPIs do outbox, workbench de geração/agendamento                                           |
-| `/dashboard/connectors`    | ✅     | PR005 — KPIs (Importados/Duplicados/Falhas/Ativos), cards por conector, tabela de conteúdo externo |
-| `/settings`                | ✅     | Profile + integrations status                                                                      |
-| `/api/auth/*`              | ✅     | NextAuth v5 handler (Credentials provider active)                                                  |
+| Route                      | Status | Notes                                                                                                            |
+| -------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------- |
+| `/`                        | ✅     | Landing                                                                                                          |
+| `/login`                   | ✅     | RHF + Zod → `loginAction` server action → Credentials                                                            |
+| `/dashboard`               | ✅     | App shell, KPI placeholders                                                                                      |
+| `/dashboard/products`      | ✅     | PR001 — tabela paginada, busca, filtros (status/margem/preço/estoque), ordenação, KPIs                           |
+| `/dashboard/products/new`  | ✅     | PR001 — criação (ADMIN only)                                                                                     |
+| `/dashboard/products/[id]` | ✅     | PR001 — detalhe/edição, mídia, variações, custos & margem                                                        |
+| `/dashboard/trends`        | ✅     | PR002 — KPIs, tabela com busca/filtro/ordenação/paginação · filtro Origem (PR002.1)                              |
+| `/dashboard/creators`      | ✅     | PR003 — KPIs, tabela com busca/filtros/ordenação/paginação, Kanban do pipeline, descoberta (ADMIN)               |
+| `/dashboard/outreach`      | ✅     | PR004 — KPIs do outbox, workbench de geração/agendamento                                                         |
+| `/dashboard/connectors`    | ✅     | PR005 — KPIs (Importados/Duplicados/Falhas/Ativos), cards por conector, tabela de conteúdo externo               |
+| `/dashboard/matches`       | ✅     | PR005.1 — KPIs (Importados/Automáticos/Pendentes/Confiança média), tabela Vídeo·Produto·Confidence·Origem·Status |
+| `/settings`                | ✅     | Profile + integrations status                                                                                    |
+| `/api/auth/*`              | ✅     | NextAuth v5 handler (Credentials provider active)                                                                |
 
 Server actions:
 
@@ -433,6 +498,12 @@ Server actions:
   `testConnectorAction` (diagnóstico — nunca acessa a rede em PR005). All
   `requireAdmin()` + tenant-scoped repository; `organizationId` is never
   accepted from the client.
+- `app/dashboard/matches/actions.ts` → 3 actions (PR005.1):
+  `createProductMatch` (vincula conteúdo ⇄ produto manualmente) ·
+  `approveMatch` (promove para MANUAL com confiança 1.00) ·
+  `removeMatch` (remove o match). All `requireManager()` (ADMIN+MANAGER;
+  MEMBER é somente leitura) + tenant-scoped repository; the repository
+  refuses content/product ids that do not belong to the caller's tenant.
 
 ### Products RBAC (PR001)
 
@@ -473,6 +544,20 @@ Server actions:
 > the CRM (PR003) and outreach (PR004) deliberately do NOT extend here —
 > every write action is `requireAdmin()` (pinned by
 > `tests/connectors-rbac.test.ts`).
+
+### Matches RBAC (PR005.1)
+
+| Ação          | ADMIN | MANAGER | MEMBER               |
+| ------------- | ----- | ------- | -------------------- |
+| Criar match   | ✅    | ✅      | ❌                   |
+| Aprovar match | ✅    | ✅      | ❌                   |
+| Remover match | ✅    | ✅      | ❌                   |
+| Visualizar    | ✅    | ✅      | ✅ (somente leitura) |
+
+> Matches are **curatable content**, not infrastructure: MANAGER writes
+> here by design (the inverse of the connectors boundary). MEMBER is
+> read-only — every write action is `requireManager()` (pinned by
+> `tests/matches-rbac.test.ts`).
 
 Enforced twice: UI affordances hidden per role **and** re-asserted in every
 server action (`requireAdmin`/`requireManager`).
@@ -516,37 +601,42 @@ never passed to a client component:
 
 ## 9. Tests
 
-`npm test` (Vitest, `tests/`) — **785 unit tests** (42 files), no database
+`npm test` (Vitest, `tests/`) — **893 unit tests** (47 files), no database
 required:
 
-| File                                 | Covers                                                                                                                                                                                                                                 |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/rbac.test.ts`                 | `hasRole`, `isAdmin`, `isManager`, `assertRole`, full hierarchy matrix                                                                                                                                                                 |
-| `tests/session.test.ts`              | `getCurrentUser`, `getCurrentOrganization`, `requireUser`, `requireOrganization`, `requireRole`, `requireAdmin`, `requireManager`, no-secret-leak assertion                                                                            |
-| `tests/tenant.test.ts`               | `tenantWhere`, `scopedWhere`, `assertSameTenant`, cross-tenant isolation (a caller-supplied `organizationId` cannot override the scope)                                                                                                |
-| `tests/password.test.ts`             | bcrypt digest shape, salting, verification, no plaintext                                                                                                                                                                               |
-| `tests/pricing.test.ts`              | PR001 — `totalCostCents`, `profitCents`, `marginBps` (rounding, zero price, negative margin), display helpers                                                                                                                          |
-| `tests/slug.test.ts`                 | PR001 — `baseSlug` (accents, fallback, length cap), `resolveUniqueSlug` (`-2`/`-3` collision handling, max length)                                                                                                                     |
-| `tests/product-validators.test.ts`   | PR001 — every Zod schema incl. hostile inputs (client-supplied `organizationId` is stripped; hostile sort fields fall back)                                                                                                            |
-| `tests/product-list-where.test.ts`   | PR001 — dashboard filter builder always injects the tenant scope; throws without one                                                                                                                                                   |
-| `tests/products-rbac.test.ts`        | PR001 — products RBAC matrix (ADMIN cria/edita/exclui · MANAGER edita · MEMBER leitura)                                                                                                                                                |
-| `tests/media-storage.test.ts`        | PR001 — upload policy (mime allowlist, 10 MB cap) + placeholder provider contract                                                                                                                                                      |
-| `tests/trend-scorer.test.ts`         | PR002 — score engine: weights (30/20/15/20/15), normalization to 0–100, clamping, rounding, guard errors                                                                                                                               |
-| `tests/trend-collector.test.ts`      | PR002 — mock collector: exactly 30 valid unique signals, 5 categories, scores 60–98, deterministic + defensive copies (+ PR002.1 `collect()` alias)                                                                                    |
-| `tests/trend-validators.test.ts`     | PR002 — Zod schemas (signal/snapshot/list query) incl. hostile inputs + `keywordSlug`/`normalizeKeyword` (accents, fallback, length cap)                                                                                               |
-| `tests/trend-repository.test.ts`     | PR002 — repository against an in-memory fake Prisma: tenant always injected, blank tenant throws before ANY db call, cross-tenant invisibility, filters                                                                                |
-| `tests/trend-scheduler.test.ts`      | PR002 — `collect-daily-trends` job (collect → score → validate → persist → aggregate), failure handling, manual-only contract (+ PR002.1 multi-source)                                                                                 |
-| `tests/trend-source.test.ts`         | PR002.1 — `TrendSource` enum ↔ `TREND_SOURCES` sync, labels, MOCK default, Zod source schemas (accept/reject/defaults), URL-state `?source=`                                                                                           |
-| `tests/collector-factory.test.ts`    | PR002.1 — `getCollector()` mapping per source, placeholder collectors throw "Not implemented", MANUAL/unknown throw, singleton cache, no-switch architecture                                                                           |
-| `tests/trends-rbac.test.ts`          | PR002 — trends RBAC matrix (ADMIN coleta/cria · MANAGER visualiza · MEMBER leitura)                                                                                                                                                    |
-| `tests/trend-dto.test.ts`            | PR002 — DTO mappers: ISO serialization across the RSC boundary, score computed engine-side                                                                                                                                             |
-| `tests/connector-platform.test.ts`   | PR005 — the four connector enums ↔ their client-safe mirrors ↔ the Zod schemas (23 tests): labels, MOCK default, placeholder list, `isConnectorActive` KPI predicate, type guards                                                      |
-| `tests/connector-factory.test.ts`    | PR005 — `getConnector()` mapping per platform, singleton cache, registry helpers, unregistered platform throws `ConnectorNotRegisteredError`, placeholders throw on `fetchContent()` but answer `testConnection()` calmly (18 tests)   |
-| `tests/connector-mock.test.ts`       | PR005 — the mock adapter: 36 unique + 4 deliberate duplicates, type distribution, determinism (identical across runs), defensive copies, `limit`/`since`/`type` options, zero network access (17 tests)                                |
-| `tests/connector-repository.test.ts` | PR005 — repository against an in-memory fake Prisma: tenant always injected, blank tenant throws before ANY db call, cross-tenant invisibility, tenant-scoped dedupe, status lifecycle, counter accumulation, the four KPIs (20 tests) |
-| `tests/connector-sync.test.ts`       | PR005 — the `sync-connector` job: import/dedupe/failure paths, counters, state transitions, placeholder handling (recorded ERROR, never a crash), `AuthorizationError` re-thrown, manual-only contract (22 tests)                      |
-| `tests/connector-dto.test.ts`        | PR005 — DTO mappers (ISO serialization, no tenant/raw leak, never-synced platform renders IDLE) + every validator incl. hostile inputs and malformed URL state (28 tests)                                                              |
-| `tests/connectors-rbac.test.ts`      | PR005 — connectors RBAC matrix: every write is ADMIN-only; MANAGER's powers elsewhere do not leak into connector infrastructure (6 tests)                                                                                              |
+| File                                     | Covers                                                                                                                                                                                                                                           |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tests/rbac.test.ts`                     | `hasRole`, `isAdmin`, `isManager`, `assertRole`, full hierarchy matrix                                                                                                                                                                           |
+| `tests/session.test.ts`                  | `getCurrentUser`, `getCurrentOrganization`, `requireUser`, `requireOrganization`, `requireRole`, `requireAdmin`, `requireManager`, no-secret-leak assertion                                                                                      |
+| `tests/tenant.test.ts`                   | `tenantWhere`, `scopedWhere`, `assertSameTenant`, cross-tenant isolation (a caller-supplied `organizationId` cannot override the scope)                                                                                                          |
+| `tests/password.test.ts`                 | bcrypt digest shape, salting, verification, no plaintext                                                                                                                                                                                         |
+| `tests/pricing.test.ts`                  | PR001 — `totalCostCents`, `profitCents`, `marginBps` (rounding, zero price, negative margin), display helpers                                                                                                                                    |
+| `tests/slug.test.ts`                     | PR001 — `baseSlug` (accents, fallback, length cap), `resolveUniqueSlug` (`-2`/`-3` collision handling, max length)                                                                                                                               |
+| `tests/product-validators.test.ts`       | PR001 — every Zod schema incl. hostile inputs (client-supplied `organizationId` is stripped; hostile sort fields fall back)                                                                                                                      |
+| `tests/product-list-where.test.ts`       | PR001 — dashboard filter builder always injects the tenant scope; throws without one                                                                                                                                                             |
+| `tests/products-rbac.test.ts`            | PR001 — products RBAC matrix (ADMIN cria/edita/exclui · MANAGER edita · MEMBER leitura)                                                                                                                                                          |
+| `tests/media-storage.test.ts`            | PR001 — upload policy (mime allowlist, 10 MB cap) + placeholder provider contract                                                                                                                                                                |
+| `tests/trend-scorer.test.ts`             | PR002 — score engine: weights (30/20/15/20/15), normalization to 0–100, clamping, rounding, guard errors                                                                                                                                         |
+| `tests/trend-collector.test.ts`          | PR002 — mock collector: exactly 30 valid unique signals, 5 categories, scores 60–98, deterministic + defensive copies (+ PR002.1 `collect()` alias)                                                                                              |
+| `tests/trend-validators.test.ts`         | PR002 — Zod schemas (signal/snapshot/list query) incl. hostile inputs + `keywordSlug`/`normalizeKeyword` (accents, fallback, length cap)                                                                                                         |
+| `tests/trend-repository.test.ts`         | PR002 — repository against an in-memory fake Prisma: tenant always injected, blank tenant throws before ANY db call, cross-tenant invisibility, filters                                                                                          |
+| `tests/trend-scheduler.test.ts`          | PR002 — `collect-daily-trends` job (collect → score → validate → persist → aggregate), failure handling, manual-only contract (+ PR002.1 multi-source)                                                                                           |
+| `tests/trend-source.test.ts`             | PR002.1 — `TrendSource` enum ↔ `TREND_SOURCES` sync, labels, MOCK default, Zod source schemas (accept/reject/defaults), URL-state `?source=`                                                                                                     |
+| `tests/collector-factory.test.ts`        | PR002.1 — `getCollector()` mapping per source, placeholder collectors throw "Not implemented", MANUAL/unknown throw, singleton cache, no-switch architecture                                                                                     |
+| `tests/trends-rbac.test.ts`              | PR002 — trends RBAC matrix (ADMIN coleta/cria · MANAGER visualiza · MEMBER leitura)                                                                                                                                                              |
+| `tests/trend-dto.test.ts`                | PR002 — DTO mappers: ISO serialization across the RSC boundary, score computed engine-side                                                                                                                                                       |
+| `tests/connector-platform.test.ts`       | PR005 — the four connector enums ↔ their client-safe mirrors ↔ the Zod schemas (23 tests): labels, MOCK default, placeholder list, `isConnectorActive` KPI predicate, type guards                                                                |
+| `tests/connector-factory.test.ts`        | PR005 — `getConnector()` mapping per platform, singleton cache, registry helpers, unregistered platform throws `ConnectorNotRegisteredError`, placeholders throw on `fetchContent()` but answer `testConnection()` calmly (18 tests)             |
+| `tests/connector-mock.test.ts`           | PR005 — the mock adapter: 36 unique + 4 deliberate duplicates, type distribution, determinism (identical across runs), defensive copies, `limit`/`since`/`type` options, zero network access (17 tests)                                          |
+| `tests/connector-repository.test.ts`     | PR005 — repository against an in-memory fake Prisma: tenant always injected, blank tenant throws before ANY db call, cross-tenant invisibility, tenant-scoped dedupe, status lifecycle, counter accumulation, the four KPIs (20 tests)           |
+| `tests/connector-sync.test.ts`           | PR005 — the `sync-connector` job: import/dedupe/failure paths, counters, state transitions, placeholder handling (recorded ERROR, never a crash), `AuthorizationError` re-thrown, manual-only contract (22 tests)                                |
+| `tests/connector-dto.test.ts`            | PR005 — DTO mappers (ISO serialization, no tenant/raw leak, never-synced platform renders IDLE) + every validator incl. hostile inputs and malformed URL state (28 tests)                                                                        |
+| `tests/connectors-rbac.test.ts`          | PR005 — connectors RBAC matrix: every write is ADMIN-only; MANAGER's powers elsewhere do not leak into connector infrastructure (6 tests)                                                                                                        |
+| `tests/match-scorer.test.ts`             | PR005.1 — rule weights (40/25/20/15 = 100) + `calculateMatchConfidence`: spec examples (0.98/0.76/0.52), clamping (never above 1, never below 0), 2-decimal rounding, hostile input collapses to 0 (17 tests)                                    |
+| `tests/match-matcher.test.ts`            | PR005.1 — matcher engine: each rule fires alone and combined (full 1.00), normalization (accents/case/hyphens), whole-word strictness, derived categories, determinism, unique pairs, confidence-desc order, Prisma-row compatibility (29 tests) |
+| `tests/product-match-repository.test.ts` | PR005.1 — repository against an in-memory fake Prisma: tenant always injected, blank tenant throws before ANY db call, cross-tenant invisibility, FK ownership on create, approve→MANUAL+1.00, KPIs (22 tests)                                   |
+| `tests/product-match-dto.test.ts`        | PR005.1 — enum↔mirror sync, Zod schemas (confidence 0–1 bounds, rounding, hostile inputs), list-query safe defaults, DTO mappers (ISO dates, status derivation, pending backlog) (32 tests)                                                      |
+| `tests/matches-rbac.test.ts`             | PR005.1 — matches RBAC matrix: ADMIN+MANAGER write, MEMBER read-only, every guard maps to `requireManager()`, asymmetric boundary vs connectors pinned (8 tests)                                                                                 |
 
 ---
 
@@ -575,6 +665,59 @@ required:
 ---
 
 ## 11. Changelog
+
+### PR005.1 — Product Match Architecture (2026-09-22) — completed
+
+The layer that relates imported external content (videos/posts) to internal
+products — **"este vídeo vende este produto?"**. **Deterministic rules
+ONLY**: no OpenAI, no computer vision, no embeddings, no TikTok
+integration; every correspondence is decided by four text rules.
+
+**Prisma**
+
+- Enum `MatchSource` (AI · MANUAL · RULE) and model `ProductMatch`
+  (`organizationId`/`externalContentId`/`productId` required FKs with
+  Cascade · `confidence Float` · `matchedBy MatchSource`), unique
+  `(externalContentId, productId)`, tenant + confidence indexes.
+- Migration `20260923220000_product_match_architecture` — purely
+  ADDITIVE, no existing table touched.
+
+**Matcher Engine** (`modules/campaigns/matching/`)
+
+- `matchProductsToContent(contents, products)` → persistence-ready
+  drafts, best confidence first. Rules: **+40** keyword in the title ·
+  **+25** category coincidence · **+20** slug in the content text ·
+  **+15** partial word (≥ 4 chars).
+- `calculateMatchConfidence(points)` normalizes 0–100 → 0.00–1.00
+  (rounded to 2 decimals, clamped — **never above 1**).
+- Pure functions: no I/O, no clock, no randomness — deterministic output
+  pinned by tests. Accepts plain Prisma rows.
+
+**Repository / DTO / actions**
+
+- `product-match.repository.ts` — `createMatch` (FK ownership checked
+  before any write) · `listMatches` · `findByContent` · `findByProduct` ·
+  `approveMatch` · `deleteMatch` · `kpis`; `organizationId` always first.
+- `CreateProductMatchDTO` + Zod (confidence 0–1, rounded; tenant never
+  accepted from the client); RSC-serializable item/page/KPI DTOs.
+- Server actions `createProductMatch()` · `approveMatch()` ·
+  `removeMatch()` — `requireManager()` (MEMBER read-only); approve
+  promotes to MANUAL with confidence 1.00.
+
+**Dashboard** `/dashboard/matches` — KPIs (Conteúdos importados · Matches
+automáticos · Pendentes · Confiança média) + table Vídeo · Produto ·
+Confidence · Origem · Status (sorted by confidence, URL-state search +
+pagination, Aprovar/Remover for MANAGER+).
+
+**Seed** — 18 topic-aligned catalog products (idempotent upserts) + **50
+matches** through the REAL matcher engine: 20 AI · 20 RULE · 10 MANUAL,
+confidence in the 0.55–0.99 band.
+
+**Tests** — 108 new tests across 5 files (**893 total**, all green):
+scorer, matcher, repository (+tenant), DTO/validators, RBAC.
+
+**Not performed:** no merge (PR left open for human audit, per the PR000
+workflow).
 
 ### PR005 — Connector Framework (2026-09-22) — completed
 
@@ -895,7 +1038,8 @@ input), tenant filter builder, RBAC matrix, media-storage policy.
 | PR002.1                            | Multi-Source Data Architecture    | ✅ done |
 | PR003                              | Creator Discovery Engine          | ✅ done |
 | PR004                              | Outreach AI & Sales Pipeline      | ✅ done |
-| PR005                              | Connector Framework               | ✅ this |
+| PR005                              | Connector Framework               | ✅ done |
+| PR005.1                            | Product Match Architecture        | ✅ this |
 | PR006                              | Campaign Engine                   | ⏭ next  |
 | PR007                              | Messaging & Inbox                 | planned |
 | PR008                              | Analytics & Reporting             | planned |
@@ -949,7 +1093,8 @@ input), tenant filter builder, RBAC matrix, media-storage policy.
 | PR002.1 | Multi-Source Data Architecture    | ✅ done |
 | PR003   | Creator Discovery Engine          | ✅ done |
 | PR004   | Outreach AI & Sales Pipeline      | ✅ done |
-| PR005   | Connector Framework               | ✅ this |
+| PR005   | Connector Framework               | ✅ done |
+| PR005.1 | Product Match Architecture        | ✅ this |
 | PR006   | Campaign Engine                   | ⏭ next  |
 | PR007   | Messaging & Inbox                 | planned |
 | PR008   | Analytics & Reporting             | planned |
