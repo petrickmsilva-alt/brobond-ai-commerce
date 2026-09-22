@@ -37,7 +37,7 @@ import { scoreCreator } from "../modules/creators/discovery/scorer";
 import { MockConnector } from "../modules/connectors/mock/mock.connector";
 import { OUTREACH_TEMPLATES } from "../modules/outreach/prompts/templates";
 import { generateOutreachMessage } from "../modules/outreach/prompts/generator";
-import { matchProductsToContent } from "../modules/campaigns/matching/matcher";
+import { matchProductsToContent, recommendCreators } from "../modules/campaigns/matching/matcher";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -698,6 +698,87 @@ async function main() {
     seededMatches = drafts.length;
   }
 
+  // PR006 — five campaigns and exactly 200 audience recommendations.
+  // Every row comes from recommendCreators(); no random/manual score exists.
+  const campaignDefinitions = [
+    { slug: "launch-campaign", name: "Launch Campaign", niche: null },
+    { slug: "moda-em-alta", name: "Moda em Alta", niche: "Moda" },
+    { slug: "street-drop", name: "Street Drop", niche: "Street" },
+    { slug: "fitness-performance", name: "Fitness Performance", niche: "Fitness" },
+    { slug: "executivo-premium", name: "Executivo Premium", niche: "Executivo" },
+  ] as const;
+  const allSeedProducts = await prisma.product.findMany({
+    where: { organizationId: organization.id, status: ProductStatus.ACTIVE },
+    orderBy: { slug: "asc" },
+  });
+  const seedCampaigns = [];
+  for (const [index, definition] of campaignDefinitions.entries()) {
+    const row = await prisma.campaign.upsert({
+      where: { slug: definition.slug },
+      update: { organizationId: organization.id, audienceType: "SCORE" },
+      create: {
+        name: definition.name,
+        slug: definition.slug,
+        status: "DRAFT",
+        budgetCents: 500_000 + index * 100_000,
+        ownerId: admin.id,
+        organizationId: organization.id,
+        audienceType: "SCORE",
+      },
+    });
+    seedCampaigns.push({ row, preferredNiche: definition.niche });
+    await prisma.campaignRule.upsert({
+      where: { campaignId: row.id },
+      update: { preferredNiche: definition.niche, active: true },
+      create: {
+        campaignId: row.id,
+        organizationId: organization.id,
+        minimumCreatorScore: 0,
+        minimumTrendScore: 0,
+        minimumProductMargin: 0,
+        preferredNiche: definition.niche,
+        active: true,
+      },
+    });
+    await prisma.campaignProduct.createMany({
+      data: allSeedProducts.map((item) => ({ campaignId: row.id, productId: item.id })),
+      skipDuplicates: true,
+    });
+  }
+
+  const existingAudience = await prisma.campaignAudience.count({
+    where: { organizationId: organization.id },
+  });
+  let seededRecommendations = 0;
+  if (existingAudience === 0) {
+    const [audienceCreators, audienceMatches, audienceTrends] = await Promise.all([
+      prisma.creatorProfile.findMany({ where: { organizationId: organization.id } }),
+      prisma.productMatch.findMany({ where: { organizationId: organization.id } }),
+      prisma.trendSnapshot.findMany({ where: { organizationId: organization.id } }),
+    ]);
+    for (const { row, preferredNiche } of seedCampaigns) {
+      const recommendations = recommendCreators(
+        row,
+        allSeedProducts,
+        audienceCreators,
+        audienceMatches,
+        audienceTrends,
+        { preferredNiche, active: true },
+      ).slice(0, 40);
+      await prisma.campaignAudience.createMany({
+        data: recommendations.map((item) => ({
+          organizationId: organization.id,
+          campaignId: item.campaignId,
+          creatorId: item.creatorId,
+          productId: item.productId,
+          matchScore: item.matchScore,
+          recommended: item.recommended,
+        })),
+      });
+      seededRecommendations += recommendations.length;
+    }
+  }
+
   // eslint-disable-next-line no-console
   console.log("Seed complete:", {
     organization: organization.slug,
@@ -711,6 +792,8 @@ async function main() {
     trends: existingTrends > 0 ? existingTrends : MOCK_TREND_SIGNALS.length,
     externalContent: existingContent > 0 ? existingContent : seededContent,
     productMatches: existingMatches > 0 ? existingMatches : seededMatches,
+    campaigns: seedCampaigns.length,
+    recommendations: existingAudience > 0 ? existingAudience : seededRecommendations,
   });
 }
 

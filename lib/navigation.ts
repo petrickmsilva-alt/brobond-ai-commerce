@@ -32,7 +32,7 @@ export const sidebarNav: NavItem[] = [
   { label: "Outreach AI", href: "/dashboard/outreach", icon: MessagesSquare },
   { label: "Conectores", href: "/dashboard/connectors", icon: Plug },
   { label: "Matches", href: "/dashboard/matches", icon: Link2 },
-  { label: "Campanhas", href: "/dashboard/campaigns", icon: Megaphone, planned: true },
+  { label: "Campanhas", href: "/dashboard/campaigns", icon: Megaphone },
   { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3, planned: true },
   { label: "Configurações", href: "/settings", icon: Settings },
 ];
