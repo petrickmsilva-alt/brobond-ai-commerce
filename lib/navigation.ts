@@ -25,7 +25,7 @@ export const sidebarNav: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Produtos", href: "/dashboard/products", icon: Package },
   { label: "Trends", href: "/dashboard/trends", icon: TrendingUp },
-  { label: "Creators", href: "/dashboard/creators", icon: Users, planned: true },
+  { label: "Creators", href: "/dashboard/creators", icon: Users },
   { label: "Campanhas", href: "/dashboard/campaigns", icon: Megaphone, planned: true },
   { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3, planned: true },
   { label: "Configurações", href: "/settings", icon: Settings },

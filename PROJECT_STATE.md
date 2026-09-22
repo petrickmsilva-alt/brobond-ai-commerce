@@ -4,10 +4,10 @@
 > Updated per PR. Source of truth for "what exists" vs. "what is planned".
 
 **Last updated:** 2026-09-22
-**Current PR:** PR002.1 — Multi-Source Data Architecture (datasource hotfix)
+**Current PR:** PR003 — Creator Discovery Engine
 **Status:** completed (awaiting review/merge)
-**Branch:** `arena/01a0c9fc-brobond-ai-commerce` (PR head — spec branch: `feature/pr002-1-datasource`)
-**Next PR:** PR003 — Creators & TikTok Link
+**Branch:** `arena/01a0ca46-brobond-ai-commerce` (PR head — spec branch: `feature/pr003-creator-discovery`)
+**Next PR:** PR004 — AI Assistant
 
 > **Workflow (instituted in PR001):** no more direct merges to `main`.
 > Feature branch → Pull Request → human audit → approval → merge → Render deploy.
@@ -46,12 +46,12 @@ Lucide · Vitest · Docker · ESLint · Prettier · Render.
 `Organization` is the top-level tenant. The following models carry a
 **required** `organizationId` foreign key (`onDelete: Cascade`):
 
-| Model      | Column                  | Relation                |
-| ---------- | ----------------------- | ----------------------- |
-| `User`     | `organizationId String` | `organization` required |
-| `Product`  | `organizationId String` | `organization` required |
-| `Creator`  | `organizationId String` | `organization` required |
-| `Campaign` | `organizationId String` | `organization` required |
+| Model            | Column                  | Relation                |
+| ---------------- | ----------------------- | ----------------------- |
+| `User`           | `organizationId String` | `organization` required |
+| `Product`        | `organizationId String` | `organization` required |
+| `CreatorProfile` | `organizationId String` | `organization` required |
+| `Campaign`       | `organizationId String` | `organization` required |
 
 > **No domain record can exist without an Organization.** The database enforces
 > it (`NOT NULL` + FK), not just the application layer.
@@ -135,25 +135,27 @@ Session guards — `lib/session.ts`:
 
 ## 5. Data Model
 
-| Model                             | Purpose                                         | Tenant-scoped     |
-| --------------------------------- | ----------------------------------------------- | ----------------- |
-| Organization                      | Tenant boundary                                 | — (is the tenant) |
-| User                              | Team members + roles                            | ✅ required FK    |
-| Product                           | Catalog (BRL, stock, cost, margin)              | ✅ required FK    |
-| ProductMedia                      | Product images/videos (PR001)                   | ✅ required FK    |
-| ProductVariant                    | Sellable variations + stock (PR001)             | ✅ required FK    |
-| ProductCost                       | Cost snapshots → margin (PR001)                 | ✅ required FK    |
-| ProductMetric                     | Daily performance metrics (PR001)               | ✅ required FK    |
-| TrendSnapshot                     | Trend Hunter snapshots (PR002 + source PR002.1) | ✅ required FK    |
-| TrendKeyword                      | Keyword frequency (PR002)                       | ✅ required FK    |
-| TrendCategory                     | Category score (PR002)                          | ✅ required FK    |
-| Creator                           | Creator roster                                  | ✅ required FK    |
-| Campaign                          | Orchestration (BRL)                             | ✅ required FK    |
-| Message                           | Conversations                                   | ↳ via relations   |
-| Sale                              | Revenue records (BRL)                           | ↳ via relations   |
-| CampaignProduct                   | M:N join (campaign ⇄ product)                   | ↳ via campaign    |
-| CampaignCreator                   | M:N join (campaign ⇄ creator)                   | ↳ via campaign    |
-| Account/Session/VerificationToken | NextAuth adapter                                | —                 |
+| Model                             | Purpose                                             | Tenant-scoped     |
+| --------------------------------- | --------------------------------------------------- | ----------------- |
+| Organization                      | Tenant boundary                                     | — (is the tenant) |
+| User                              | Team members + roles                                | ✅ required FK    |
+| Product                           | Catalog (BRL, stock, cost, margin)                  | ✅ required FK    |
+| ProductMedia                      | Product images/videos (PR001)                       | ✅ required FK    |
+| ProductVariant                    | Sellable variations + stock (PR001)                 | ✅ required FK    |
+| ProductCost                       | Cost snapshots → margin (PR001)                     | ✅ required FK    |
+| ProductMetric                     | Daily performance metrics (PR001)                   | ✅ required FK    |
+| TrendSnapshot                     | Trend Hunter snapshots (PR002 + source PR002.1)     | ✅ required FK    |
+| TrendKeyword                      | Keyword frequency (PR002)                           | ✅ required FK    |
+| TrendCategory                     | Category score (PR002)                              | ✅ required FK    |
+| CreatorProfile                    | Creator CRM (PR003: source, niche, score, pipeline) | ✅ required FK    |
+| Campaign                          | Orchestration (BRL)                                 | ✅ required FK    |
+| Message                           | Conversations                                       | ↳ via relations   |
+| Sale                              | Revenue records (BRL)                               | ↳ via relations   |
+| CampaignProduct                   | M:N join (campaign ⇄ product)                       | ↳ via campaign    |
+| CreatorMetric                     | Daily creator metrics (PR003)                       | ✅ required FK    |
+| CreatorTag                        | Creator labels (PR003)                              | ✅ required FK    |
+| CampaignCreator                   | M:N join (campaign ⇄ creator)                       | ↳ via campaign    |
+| Account/Session/VerificationToken | NextAuth adapter                                    | —                 |
 
 ### Product Intelligence Core (PR001)
 
@@ -230,6 +232,63 @@ modules/
     └── interfaces/      TrendSignal · TrendCollector · TREND_CATEGORIES
 ```
 
+### Creator Discovery Engine (PR003)
+
+`modules/creators` — the intelligent creator CRM, prepared for TikTok,
+Instagram and Shopee (multi-source, mock data only — **no external API is
+implemented**, by design).
+
+- **Multi-source architecture.** Every profile records its origin
+  (`CreatorProfile.source`, Prisma enum `CreatorSource`: MOCK · TIKTOK ·
+  INSTAGRAM · SHOPEE · MANUAL, `@default(MOCK)`). Collectors live in
+  `discovery/collectors/` (one class per source) and are resolved
+  **exclusively** by `getCreatorCollector(source)`
+  (`discovery/collector.factory.ts`) — no `switch` outside the factory
+  (pinned by test). MOCK is implemented (100 deterministic candidates);
+  TIKTOK/INSTAGRAM/SHOPEE are placeholders that throw `Not implemented`;
+  MANUAL has no collector (CRM form). Zero network calls in PR003.
+- **Score Engine** (`discovery/scorer.ts`, pure): components normalized to
+  0–100 then weighted — Engagement 30% · Frequency 25% · Niche Match 20% ·
+  Growth 15% · Quality 10% — returning an integer 0–100
+  (`calculateCreatorScore()`). Premium tier from score 80
+  (`PREMIUM_CREATOR_SCORE_THRESHOLD`).
+- **Scheduler** (`discovery/scheduler.ts`): `CreatorSchedulerJob` interface
+  - `discover-creators` job (collect → validate → score → upsert → tags →
+    daily metric). **Manual execution only — no cron.** Re-imports refresh
+    metrics/score but **never override the CRM status**.
+- **CRM** (`crm/`): `createCreatorRepository(db)` exposes `createCreator` ·
+  `updateCreator` · `listCreators` · `topCreators` · `changeStatus` (+
+  `stats`/`pipeline`/`findById`/`upsertFromDiscovery`/`recordMetric`/`addTag`).
+  `organizationId` is ALWAYS the first argument; updates are
+  `updateMany` + re-read under `scopedWhere` so a foreign id can never
+  match. Handles are canonicalized (`normalizeHandle` → lowercase, single
+  leading `@`) and tenant-scoped unique.
+- **Pipeline** (`interfaces/creator.interface.ts`):
+  NEW → QUALIFIED → CONTACTED → NEGOTIATING → ACTIVE, ARCHIVED as the
+  terminal side-state. `CREATOR_STATUS_TRANSITIONS` + `canTransitionCreatorStatus()`
+  are the single source of truth — one step forward, one step back,
+  archive from anywhere, reactivate only to NEW. Enforced in
+  `changeCreatorStatusAction` before any write.
+- The **score is always computed server-side** — a client-supplied score is
+  never trusted.
+
+```
+modules/
+└── creators/
+    ├── discovery/       collectors (mock, 100 creators) · collector.factory · scorer (pure) · scheduler (manual job)
+    ├── crm/             repositories (tenant-scoped) · dto (RSC-serializable) · validators (Zod)
+    └── interfaces/      CreatorCandidate · CreatorCollector · pipeline · niches · sources
+```
+
+**Dashboard `/dashboard/creators`:** KPIs (Creators · Score Médio ·
+Premium · Contatados), tabela (Avatar · Creator · Nicho · Seguidores ·
+Score · Status) com busca/filtros (nicho, status, origem)/ordenação/paginação
+em URL-state, formulário manual (MANAGER+), Kanban do pipeline e botão
+"Executar descoberta" (ADMIN). Seed: 100 mock creators — Moda 35 · Casual
+20 · Street 20 · Fitness 15 · Executivo 10, seguidores 5k–2M, pipeline
+distribuído (NEW 40% · QUALIFIED 20% · CONTACTED 15% · NEGOTIATING 10% ·
+ACTIVE 10% · ARCHIVED 5%), tags e 7 dias de métricas para o top 10.
+
 **Upload de imagens — interface preparada:** `services/media-storage.ts`
 defines `MediaStorageProvider` (`createUploadTicket`/`remove`), size/type
 policy (10 MB, image mime allowlist) and a `not-configured` placeholder.
@@ -250,7 +309,7 @@ behind `getMediaStorage()` with zero caller changes.
 
 The PR000.2 migration is **safe and non-inventive**: it never fabricates an
 Organization and never guesses an owner. A `DO $$ … $$` guard counts tenant-less
-rows in `User`/`Product`/`Creator`/`Campaign` and aborts with an actionable
+rows in `User`/`Product`/`CreatorProfile`/`Campaign` and aborts with an actionable
 `RAISE EXCEPTION` listing the offending tables, so an operator assigns the
 correct tenant before re-running. On a fresh database the guard is a no-op.
 
@@ -258,17 +317,18 @@ correct tenant before re-running. On a fresh database the guard is a no-op.
 
 ## 7. Routes
 
-| Route                      | Status | Notes                                                                                  |
-| -------------------------- | ------ | -------------------------------------------------------------------------------------- |
-| `/`                        | ✅     | Landing                                                                                |
-| `/login`                   | ✅     | RHF + Zod → `loginAction` server action → Credentials                                  |
-| `/dashboard`               | ✅     | App shell, KPI placeholders                                                            |
-| `/dashboard/products`      | ✅     | PR001 — tabela paginada, busca, filtros (status/margem/preço/estoque), ordenação, KPIs |
-| `/dashboard/products/new`  | ✅     | PR001 — criação (ADMIN only)                                                           |
-| `/dashboard/products/[id]` | ✅     | PR001 — detalhe/edição, mídia, variações, custos & margem                              |
-| `/dashboard/trends`        | ✅     | PR002 — KPIs, tabela com busca/filtro/ordenação/paginação · filtro Origem (PR002.1)    |
-| `/settings`                | ✅     | Profile + integrations status                                                          |
-| `/api/auth/*`              | ✅     | NextAuth v5 handler (Credentials provider active)                                      |
+| Route                      | Status | Notes                                                                                              |
+| -------------------------- | ------ | -------------------------------------------------------------------------------------------------- |
+| `/`                        | ✅     | Landing                                                                                            |
+| `/login`                   | ✅     | RHF + Zod → `loginAction` server action → Credentials                                              |
+| `/dashboard`               | ✅     | App shell, KPI placeholders                                                                        |
+| `/dashboard/products`      | ✅     | PR001 — tabela paginada, busca, filtros (status/margem/preço/estoque), ordenação, KPIs             |
+| `/dashboard/products/new`  | ✅     | PR001 — criação (ADMIN only)                                                                       |
+| `/dashboard/products/[id]` | ✅     | PR001 — detalhe/edição, mídia, variações, custos & margem                                          |
+| `/dashboard/trends`        | ✅     | PR002 — KPIs, tabela com busca/filtro/ordenação/paginação · filtro Origem (PR002.1)                |
+| `/dashboard/creators`      | ✅     | PR003 — KPIs, tabela com busca/filtros/ordenação/paginação, Kanban do pipeline, descoberta (ADMIN) |
+| `/settings`                | ✅     | Profile + integrations status                                                                      |
+| `/api/auth/*`              | ✅     | NextAuth v5 handler (Credentials provider active)                                                  |
 
 Server actions:
 
@@ -282,6 +342,12 @@ Server actions:
   `createTrendSnapshotAction` (snapshot manual — score always computed
   server-side, stamped `source: MANUAL` since PR002.1). Both
   `requireAdmin()` + tenant-scoped repository.
+- `app/dashboard/creators/actions.ts` → 3 actions (PR003):
+  `discoverCreatorsAction` (executa o job manual — ADMIN) ·
+  `createCreatorAction` (cadastro manual — MANAGER+, sempre
+  `source: MANUAL` + `status: NEW`, score server-side) ·
+  `changeCreatorStatusAction` (move o pipeline — MANAGER+, transição
+  validada contra o mapa antes de qualquer write). All tenant-scoped.
 
 ### Products RBAC (PR001)
 
@@ -298,6 +364,15 @@ Server actions:
 | -------------------- | ----- | ------- | -------------------- |
 | Executar coleta      | ✅    | ❌      | ❌                   |
 | Criar snapshot       | ✅    | ❌      | ❌                   |
+| Visualizar dashboard | ✅    | ✅      | ✅ (somente leitura) |
+
+### Creators RBAC (PR003)
+
+| Ação                 | ADMIN | MANAGER | MEMBER               |
+| -------------------- | ----- | ------- | -------------------- |
+| Executar descoberta  | ✅    | ❌      | ❌                   |
+| Criar profile manual | ✅    | ✅      | ❌                   |
+| Mover pipeline       | ✅    | ✅      | ❌                   |
 | Visualizar dashboard | ✅    | ✅      | ✅ (somente leitura) |
 
 Enforced twice: UI affordances hidden per role **and** re-asserted in every
@@ -342,7 +417,7 @@ never passed to a client component:
 
 ## 9. Tests
 
-`npm test` (Vitest, `tests/`) — 240 unit tests, no database required:
+`npm test` (Vitest, `tests/`) — 503 unit tests, no database required:
 
 | File                               | Covers                                                                                                                                                       |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -370,19 +445,65 @@ never passed to a client component:
 
 ## 10. Not Implemented (interface only)
 
-- TikTok API / scraping — `modules/integrations/tiktok` (PR003/PR005). The
-  Trend Hunter's real source also lands here (behind `TrendCollector`).
+- TikTok API / scraping — `modules/integrations/tiktok`. The Trend
+  Hunter's and the Creator Discovery's real sources both land here
+  (behind their collectors).
 - AI provider (OpenAI) — `modules/integrations/ai` (PR004)
-- Creator discovery · automated outreach — not started
+- Automated outreach (messages) — PR006; the CRM pipeline stops at ACTIVE
 - Trend Hunter real sources — collectors are placeholders behind
-  `getCollector()` since PR002.1 (TikTok lands in PR003; Shopee/Instagram
-  later); MOCK is the only implemented source
-- Cron/scheduler wiring for `collect-daily-trends` — manual trigger only
+  `getCollector()` since PR002.1; MOCK is the only implemented source
+- Creator Discovery real sources (TikTok · Instagram · Shopee) —
+  placeholders behind `getCreatorCollector()` since PR003; MOCK is the
+  only implemented source (no external API, by design)
+- Cron/scheduler wiring for `collect-daily-trends` / `discover-creators` —
+  manual trigger only
 - Analytics pipeline — `modules/analytics` (PR007)
 
 ---
 
 ## 11. Changelog
+
+### PR003 — Creator Discovery Engine (2026-09-22) — completed
+
+Intelligent creator CRM, multi-source prepared for TikTok, Instagram and
+Shopee — running entirely on **mock data** (no external API, no scraping,
+no OpenAI; zero network calls).
+
+- **Prisma** — `CreatorSource` + `CreatorStatus` (NEW · QUALIFIED ·
+  CONTACTED · NEGOTIATING · ACTIVE · ARCHIVED) enums; the PR000 `Creator`
+  stub became `CreatorProfile` (renamed — data preserved) gaining
+  `source`, `niche`, `avgViews`, `engagementRate`, `creatorScore` and
+  tenant-scoped uniques (`(organizationId, handle)` ·
+  `(organizationId, source, externalId)` · `(organizationId, email)`).
+  New child models `CreatorMetric` (daily snapshots, unique per
+  creator+date) and `CreatorTag` — both with required denormalized
+  `organizationId`. Migration `20260923120000_creator_discovery_engine`
+  remaps the old status values in place (PROSPECT→NEW, INVITED→CONTACTED,
+  PAUSED→ARCHIVED) and keeps the campaign/message/sale FKs pointing at the
+  renamed table.
+- **Module** (`modules/creators/`): `discovery/` (collectors ·
+  collector.factory · scorer · scheduler) + `crm/` (repositories · dto ·
+  validators) + `interfaces/` — the mandated PR003 layout. Legacy
+  `modules/creators/creators.service.ts` removed (superseded).
+- **Score engine** — `calculateCreatorScore()`: Engagement 30 · Frequency
+  25 · Niche Match 20 · Growth 15 · Quality 10 → integer 0–100, always
+  computed server-side.
+- **Factory + collectors** — `getCreatorCollector(source)` with lazy
+  singletons; `MockCreatorCollector` (100 deterministic candidates) is the
+  only implementation; TikTok/Instagram/Shopee are tested placeholders.
+- **CRM repository** — `createCreator` · `updateCreator` · `listCreators`
+  · `topCreators` · `changeStatus` (+ `stats`, `pipeline`, discovery
+  upsert, metrics, tags) — every function organization-scoped.
+- **Dashboard** — `/dashboard/creators`: KPIs (Creators · Score Médio ·
+  Premium · Contatados), tabela com busca/filtros/ordenação/paginação,
+  cadastro manual (MANAGER+), Kanban do pipeline, descoberta manual
+  (ADMIN). Sidebar "Creators" un-flagged as planned.
+- **Seed** — 100 mock creators (Moda 35 · Casual 20 · Street 20 · Fitness
+  15 · Executivo 10; 5k–2M followers) via the real pipeline, pipeline
+  spread across the six statuses, tags and 7-day metrics for the top 10.
+- **Tests** — +206 unit tests (503 total): factory, score, repository
+  (in-memory fake Prisma), RBAC, tenant, pipeline, validators, scheduler,
+  DTOs, enum sync.
 
 ### PR002.1 — Multi-Source Data Architecture (2026-09-22) — completed
 
@@ -582,6 +703,59 @@ input), tenant filter builder, RBAC matrix, media-storage policy.
 
 ## 12. Roadmap
 
+| PR                                 | Title                             | Status  |
+| ---------------------------------- | --------------------------------- | ------- |
+| PR000                              | Bootstrap Foundation              | ✅ done |
+| PR000.1                            | Architecture Hotfix               | ✅ done |
+| PR000.2                            | Tenant & Auth Hardening           | ✅ done |
+| PR001                              | Product Intelligence Core         | ✅ done |
+| PR002                              | Trend Hunter AI                   | ✅ done |
+| PR002.1                            | Multi-Source Data Architecture    | ✅ done |
+| PR003                              | Creator Discovery Engine          | ✅ this |
+| PR004                              | AI Assistant                      | ⏭ next  |
+| PR005                              | Campaign Engine                   | planned |
+| PR006                              | Messaging & Inbox                 | planned |
+| PR007                              | Analytics & Reporting             | planned |
+| PR008                              | Billing & Multi-tenancy hardening | planned |
+| a guard that aborts on tenant-less |
+| rows instead of inventing data.    |
+
+**Routes**
+
+- `app/login/actions.ts` (server action) added; `/login` now performs a real
+  credentials sign-in.
+
+**Tests**
+
+- Vitest added; 51 tests across RBAC, session guards, tenancy and passwords.
+- CI extended: `npm ci` → `prisma validate` → `generate` → `lint` →
+  `typecheck` → `test` → `build` → `format:check`.
+
+**Environment**
+
+- Contract standardized to `AUTH_SECRET`, `NEXTAUTH_URL`, `DATABASE_URL`,
+  `AUTH_TRUST_HOST`; `APP_URL`/`AUTH_URL` removed everywhere.
+
+### PR000.1 — Architecture Hotfix (2026-09-22)
+
+- All currencies `USD → BRL` (schema defaults, seed, `formatCurrency`).
+- Added `Organization` model (tenant boundary).
+- Related `User`, `Product`, `Creator`, `Campaign` to `Organization`.
+- Removed `APP_URL` from `render.yaml`; added `NEXTAUTH_URL`.
+- Initial RBAC for `ADMIN` in `lib/auth.ts` (`hasRole`, `isAdmin`, `requireAdmin`).
+- README updated for multi-tenant architecture.
+- Added initial Prisma migration `20260922000000_init_multitenant`.
+- Added this `PROJECT_STATE.md`.
+
+### PR000 — Bootstrap Foundation
+
+- Project scaffolding, dark premium UI shell, Prisma schema (6 core models),
+  NextAuth v5 wiring, Docker, `render.yaml`, GitHub Actions CI/CD.
+
+---
+
+## 12. Roadmap
+
 | PR      | Title                             | Status  |
 | ------- | --------------------------------- | ------- |
 | PR000   | Bootstrap Foundation              | ✅ done |
@@ -589,9 +763,9 @@ input), tenant filter builder, RBAC matrix, media-storage policy.
 | PR000.2 | Tenant & Auth Hardening           | ✅ done |
 | PR001   | Product Intelligence Core         | ✅ done |
 | PR002   | Trend Hunter AI                   | ✅ done |
-| PR002.1 | Multi-Source Data Architecture    | ✅ this |
-| PR003   | Creators & TikTok Link            | ⏭ next  |
-| PR004   | AI Assistant                      | planned |
+| PR002.1 | Multi-Source Data Architecture    | ✅ done |
+| PR003   | Creator Discovery Engine          | ✅ this |
+| PR004   | AI Assistant                      | ⏭ next  |
 | PR005   | Campaign Engine                   | planned |
 | PR006   | Messaging & Inbox                 | planned |
 | PR007   | Analytics & Reporting             | planned |

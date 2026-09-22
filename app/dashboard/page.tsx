@@ -76,8 +76,8 @@ export default function DashboardPage() {
           <CardContent className="space-y-3">
             {[
               { id: "PR001", label: "Products CRUD", tone: "success" as const },
-              { id: "PR002", label: "Trend Hunter AI", tone: "brand" as const },
-              { id: "PR003", label: "Creators & TikTok", tone: "neutral" as const },
+              { id: "PR002", label: "Trend Hunter AI", tone: "success" as const },
+              { id: "PR003", label: "Creator Discovery", tone: "brand" as const },
               { id: "PR004", label: "AI Assistant", tone: "neutral" as const },
               { id: "PR005", label: "Campaign Engine", tone: "neutral" as const },
             ].map((item) => (

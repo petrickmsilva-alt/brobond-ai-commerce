@@ -14,12 +14,21 @@
  * `SEED_ADMIN_PASSWORD` is not set, the admin is created WITHOUT a password
  * (credentials login disabled for that account) — no password is invented.
  */
-import { PrismaClient, UserRole, ProductStatus, CreatorStatus, TrendSource } from "@prisma/client";
+import {
+  PrismaClient,
+  UserRole,
+  ProductStatus,
+  CreatorSource,
+  CreatorStatus,
+  TrendSource,
+} from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 import { MOCK_TREND_SIGNALS } from "../modules/trends/hunter/collector";
 import { scoreTrend } from "../modules/trends/hunter/scorer";
 import { normalizeKeyword } from "../modules/trends/validators/trend.validator";
+import { MOCK_CREATOR_CANDIDATES } from "../modules/creators/discovery/collectors";
+import { scoreCreator } from "../modules/creators/discovery/scorer";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -105,18 +114,96 @@ async function main() {
     });
   }
 
-  const creator = await prisma.creator.upsert({
-    where: { handle: "@demo_creator" },
-    update: { organizationId: organization.id },
-    create: {
-      handle: "@demo_creator",
-      displayName: "Demo Creator",
-      email: "creator@brobond.ai",
-      followers: 125000,
-      status: CreatorStatus.ACTIVE,
-      organizationId: organization.id,
-    },
+  // PR003 — Creator Discovery Engine: 100 seeded creator profiles via the
+  // real pipeline (mock collector → score engine). Niche distribution is
+  // pinned by tests/creator-collector.test.ts (Moda 35 · Casual 20 ·
+  // Street 20 · Fitness 15 · Executivo 10; followers 5k–2M). Idempotent:
+  // only inserts when the workspace has no profiles yet, so real
+  // discoveries are never wiped.
+  const existingCreators = await prisma.creatorProfile.count({
+    where: { organizationId: organization.id },
   });
+
+  /** Deterministic pipeline spread so the Kanban ships alive:
+   *  NEW 40% · QUALIFIED 20% · CONTACTED 15% · NEGOTIATING 10% ·
+   *  ACTIVE 10% · ARCHIVED 5%. */
+  function seededCreatorStatus(index: number): CreatorStatus {
+    const bucket = index % 20;
+    if (bucket < 8) return CreatorStatus.NEW;
+    if (bucket < 12) return CreatorStatus.QUALIFIED;
+    if (bucket < 15) return CreatorStatus.CONTACTED;
+    if (bucket < 17) return CreatorStatus.NEGOTIATING;
+    if (bucket < 19) return CreatorStatus.ACTIVE;
+    return CreatorStatus.ARCHIVED;
+  }
+
+  let seededCreators = 0;
+  if (existingCreators === 0) {
+    const scored = MOCK_CREATOR_CANDIDATES.map((candidate) => scoreCreator(candidate));
+
+    const created = await prisma.creatorProfile.createMany({
+      data: scored.map((creator, index) => ({
+        externalId: creator.externalId,
+        handle: creator.handle,
+        displayName: creator.displayName,
+        niche: creator.niche,
+        followers: creator.followers,
+        avgViews: creator.avgViews,
+        engagementRate: creator.engagementRate,
+        creatorScore: creator.creatorScore,
+        status: seededCreatorStatus(index),
+        source: CreatorSource.MOCK,
+        organizationId: organization.id,
+      })),
+    });
+    seededCreators = created.count;
+
+    // Re-read to obtain ids (createMany returns none) → tags + metrics.
+    const profiles = await prisma.creatorProfile.findMany({
+      where: { organizationId: organization.id },
+      orderBy: { externalId: "asc" },
+    });
+    const byExternalId = new Map(profiles.map((profile) => [profile.externalId, profile]));
+
+    // Tags — one row per (profile, tag), from the mock candidate labels.
+    const tagRows = scored.flatMap((creator) => {
+      const profile = byExternalId.get(creator.externalId);
+      if (!profile) return [];
+      return (creator.tags ?? []).map((name) => ({
+        name,
+        creatorProfileId: profile.id,
+        organizationId: organization.id,
+      }));
+    });
+    if (tagRows.length > 0) {
+      await prisma.creatorTag.createMany({ data: tagRows, skipDuplicates: true });
+    }
+
+    // Metrics — 7 daily snapshots for the 10 highest-scoring profiles.
+    const top10 = [...profiles].sort((a, b) => b.creatorScore - a.creatorScore).slice(0, 10);
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const metricRows = top10.flatMap((profile, rank) =>
+      Array.from({ length: 7 }, (_, dayOffset) => {
+        const date = new Date(today);
+        date.setUTCDate(date.getUTCDate() - (6 - dayOffset));
+        // Gentle deterministic wiggle so the series is not flat.
+        const drift = 0.85 + ((dayOffset + rank) % 5) * 0.06;
+        return {
+          date,
+          views: Math.round(profile.avgViews * drift),
+          likes: Math.round(profile.avgViews * (profile.engagementRate / 100) * drift),
+          shares: Math.round(profile.avgViews * (profile.engagementRate / 100) * 0.1 * drift),
+          followers: Math.round(profile.followers * (0.94 + dayOffset * 0.01)),
+          creatorProfileId: profile.id,
+          organizationId: organization.id,
+        };
+      }),
+    );
+    if (metricRows.length > 0) {
+      await prisma.creatorMetric.createMany({ data: metricRows });
+    }
+  }
 
   const campaign = await prisma.campaign.upsert({
     where: { slug: "launch-campaign" },
@@ -130,9 +217,24 @@ async function main() {
       ownerId: admin.id,
       organizationId: organization.id,
       products: { create: { productId: product.id } },
-      creators: { create: { creatorId: creator.id } },
     },
   });
+
+  // Attach the strongest ACTIVE creator to the demo campaign (first run only).
+  const campaignCreator = await prisma.campaignCreator.findFirst({
+    where: { campaignId: campaign.id },
+  });
+  if (!campaignCreator) {
+    const anchor = await prisma.creatorProfile.findFirst({
+      where: { organizationId: organization.id, status: CreatorStatus.ACTIVE },
+      orderBy: { creatorScore: "desc" },
+    });
+    if (anchor) {
+      await prisma.campaignCreator.create({
+        data: { campaignId: campaign.id, creatorId: anchor.id },
+      });
+    }
+  }
 
   // PR002 — Trend Hunter AI: 30 seeded trend snapshots via the real pipeline
   // (mock collector → score engine). Scores land between 60 and 98 (pinned
@@ -190,7 +292,7 @@ async function main() {
       ? "enabled (bcrypt hash stored)"
       : "disabled — set SEED_ADMIN_PASSWORD and re-run to enable",
     product: product.slug,
-    creator: creator.handle,
+    creators: existingCreators > 0 ? existingCreators : seededCreators,
     campaign: campaign.slug,
     trends: existingTrends > 0 ? existingTrends : MOCK_TREND_SIGNALS.length,
   });
