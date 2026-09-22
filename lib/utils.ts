@@ -11,7 +11,7 @@ export function cn(...inputs: ClassValue[]): string {
 /**
  * Format an integer amount of cents into a localized currency string.
  */
-export function formatCurrency(cents: number, currency = "USD", locale = "en-US"): string {
+export function formatCurrency(cents: number, currency = "BRL", locale = "pt-BR"): string {
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
@@ -21,7 +21,7 @@ export function formatCurrency(cents: number, currency = "USD", locale = "en-US"
 /**
  * Format a large number with compact notation (e.g. 12.5K).
  */
-export function formatCompactNumber(value: number, locale = "en-US"): string {
+export function formatCompactNumber(value: number, locale = "pt-BR"): string {
   return new Intl.NumberFormat(locale, { notation: "compact" }).format(value);
 }
 

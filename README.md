@@ -14,14 +14,34 @@ Production-ready foundation · Modular architecture · Built to scale.
 
 ## Overview
 
-Brobond AI Commerce OS is a SaaS platform that connects **products**, **creators**,
-and **campaigns** into a single operating system for social commerce. This repository
-contains **PR000 — Bootstrap Foundation**: the production-ready infrastructure,
+Brobond AI Commerce OS is a **multi-tenant** SaaS platform that connects
+**products**, **creators**, and **campaigns** into a single operating system for
+social commerce. This repository contains the production-ready infrastructure,
 architecture, and UI shell that every subsequent feature builds on.
 
-> **Scope of PR000.** This PR ships infrastructure and prepared interfaces only.
-> TikTok API, OpenAI, scraping, and the analytics pipeline are **intentionally not
-> implemented** — their contracts are defined so future PRs can plug in cleanly.
+> **Scope.** This foundation ships infrastructure, multi-tenant data model, and
+> prepared interfaces only. TikTok API, OpenAI, scraping, and the analytics
+> pipeline are **intentionally not implemented** — their contracts are defined so
+> future PRs can plug in cleanly.
+
+### Multi-tenancy
+
+Every tenant is an **`Organization`**. It is the top-level boundary and owns all
+domain data. `User`, `Product`, `Creator`, and `Campaign` each carry an
+`organizationId` foreign key (`onDelete: Cascade`), giving per-tenant data
+isolation out of the box. `Sale` and `Message` inherit tenant scope through
+their parent relations.
+
+Authorization is tenant-aware: the session JWT carries both the user `role` and
+`organizationId`, so RBAC and tenant checks run without extra database round-trips.
+
+### RBAC
+
+Roles are hierarchical — `ADMIN` > `MANAGER` > `MEMBER`. Helpers in `lib/auth.ts`:
+
+- `hasRole(role, required)` — hierarchical privilege check
+- `isAdmin(role)` — ADMIN check
+- `requireAdmin()` — guard that throws for non-ADMIN sessions
 
 ---
 
@@ -103,14 +123,16 @@ brobond-ai-commerce/
 
 ### Data model
 
-Six core models plus join tables and NextAuth adapter tables:
+Tenant model + six core models plus join tables and NextAuth adapter tables.
+Monetary values default to **BRL** (stored in cents).
 
-- **User** — team members with roles (`ADMIN`, `MANAGER`, `MEMBER`).
-- **Product** — catalog items with pricing and publication status.
-- **Creator** — creator roster (`externalId` reserved for TikTok).
-- **Campaign** — orchestration linking products ⇄ creators (M:N).
+- **Organization** — tenant boundary; owns users, products, creators, campaigns.
+- **User** — team members with roles (`ADMIN`, `MANAGER`, `MEMBER`); tenant-scoped.
+- **Product** — catalog items with pricing (BRL) and publication status; tenant-scoped.
+- **Creator** — creator roster (`externalId` reserved for TikTok); tenant-scoped.
+- **Campaign** — orchestration linking products ⇄ creators (M:N); tenant-scoped.
 - **Message** — conversations across channels (system/email/DM/SMS).
-- **Sale** — revenue records tied to product/creator/campaign.
+- **Sale** — revenue records (BRL) tied to product/creator/campaign.
 
 ---
 
@@ -136,7 +158,7 @@ docker compose up -d db
 
 # 4. Generate the Prisma client & apply the schema
 npm run prisma:generate
-npm run prisma:migrate   # creates the initial migration
+npm run prisma:migrate   # applies the initial multi-tenant migration
 
 # 5. (Optional) Seed demo data
 npm run db:seed

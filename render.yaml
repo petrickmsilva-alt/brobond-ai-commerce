@@ -38,5 +38,5 @@ services:
         fromDatabase:
           name: brobond-db
           property: connectionString
-      - key: APP_URL
+      - key: NEXTAUTH_URL
         sync: false
