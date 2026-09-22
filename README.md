@@ -58,11 +58,11 @@ Pure tenant primitives (`lib/tenant.ts`): `assertOrganizationId`, `tenantWhere`,
 ```ts
 // route handler / server action
 const organizationId = await requireOrganization();
-const products = await productsService.list(organizationId);
+const products = await productService.page(organizationId, query);
 
-// modules/products/products.service.ts
-list(organizationId: string) {
-  return prisma.product.findMany({ where: tenantWhere(organizationId) });
+// modules/commerce/products/repositories/product.repository.ts
+count(organizationId: string) {
+  return prisma.product.count({ where: tenantWhere(organizationId) });
 }
 // → where: { organizationId: currentOrganizationId }
 ```
@@ -331,15 +331,15 @@ Deployment is defined as code in [`render.yaml`](./render.yaml) (a Render Bluepr
 
 ## Module map
 
-| Module                        | Responsibility          | Status                          |
-| ----------------------------- | ----------------------- | ------------------------------- |
-| `modules/products`            | Catalog data access     | ✅ Tenant-scoped service        |
-| `modules/creators`            | Creator roster          | ✅ Tenant-scoped service        |
-| `modules/campaigns`           | Campaign orchestration  | ✅ Tenant-scoped service        |
-| `modules/sales`               | Revenue records         | ✅ Tenant-scoped service        |
-| `modules/analytics`           | Metrics & reporting     | 🧩 Interface only (PR006)       |
-| `modules/integrations/tiktok` | TikTok API / OAuth      | 🧩 Interface only (PR002/PR004) |
-| `modules/integrations/ai`     | AI provider (OpenAI, …) | 🧩 Interface only (PR003)       |
+| Module                        | Responsibility                                                           | Status                          |
+| ----------------------------- | ------------------------------------------------------------------------ | ------------------------------- |
+| `modules/commerce/products`   | Product Intelligence Core (services/repositories/dto/pricing/validators) | ✅ PR001                        |
+| `modules/creators`            | Creator roster                                                           | ✅ Tenant-scoped service        |
+| `modules/campaigns`           | Campaign orchestration                                                   | ✅ Tenant-scoped service        |
+| `modules/sales`               | Revenue records                                                          | ✅ Tenant-scoped service        |
+| `modules/analytics`           | Metrics & reporting                                                      | 🧩 Interface only (PR006)       |
+| `modules/integrations/tiktok` | TikTok API / OAuth                                                       | 🧩 Interface only (PR002/PR004) |
+| `modules/integrations/ai`     | AI provider (OpenAI, …)                                                  | 🧩 Interface only (PR003)       |
 
 ---
 

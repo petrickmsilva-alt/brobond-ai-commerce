@@ -55,9 +55,12 @@ async function main() {
     },
   });
 
+  // Slug/SKU are tenant-scoped unique since PR001 → compound unique key.
   const product = await prisma.product.upsert({
-    where: { slug: "starter-hoodie" },
-    update: { organizationId: organization.id },
+    where: {
+      organizationId_slug: { organizationId: organization.id, slug: "starter-hoodie" },
+    },
+    update: {},
     create: {
       name: "Starter Hoodie",
       slug: "starter-hoodie",
@@ -66,9 +69,38 @@ async function main() {
       priceCents: 6900,
       currency: "BRL",
       status: ProductStatus.ACTIVE,
+      stockQuantity: 120,
       organizationId: organization.id,
     },
   });
+
+  // PR001 — Product Intelligence Core: cost snapshot + automatic margin.
+  const existingCost = await prisma.productCost.findFirst({
+    where: { productId: product.id, organizationId: organization.id },
+  });
+  if (!existingCost) {
+    await prisma.productCost.create({
+      data: {
+        productId: product.id,
+        organizationId: organization.id,
+        unitCents: 2500,
+        freightCents: 300,
+        packagingCents: 200,
+        feesCents: 0,
+        otherCents: 0,
+        currency: "BRL",
+        note: "Custo inicial (seed)",
+      },
+    });
+    const costTotal = 2500 + 300 + 200;
+    await prisma.product.update({
+      where: { id: product.id },
+      data: {
+        currentCostCents: costTotal,
+        marginBps: Math.round(((6900 - costTotal) / 6900) * 10_000),
+      },
+    });
+  }
 
   const creator = await prisma.creator.upsert({
     where: { handle: "@demo_creator" },

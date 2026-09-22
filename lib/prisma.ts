@@ -16,8 +16,12 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient(): PrismaClient {
+  // Optional pool cap (e.g. Render starter Postgres or a dev single-connection
+  // proxy). Unset → pg's default pool size.
+  const poolMax = Number.parseInt(process.env.DATABASE_POOL_MAX ?? "", 10);
   const adapter = new PrismaPg({
     connectionString: process.env.DATABASE_URL,
+    ...(Number.isFinite(poolMax) && poolMax > 0 ? { max: poolMax } : {}),
   });
   return new PrismaClient({
     adapter,
