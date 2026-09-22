@@ -21,9 +21,10 @@ architecture, and UI shell that every subsequent feature builds on.
 
 > **Scope.** This foundation ships infrastructure, an enforced multi-tenant data
 > model, authentication, RBAC, and prepared interfaces only. TikTok API, scraping,
-> OpenAI, creator discovery, trend hunting, automated outreach, and the analytics
-> pipeline are **intentionally not implemented** — their contracts are defined so
-> future PRs can plug in cleanly.
+> OpenAI, creator discovery, automated outreach, and the analytics pipeline are
+> **intentionally not implemented** — their contracts are defined so future PRs
+> can plug in cleanly. The **Trend Hunter** (PR002) runs entirely on **mock
+> data**: no TikTok API, no scraping, no OpenAI, no browser automation.
 
 ### Multi-tenancy
 
@@ -169,14 +170,15 @@ brobond-ai-commerce/
 │   ├── layout/       app-shell · sidebar · header · page-header
 │   └── ui/           button · card · badge · input
 ├── modules/
-│   ├── products/     products.service.ts
+│   ├── commerce/    products/ (PR001)
+│   ├── trends/      hunter (collector · scorer · scheduler) · repositories · dto · validators · interfaces (PR002)
 │   ├── creators/     creators.service.ts
 │   ├── campaigns/    campaigns.service.ts
 │   ├── sales/        sales.service.ts
-│   ├── analytics/    analytics.interface.ts        (PR006)
+│   ├── analytics/    analytics.interface.ts        (PR007)
 │   └── integrations/
-│       ├── tiktok/   tiktok.interface.ts           (PR002/PR004)
-│       └── ai/       ai.interface.ts               (PR003)
+│       ├── tiktok/   tiktok.interface.ts           (PR003/PR005)
+│       └── ai/       ai.interface.ts               (PR004)
 ├── lib/              prisma · auth · session · rbac · tenant · password
 │   │                 env · utils · navigation · constants
 │   └── validations/  auth
@@ -198,6 +200,7 @@ Monetary values default to **BRL** (stored in cents).
 - **Organization** — tenant boundary; owns users, products, creators, campaigns.
 - **User** — team members with roles (`ADMIN`, `MANAGER`, `MEMBER`); tenant **required**.
 - **Product** — catalog items with pricing (BRL) and status; tenant **required**.
+- **TrendSnapshot / TrendKeyword / TrendCategory** — Trend Hunter data (PR002); tenant **required**.
 - **Creator** — creator roster (`externalId` reserved for TikTok); tenant **required**.
 - **Campaign** — orchestration linking products ⇄ creators (M:N); tenant **required**.
 - **Message** — conversations across channels (system/email/DM/SMS).
@@ -271,10 +274,11 @@ invents one. Then sign in at `/login` with that email and password.
 ### Tests
 
 ```bash
-npm test          # Vitest — RBAC, session guards, tenant isolation, passwords
+npm test          # Vitest — 240 unit tests
 ```
 
-No database or network is required; the session layer is mocked.
+No database or network is required; the session layer is mocked and the trend
+repository runs against an in-memory fake Prisma.
 
 ### Useful scripts
 
@@ -343,20 +347,94 @@ Deployment is defined as code in [`render.yaml`](./render.yaml) (a Render Bluepr
 
 ---
 
+## Trend Hunter AI (PR002)
+
+The first **Commercial Intelligence** module: it stores, classifies and
+prioritizes product trends per tenant (`modules/trends`). PR002 runs
+**entirely on mock data** — no TikTok API, no scraping, no OpenAI, no
+Selenium/Playwright/Puppeteer — with the architecture prepared for real
+sources.
+
+### Arquitetura
+
+```
+modules/trends/
+├── hunter/
+│   ├── collector.ts     TrendCollector interface + MockTrendCollector
+│   │                    (30 tendências/dia · 5 categorias · determinístico)
+│   ├── scorer.ts        Score Engine — puro: normaliza tudo para 0–100 e
+│   │                    pondera Views 30% · Likes 20% · Shares 15% ·
+│   │                    Margin 20% · Low Saturation 15% → inteiro 0–100
+│   └── scheduler.ts     SchedulerJob interface + job collect-daily-trends
+│                        (manual — NÃO há cron no PR002)
+├── repositories/
+│   └── trend.repository.ts   createSnapshot · listSnapshots · topTrends ·
+│                             findKeywords (+ upserts/stats) — organizationId
+│                             é SEMPRE o 1º argumento; nada roda sem tenant
+├── dto/
+│   └── create-trend.dto.ts   CreateTrendDTO + shapes serializáveis (RSC)
+├── validators/
+│   └── trend.validator.ts    Zod (signal/snapshot/list query) + slug de
+│                             keyword ("Camisa Masculina" → camisa-masculina)
+└── interfaces/
+    └── trend.interface.ts    TrendSignal · TrendCollector · TREND_CATEGORIES
+```
+
+Prisma models (migration `20260922230000_trend_hunter_ai`): `TrendSnapshot`,
+`TrendKeyword`, `TrendCategory` — all with required `organizationId`,
+`createdAt`/`updatedAt` and tenant-scoped uniqueness where applicable.
+
+### Fluxo
+
+```
+ADMIN clica em "Executar coleta" (ou cria uma tendência manual)
+        │
+        ▼
+collectDailyTrendsAction  ──requireAdmin()──▶  tenant garantido da sessão
+        │
+        ▼
+SchedulerJob collect-daily-trends
+        │
+        ├─▶ collector.collectDailyTrends()   30 sinais mock (fonte plugável)
+        ├─▶ scorer.calculateTrendScore()     score 0–100 por tendência
+        ├─▶ Zod createTrendSchema.parse()    validação antes de persistir
+        ├─▶ repository.createSnapshot()      1 snapshot por tendência
+        ├─▶ repository.upsertKeyword()       frequência por keyword (+tenant)
+        └─▶ repository.upsertCategory()      score médio por categoria
+        │
+        ▼
+/dashboard/trends — KPIs (Maior Score · Keywords · Categorias · Última Coleta)
+                   tabela com busca, filtro por categoria, ordenação e
+                   paginação (URL-state), responsiva
+```
+
+RBAC: **ADMIN** executa coleta e cria snapshots · **MANAGER** visualiza ·
+**MEMBER** somente leitura. O score é **sempre calculado no servidor**.
+
+### Próximo PR
+
+**PR003 — Creators & TikTok Link**: conectar o roster de creators à API real
+do TikTok (OAuth + sync de perfis) e plugar a primeira fonte real no
+`TrendCollector` do Trend Hunter — sem mudar nenhum consumidor, já que o
+contrato (`collectDailyTrends()`) já está definido e testado.
+
+---
+
 ## Roadmap
 
-| PR          | Title                   | Scope                                                               |
-| ----------- | ----------------------- | ------------------------------------------------------------------- |
-| **PR000**   | Bootstrap Foundation    | Infra, architecture, dark UI shell, Prisma schema, Docker, CI/CD ✅ |
-| **PR000.1** | Architecture Hotfix     | BRL currency, `Organization` tenant model, initial RBAC ✅          |
-| **PR000.2** | Tenant & Auth Hardening | Required tenancy, credentials auth, RBAC guards, tests ✅           |
-| **PR001**   | Products CRUD           | Full product management (create/edit/list), server actions, tables  |
-| **PR002**   | Creators & TikTok Link  | Creator CRUD + TikTok OAuth & profile sync (implements interface)   |
-| **PR003**   | AI Assistant            | OpenAI provider implementation, content & outreach generation       |
-| **PR004**   | Campaign Engine         | Campaign builder, product/creator assignment, scheduling            |
-| **PR005**   | Messaging & Inbox       | Conversations, notifications, multi-channel delivery                |
-| **PR006**   | Analytics & Reporting   | Metrics pipeline, dashboards, revenue attribution                   |
-| **PR007**   | Billing & Multi-tenancy | Subscriptions, workspaces, roles & permissions hardening            |
+| PR          | Title                   | Scope                                                                 |
+| ----------- | ----------------------- | --------------------------------------------------------------------- |
+| **PR000**   | Bootstrap Foundation    | Infra, architecture, dark UI shell, Prisma schema, Docker, CI/CD ✅   |
+| **PR000.1** | Architecture Hotfix     | BRL currency, `Organization` tenant model, initial RBAC ✅            |
+| **PR000.2** | Tenant & Auth Hardening | Required tenancy, credentials auth, RBAC guards, tests ✅             |
+| **PR001**   | Products CRUD           | Full product management (create/edit/list), server actions, tables ✅ |
+| **PR002**   | Trend Hunter AI         | Trend collection (mock), score engine, scheduler, dashboard ✅        |
+| **PR003**   | Creators & TikTok Link  | Creator CRUD + TikTok OAuth & profile sync (implements interface)     |
+| **PR004**   | AI Assistant            | OpenAI provider implementation, content & outreach generation         |
+| **PR005**   | Campaign Engine         | Campaign builder, product/creator assignment, scheduling              |
+| **PR006**   | Messaging & Inbox       | Conversations, notifications, multi-channel delivery                  |
+| **PR007**   | Analytics & Reporting   | Metrics pipeline, dashboards, revenue attribution                     |
+| **PR008**   | Billing & Multi-tenancy | Subscriptions, workspaces, roles & permissions hardening              |
 
 ---
 

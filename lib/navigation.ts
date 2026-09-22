@@ -1,5 +1,13 @@
 import type { LucideIcon } from "lucide-react";
-import { LayoutDashboard, Package, Users, Megaphone, BarChart3, Settings } from "lucide-react";
+import {
+  LayoutDashboard,
+  Package,
+  TrendingUp,
+  Users,
+  Megaphone,
+  BarChart3,
+  Settings,
+} from "lucide-react";
 
 export interface NavItem {
   label: string;
@@ -16,6 +24,7 @@ export interface NavItem {
 export const sidebarNav: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Produtos", href: "/dashboard/products", icon: Package },
+  { label: "Trends", href: "/dashboard/trends", icon: TrendingUp },
   { label: "Creators", href: "/dashboard/creators", icon: Users, planned: true },
   { label: "Campanhas", href: "/dashboard/campaigns", icon: Megaphone, planned: true },
   { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3, planned: true },

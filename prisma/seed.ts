@@ -17,6 +17,9 @@
 import { PrismaClient, UserRole, ProductStatus, CreatorStatus } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
+import { MOCK_TREND_SIGNALS } from "../modules/trends/hunter/collector";
+import { scoreTrend } from "../modules/trends/hunter/scorer";
+import { normalizeKeyword } from "../modules/trends/validators/trend.validator";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -131,6 +134,52 @@ async function main() {
     },
   });
 
+  // PR002 — Trend Hunter AI: 30 seeded trend snapshots via the real pipeline
+  // (mock collector → score engine). Scores land between 60 and 98 (pinned
+  // by tests/trend-collector.test.ts). Idempotent: only inserts when the
+  // workspace has no snapshots yet, so real collections are never wiped.
+  const existingTrends = await prisma.trendSnapshot.count({
+    where: { organizationId: organization.id },
+  });
+  if (existingTrends === 0) {
+    const scored = MOCK_TREND_SIGNALS.map((signal) =>
+      scoreTrend({ ...signal, keyword: normalizeKeyword(signal.keyword) }),
+    );
+
+    await prisma.trendSnapshot.createMany({
+      data: scored.map((trend) => ({
+        keyword: trend.keyword,
+        category: trend.category,
+        views: trend.views,
+        likes: trend.likes,
+        shares: trend.shares,
+        trendScore: trend.trendScore,
+        organizationId: organization.id,
+      })),
+    });
+
+    // Keyword frequency — every seeded keyword has been seen once.
+    for (const trend of scored) {
+      await prisma.trendKeyword.create({
+        data: { keyword: trend.keyword, frequency: 1, organizationId: organization.id },
+      });
+    }
+
+    // Category score — average of the seeded trends, per category.
+    const scoresByCategory = new Map<string, number[]>();
+    for (const trend of scored) {
+      const list = scoresByCategory.get(trend.category) ?? [];
+      list.push(trend.trendScore);
+      scoresByCategory.set(trend.category, list);
+    }
+    for (const [category, scores] of scoresByCategory) {
+      const average = Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length);
+      await prisma.trendCategory.create({
+        data: { name: category, score: average, organizationId: organization.id },
+      });
+    }
+  }
+
   // eslint-disable-next-line no-console
   console.log("Seed complete:", {
     organization: organization.slug,
@@ -141,6 +190,7 @@ async function main() {
     product: product.slug,
     creator: creator.handle,
     campaign: campaign.slug,
+    trends: existingTrends > 0 ? existingTrends : MOCK_TREND_SIGNALS.length,
   });
 }
 

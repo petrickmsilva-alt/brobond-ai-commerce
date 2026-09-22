@@ -75,11 +75,11 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {[
-              { id: "PR001", label: "Products CRUD", tone: "brand" as const },
-              { id: "PR002", label: "Creators & TikTok", tone: "neutral" as const },
-              { id: "PR003", label: "AI Assistant", tone: "neutral" as const },
-              { id: "PR004", label: "Campaign Engine", tone: "neutral" as const },
-              { id: "PR005", label: "Messaging", tone: "neutral" as const },
+              { id: "PR001", label: "Products CRUD", tone: "success" as const },
+              { id: "PR002", label: "Trend Hunter AI", tone: "brand" as const },
+              { id: "PR003", label: "Creators & TikTok", tone: "neutral" as const },
+              { id: "PR004", label: "AI Assistant", tone: "neutral" as const },
+              { id: "PR005", label: "Campaign Engine", tone: "neutral" as const },
             ].map((item) => (
               <div key={item.id} className="flex items-center justify-between">
                 <span className="text-sm text-white/70">{item.label}</span>

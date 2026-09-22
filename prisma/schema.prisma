@@ -93,6 +93,10 @@ model Organization {
   productCosts    ProductCost[]
   productMetrics  ProductMetric[]
 
+  trendSnapshots  TrendSnapshot[]
+  trendKeywords   TrendKeyword[]
+  trendCategories TrendCategory[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -397,6 +401,77 @@ model Sale {
   @@index([productId])
   @@index([creatorId])
   @@index([campaignId])
+}
+
+// ------------------------------------------------------------------
+// Trend Hunter AI (PR002)
+// ------------------------------------------------------------------
+
+/// Daily trend snapshot produced by the Trend Hunter pipeline
+/// (`modules/trends`). One row per keyword per collection run — history is
+/// preserved so scores can be trended over time.
+///
+/// NO external API is wired in PR002: the collector ships a mock source
+/// (`modules/trends/hunter/collector.ts`). A real provider (TikTok API,
+/// scraping) plugs in behind the `TrendCollector` interface in a future PR.
+model TrendSnapshot {
+  id         String @id @default(cuid())
+  keyword    String
+  category   String
+  views      Int    @default(0)
+  likes      Int    @default(0)
+  shares     Int    @default(0)
+  /** Weighted 0–100 score from `modules/trends/hunter/scorer.ts`. */
+  trendScore Int    @default(0)
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, trendScore])
+  @@index([organizationId, category])
+  @@index([organizationId, createdAt])
+}
+
+/// Aggregated keyword frequency across collection runs (tenant-scoped
+/// unique: two organizations may track the same keyword independently).
+model TrendKeyword {
+  id        String @id @default(cuid())
+  keyword   String
+  /** How many times the keyword has been seen across collection runs. */
+  frequency Int    @default(1)
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, keyword])
+  @@index([organizationId, frequency])
+}
+
+/// Materialized per-category score (average of the latest collection run)
+/// powering the dashboard KPI cards and the category filter.
+model TrendCategory {
+  id    String @id @default(cuid())
+  name  String
+  score Int    @default(0)
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId, score])
 }
 
 // ------------------------------------------------------------------
