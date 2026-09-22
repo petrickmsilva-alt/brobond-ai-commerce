@@ -41,9 +41,9 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {[
-              { name: "TikTok API", pr: "PR002 / PR004" },
-              { name: "OpenAI", pr: "PR003" },
-              { name: "Analytics Pipeline", pr: "PR006" },
+              { name: "TikTok API", pr: "PR003 / PR005" },
+              { name: "OpenAI", pr: "PR004" },
+              { name: "Analytics Pipeline", pr: "PR007" },
             ].map((integration) => (
               <div
                 key={integration.name}

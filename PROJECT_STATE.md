@@ -4,10 +4,10 @@
 > Updated per PR. Source of truth for "what exists" vs. "what is planned".
 
 **Last updated:** 2026-09-22
-**Current PR:** PR001 — Product Intelligence Core
+**Current PR:** PR002 — Trend Hunter AI
 **Status:** completed (awaiting review/merge)
-**Branch:** `arena/01a0c921-brobond-ai-commerce`
-**Next PR:** PR002 — Creators & TikTok Link
+**Branch:** `arena/01a0c955-brobond-ai-commerce`
+**Next PR:** PR003 — Creators & TikTok Link
 
 > **Workflow (instituted in PR001):** no more direct merges to `main`.
 > Feature branch → Pull Request → human audit → approval → merge → Render deploy.
@@ -16,19 +16,20 @@
 
 ## 1. Snapshot
 
-| Aspect       | State                                                                                                    |
-| ------------ | -------------------------------------------------------------------------------------------------------- |
-| Stage        | First feature module shipped (Products)                                                                  |
-| Architecture | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models)                                  |
-| Modules      | `modules/commerce/products` — services / repositories / dto / pricing / validators                       |
-| Currency     | **BRL** (default across Product, Campaign, Sale) · money = integer cents · margin = basis points         |
-| Auth         | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**                               |
-| RBAC         | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura    |
-| Database     | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                                              |
-| Migrations   | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core`                          |
-| Tests        | Vitest — 114 unit tests (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage) |
-| Deploy       | Render Blueprint (`render.yaml`) + GitHub Actions                                                        |
-| Build/CI     | ✅ green (ci → validate → generate → lint → typecheck → test → build → format)                           |
+| Aspect       | State                                                                                                            |
+| ------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Stage        | Second feature module shipped (Products + Trends)                                                                |
+| Architecture | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models)                                          |
+| Modules      | `modules/commerce/products` — services / repositories / dto / pricing / validators                               |
+|              | `modules/trends` — hunter (collector / scorer / scheduler) / repositories / dto / validators / interfaces        |
+| Currency     | **BRL** (default across Product, Campaign, Sale) · money = integer cents · margin = basis points                 |
+| Auth         | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**                                       |
+| RBAC         | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura            |
+| Database     | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                                                      |
+| Migrations   | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core` · `…_trend_hunter_ai`            |
+| Tests        | Vitest — 240 unit tests (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage, trends) |
+| Deploy       | Render Blueprint (`render.yaml`) + GitHub Actions                                                                |
+| Build/CI     | ✅ green (ci → validate → generate → lint → typecheck → test → build → format)                                   |
 
 ---
 
@@ -143,6 +144,9 @@ Session guards — `lib/session.ts`:
 | ProductVariant                    | Sellable variations + stock (PR001) | ✅ required FK    |
 | ProductCost                       | Cost snapshots → margin (PR001)     | ✅ required FK    |
 | ProductMetric                     | Daily performance metrics (PR001)   | ✅ required FK    |
+| TrendSnapshot                     | Trend Hunter snapshots (PR002)      | ✅ required FK    |
+| TrendKeyword                      | Keyword frequency (PR002)           | ✅ required FK    |
+| TrendCategory                     | Category score (PR002)              | ✅ required FK    |
 | Creator                           | Creator roster                      | ✅ required FK    |
 | Campaign                          | Orchestration (BRL)                 | ✅ required FK    |
 | Message                           | Conversations                       | ↳ via relations   |
@@ -179,6 +183,43 @@ modules/
         └── validators/     Zod schemas + slug helpers — single source of truth for writes
 ```
 
+### Trend Hunter AI (PR002)
+
+`modules/trends` — the first **Commercial Intelligence** module: stores,
+classifies and prioritizes product trends per tenant.
+
+- **Mock source only (by design).** No TikTok API, no scraping, no OpenAI,
+  no Selenium/Playwright/Puppeteer. The collector ships 30 deterministic
+  mock signals; a real provider plugs in behind the `TrendCollector`
+  interface (`modules/trends/interfaces/trend.interface.ts`) via
+  `getTrendCollector()`.
+- **Score Engine** (`hunter/scorer.ts`, pure): every component is
+  normalized to 0–100, then weighted — Views 30% · Likes 20% · Shares 15% ·
+  Margin 20% · Low Saturation 15% — returning an integer 0–100.
+- **Scheduler** (`hunter/scheduler.ts`): `SchedulerJob` interface +
+  `collect-daily-trends` job (collect → score → validate → persist →
+  aggregate keywords/categories). **Manual execution only — no cron.**
+- **Repository** (`repositories/trend.repository.ts`):
+  `createSnapshot` / `listSnapshots` / `topTrends` / `findKeywords` (+ upserts
+  and stats). `organizationId` is ALWAYS the first argument; built through
+  `tenantWhere`/`scopedWhere`. Factory (`createTrendRepository(db)`) keeps it
+  unit-testable without a database.
+- **Keyword slug**: `keywordSlug()` / `normalizeKeyword()`
+  (`validators/trend.validator.ts`) canonicalize keywords
+  ("Camisa Masculina" → "camisa masculina" → slug `camisa-masculina`).
+- The **score is always computed server-side** — a client-supplied score is
+  never trusted.
+
+```
+modules/
+└── trends/
+    ├── hunter/          collector (mock, 30 signals) · scorer (pure) · scheduler (manual job)
+    ├── repositories/    tenant-scoped Prisma access — organizationId is ALWAYS the 1st arg
+    ├── dto/             CreateTrendDTO + serializable RSC shapes
+    ├── validators/      Zod schemas (signal / snapshot / list query) + keyword slug helpers
+    └── interfaces/      TrendSignal · TrendCollector · TREND_CATEGORIES
+```
+
 **Upload de imagens — interface preparada:** `services/media-storage.ts`
 defines `MediaStorageProvider` (`createUploadTicket`/`remove`), size/type
 policy (10 MB, image mime allowlist) and a `not-configured` placeholder.
@@ -189,11 +230,12 @@ behind `getMediaStorage()` with zero caller changes.
 
 ## 6. Migrations
 
-| Migration                                  | Purpose                                                                                                      |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `20260922000000_init_multitenant`          | Initial schema (nullable `organizationId`)                                                                   |
-| `20260922120000_require_organization`      | Promotes `organizationId` to `NOT NULL` on 4 models                                                          |
-| `20260922180000_product_intelligence_core` | PR001: 4 new product tables, stock/cost/margin columns, tenant-scoped slug/SKU uniqueness, dashboard indexes |
+| Migration                                  | Purpose                                                                                                                                      |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `20260922000000_init_multitenant`          | Initial schema (nullable `organizationId`)                                                                                                   |
+| `20260922120000_require_organization`      | Promotes `organizationId` to `NOT NULL` on 4 models                                                                                          |
+| `20260922180000_product_intelligence_core` | PR001: 4 new product tables, stock/cost/margin columns, tenant-scoped slug/SKU uniqueness, dashboard indexes                                 |
+| `20260922230000_trend_hunter_ai`           | PR002: TrendSnapshot, TrendKeyword, TrendCategory — all tenant-required FKs, tenant-scoped uniqueness on keyword/category, dashboard indexes |
 
 The PR000.2 migration is **safe and non-inventive**: it never fabricates an
 Organization and never guesses an owner. A `DO $$ … $$` guard counts tenant-less
@@ -205,16 +247,17 @@ correct tenant before re-running. On a fresh database the guard is a no-op.
 
 ## 7. Routes
 
-| Route                      | Status | Notes                                                                                  |
-| -------------------------- | ------ | -------------------------------------------------------------------------------------- |
-| `/`                        | ✅     | Landing                                                                                |
-| `/login`                   | ✅     | RHF + Zod → `loginAction` server action → Credentials                                  |
-| `/dashboard`               | ✅     | App shell, KPI placeholders                                                            |
-| `/dashboard/products`      | ✅     | PR001 — tabela paginada, busca, filtros (status/margem/preço/estoque), ordenação, KPIs |
-| `/dashboard/products/new`  | ✅     | PR001 — criação (ADMIN only)                                                           |
-| `/dashboard/products/[id]` | ✅     | PR001 — detalhe/edição, mídia, variações, custos & margem                              |
-| `/settings`                | ✅     | Profile + integrations status                                                          |
-| `/api/auth/*`              | ✅     | NextAuth v5 handler (Credentials provider active)                                      |
+| Route                      | Status | Notes                                                                                                        |
+| -------------------------- | ------ | ------------------------------------------------------------------------------------------------------------ |
+| `/`                        | ✅     | Landing                                                                                                      |
+| `/login`                   | ✅     | RHF + Zod → `loginAction` server action → Credentials                                                        |
+| `/dashboard`               | ✅     | App shell, KPI placeholders                                                                                  |
+| `/dashboard/products`      | ✅     | PR001 — tabela paginada, busca, filtros (status/margem/preço/estoque), ordenação, KPIs                       |
+| `/dashboard/products/new`  | ✅     | PR001 — criação (ADMIN only)                                                                                 |
+| `/dashboard/products/[id]` | ✅     | PR001 — detalhe/edição, mídia, variações, custos & margem                                                    |
+| `/dashboard/trends`        | ✅     | PR002 — KPIs (maior score, keywords, categorias, última coleta), tabela com busca/filtro/ordenação/paginação |
+| `/settings`                | ✅     | Profile + integrations status                                                                                |
+| `/api/auth/*`              | ✅     | NextAuth v5 handler (Credentials provider active)                                                            |
 
 Server actions:
 
@@ -223,6 +266,10 @@ Server actions:
   variants, costs, metrics). Every action resolves the tenant from the session
   (`requireAdmin`/`requireManager`), re-validates with Zod, and returns a
   uniform `ActionResult` (never throws to the client).
+- `app/dashboard/trends/actions.ts` → 2 actions (PR002):
+  `collectDailyTrendsAction` (executa o job manual) ·
+  `createTrendSnapshotAction` (snapshot manual — score always computed
+  server-side). Both `requireAdmin()` + tenant-scoped repository.
 
 ### Products RBAC (PR001)
 
@@ -232,6 +279,14 @@ Server actions:
 | Editar (+ mídia/variações/custos) | ✅    | ✅      | ❌     |
 | Excluir produto                   | ✅    | ❌      | ❌     |
 | Visualizar                        | ✅    | ✅      | ✅     |
+
+### Trends RBAC (PR002)
+
+| Ação                 | ADMIN | MANAGER | MEMBER               |
+| -------------------- | ----- | ------- | -------------------- |
+| Executar coleta      | ✅    | ❌      | ❌                   |
+| Criar snapshot       | ✅    | ❌      | ❌                   |
+| Visualizar dashboard | ✅    | ✅      | ✅ (somente leitura) |
 
 Enforced twice: UI affordances hidden per role **and** re-asserted in every
 server action (`requireAdmin`/`requireManager`).
@@ -275,7 +330,7 @@ never passed to a client component:
 
 ## 9. Tests
 
-`npm test` (Vitest, `tests/`) — 114 unit tests, no database required:
+`npm test` (Vitest, `tests/`) — 240 unit tests, no database required:
 
 | File                               | Covers                                                                                                                                                      |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -289,19 +344,79 @@ never passed to a client component:
 | `tests/product-list-where.test.ts` | PR001 — dashboard filter builder always injects the tenant scope; throws without one                                                                        |
 | `tests/products-rbac.test.ts`      | PR001 — products RBAC matrix (ADMIN cria/edita/exclui · MANAGER edita · MEMBER leitura)                                                                     |
 | `tests/media-storage.test.ts`      | PR001 — upload policy (mime allowlist, 10 MB cap) + placeholder provider contract                                                                           |
+| `tests/trend-scorer.test.ts`       | PR002 — score engine: weights (30/20/15/20/15), normalization to 0–100, clamping, rounding, guard errors                                                    |
+| `tests/trend-collector.test.ts`    | PR002 — mock collector: exactly 30 valid unique signals, 5 categories, scores 60–98, deterministic + defensive copies                                       |
+| `tests/trend-validators.test.ts`   | PR002 — Zod schemas (signal/snapshot/list query) incl. hostile inputs + `keywordSlug`/`normalizeKeyword` (accents, fallback, length cap)                    |
+| `tests/trend-repository.test.ts`   | PR002 — repository against an in-memory fake Prisma: tenant always injected, blank tenant throws before ANY db call, cross-tenant invisibility, filters     |
+| `tests/trend-scheduler.test.ts`    | PR002 — `collect-daily-trends` job (collect → score → validate → persist → aggregate), failure handling, manual-only contract                               |
+| `tests/trends-rbac.test.ts`        | PR002 — trends RBAC matrix (ADMIN coleta/cria · MANAGER visualiza · MEMBER leitura)                                                                         |
+| `tests/trend-dto.test.ts`          | PR002 — DTO mappers: ISO serialization across the RSC boundary, score computed engine-side                                                                  |
 
 ---
 
 ## 10. Not Implemented (interface only)
 
-- TikTok API / scraping — `modules/integrations/tiktok` (PR002/PR004)
-- AI provider (OpenAI) — `modules/integrations/ai` (PR003)
-- Creator discovery · Trend Hunter · automated outreach — not started
-- Analytics pipeline — `modules/analytics` (PR006)
+- TikTok API / scraping — `modules/integrations/tiktok` (PR003/PR005). The
+  Trend Hunter's real source also lands here (behind `TrendCollector`).
+- AI provider (OpenAI) — `modules/integrations/ai` (PR004)
+- Creator discovery · automated outreach — not started
+- Trend Hunter real sources — mock collector only in PR002 (interface ready)
+- Cron/scheduler wiring for `collect-daily-trends` — manual trigger only
+- Analytics pipeline — `modules/analytics` (PR007)
 
 ---
 
 ## 11. Changelog
+
+### PR002 — Trend Hunter AI (2026-09-22) — completed
+
+**Delivery workflow (instituted in PR001):** feature branch → Pull Request →
+human audit → approval → merge → Render deploy. No direct merges to `main`.
+
+**Schema (migration `20260922230000_trend_hunter_ai`)**
+
+- New models: `TrendSnapshot`, `TrendKeyword`, `TrendCategory` — all with a
+  **required `organizationId`** FK (`onDelete: Cascade`), `id`, `createdAt`,
+  `updatedAt`.
+- `TrendKeyword` / `TrendCategory` are **tenant-scoped unique**
+  (`(organizationId, keyword)` / `(organizationId, name)`).
+- Dashboard indexes on `(organizationId, trendScore|category|createdAt)`.
+
+**Module (`modules/trends/`)**
+
+- `hunter/collector.ts` — `TrendCollector` interface + **mock source** with
+  exactly 30 daily trends across Moda/Casual/Street/Executivo/Fitness. NO
+  TikTok API, NO scraping, NO OpenAI, NO browser automation — by design.
+- `hunter/scorer.ts` — pure **Score Engine**: normalization to 0–100 +
+  weights (Views 30% · Likes 20% · Shares 15% · Margin 20% · Low Saturation
+  15%) → integer score. Fully unit-tested.
+- `hunter/scheduler.ts` — `SchedulerJob` interface + `collect-daily-trends`
+  job (manual execution only; `schedule` reserved for a future PR).
+- `repositories/trend.repository.ts` — `createSnapshot`, `listSnapshots`,
+  `topTrends`, `findKeywords` (+ `upsertKeyword`, `upsertCategory`, `stats`).
+  Every query takes `organizationId` first — **no query without tenant**.
+- `validators/trend.validator.ts` — Zod schemas + keyword slug helpers.
+- `dto/create-trend.dto.ts` — `CreateTrendDTO` + RSC-serializable shapes.
+
+**UI (`/dashboard/trends`)**
+
+- KPI cards: Maior Score · Keywords · Categorias · Última Coleta.
+- Tabela Keyword · Categoria · Views · Likes · Score com **busca**,
+  **filtro por categoria**, **ordenação** por coluna e **paginação**
+  (URL-state) — responsivo.
+- "Executar coleta" (ADMIN) dispara o job manual; "Nova tendência"
+  (ADMIN) cria um snapshot manual com score calculado no servidor.
+
+**RBAC** — ADMIN executa coleta/cria snapshot · MANAGER visualiza · MEMBER
+somente leitura (re-afirmado em cada server action via `requireAdmin()`).
+
+**Seed** — 30 tendências via o pipeline real (mock collector → score
+engine), scores 60–98, keywords com frequência e categorias com score
+médio. Idempotente (não re-insere nem apaga coletas reais).
+
+**Tests** — +126 unit tests (240 total): score engine, collector, slug de
+keyword, repository (fake Prisma in-memory) com tenant isolation, scheduler,
+RBAC, DTOs.
 
 ### PR001 — Product Intelligence Core (2026-09-22) — completed
 
@@ -419,10 +534,11 @@ input), tenant filter builder, RBAC matrix, media-storage policy.
 | PR000   | Bootstrap Foundation              | ✅ done |
 | PR000.1 | Architecture Hotfix               | ✅ done |
 | PR000.2 | Tenant & Auth Hardening           | ✅ done |
-| PR001   | Product Intelligence Core         | ✅ this |
-| PR002   | Creators & TikTok Link            | ⏭ next  |
-| PR003   | AI Assistant                      | planned |
-| PR004   | Campaign Engine                   | planned |
-| PR005   | Messaging & Inbox                 | planned |
-| PR006   | Analytics & Reporting             | planned |
-| PR007   | Billing & Multi-tenancy hardening | planned |
+| PR001   | Product Intelligence Core         | ✅ done |
+| PR002   | Trend Hunter AI                   | ✅ this |
+| PR003   | Creators & TikTok Link            | ⏭ next  |
+| PR004   | AI Assistant                      | planned |
+| PR005   | Campaign Engine                   | planned |
+| PR006   | Messaging & Inbox                 | planned |
+| PR007   | Analytics & Reporting             | planned |
+| PR008   | Billing & Multi-tenancy hardening | planned |
