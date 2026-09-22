@@ -21,12 +21,14 @@ architecture, and UI shell that every subsequent feature builds on.
 
 > **Scope.** This foundation ships infrastructure, an enforced multi-tenant data
 > model, authentication, RBAC, and prepared interfaces only. TikTok API, scraping,
-> OpenAI, creator discovery, automated outreach, and the analytics pipeline are
+> OpenAI, real social APIs, automated outreach, and the analytics pipeline are
 > **intentionally not implemented** — their contracts are defined so future PRs
-> can plug in cleanly. The **Trend Hunter** (PR002) runs entirely on **mock
-> data**: no TikTok API, no scraping, no OpenAI, no browser automation. Since
-> **PR002.1** it is **multi-source**: every snapshot records its origin
-> (`TrendSource`) and real sources plug in behind the collector factory.
+> can plug in cleanly. The **Trend Hunter** (PR002) and the **Creator Discovery
+> Engine** (PR003) run entirely on **mock data**: no TikTok API, no scraping,
+> no OpenAI, no browser automation. Since **PR002.1** / **PR003** both are
+> **multi-source**: every snapshot/profile records its origin
+> (`TrendSource` / `CreatorSource`) and real sources plug in behind their
+> collector factories.
 
 ### Multi-tenancy
 
@@ -168,25 +170,26 @@ brobond-ai-commerce/
 │   └── not-found.tsx
 ├── components/
 │   ├── auth/         login-form
+│   ├── creators/     toolbar · table · pagination · kanban · forms · badges (PR003)
 │   ├── dashboard/    kpi-card
 │   ├── layout/       app-shell · sidebar · header · page-header
-│   └── ui/           button · card · badge · input
+│   └── ui/           button · card · badge · input · select · table
 ├── modules/
 │   ├── commerce/    products/ (PR001)
 │   ├── trends/      hunter (collectors · factory · scorer · scheduler) · repositories · dto · validators · interfaces (PR002/PR002.1)
-│   ├── creators/     creators.service.ts
+│   ├── creators/     discovery (collectors · factory · scorer · scheduler) · crm (repositories · dto · validators) · interfaces (PR003)
 │   ├── campaigns/    campaigns.service.ts
 │   ├── sales/        sales.service.ts
 │   ├── analytics/    analytics.interface.ts        (PR007)
 │   └── integrations/
-│       ├── tiktok/   tiktok.interface.ts           (PR003/PR005)
+│       ├── tiktok/   tiktok.interface.ts           (PR004/PR005)
 │       └── ai/       ai.interface.ts               (PR004)
 ├── lib/              prisma · auth · session · rbac · tenant · password
 │   │                 env · utils · navigation · constants
 │   └── validations/  auth
 ├── hooks/            use-sidebar · use-media-query
 ├── types/            index · next-auth.d.ts
-├── tests/            rbac · session · tenant · password (Vitest)
+├── tests/            rbac · session · tenant · password · trends · creators (Vitest)
 ├── prisma/           schema.prisma · migrations/ · seed.ts
 ├── public/           favicon.svg
 ├── styles/           globals.css (Tailwind v4 theme)
@@ -203,7 +206,8 @@ Monetary values default to **BRL** (stored in cents).
 - **User** — team members with roles (`ADMIN`, `MANAGER`, `MEMBER`); tenant **required**.
 - **Product** — catalog items with pricing (BRL) and status; tenant **required**.
 - **TrendSnapshot / TrendKeyword / TrendCategory** — Trend Hunter data (PR002 · multi-source PR002.1); tenant **required**.
-- **Creator** — creator roster (`externalId` reserved for TikTok); tenant **required**.
+- **CreatorProfile** — creator CRM: source, niche, followers, engagement, 0–100 score, pipeline status (PR003); tenant **required**.
+- **CreatorMetric / CreatorTag** — daily snapshots and labels per creator (PR003); tenant **required**.
 - **Campaign** — orchestration linking products ⇄ creators (M:N); tenant **required**.
 - **Message** — conversations across channels (system/email/DM/SMS).
 - **Sale** — revenue records (BRL) tied to product/creator/campaign.
@@ -276,11 +280,11 @@ invents one. Then sign in at `/login` with that email and password.
 ### Tests
 
 ```bash
-npm test          # Vitest — 240 unit tests
+npm test          # Vitest — 503 unit tests
 ```
 
 No database or network is required; the session layer is mocked and the trend
-repository runs against an in-memory fake Prisma.
+and creator repositories run against in-memory fake Prisma clients.
 
 ### Useful scripts
 
@@ -340,12 +344,12 @@ Deployment is defined as code in [`render.yaml`](./render.yaml) (a Render Bluepr
 | Module                        | Responsibility                                                           | Status                          |
 | ----------------------------- | ------------------------------------------------------------------------ | ------------------------------- |
 | `modules/commerce/products`   | Product Intelligence Core (services/repositories/dto/pricing/validators) | ✅ PR001                        |
-| `modules/creators`            | Creator roster                                                           | ✅ Tenant-scoped service        |
+| `modules/creators`            | Creator Discovery Engine + CRM (discovery/crm/interfaces)                | ✅ PR003                        |
 | `modules/campaigns`           | Campaign orchestration                                                   | ✅ Tenant-scoped service        |
 | `modules/sales`               | Revenue records                                                          | ✅ Tenant-scoped service        |
 | `modules/analytics`           | Metrics & reporting                                                      | 🧩 Interface only (PR006)       |
-| `modules/integrations/tiktok` | TikTok API / OAuth                                                       | 🧩 Interface only (PR002/PR004) |
-| `modules/integrations/ai`     | AI provider (OpenAI, …)                                                  | 🧩 Interface only (PR003)       |
+| `modules/integrations/tiktok` | TikTok API / OAuth                                                       | 🧩 Interface only (PR004/PR005) |
+| `modules/integrations/ai`     | AI provider (OpenAI, …)                                                  | 🧩 Interface only (PR004)       |
 
 ---
 
@@ -455,33 +459,114 @@ SchedulerJob collect-daily-trends (source: TrendSource — default MOCK)
 RBAC: **ADMIN** executa coleta e cria snapshots · **MANAGER** visualiza ·
 **MEMBER** somente leitura. O score é **sempre calculado no servidor**.
 
+---
+
+## Creator Discovery Engine (PR003)
+
+The **intelligent creator CRM**, prepared for TikTok, Instagram and Shopee —
+**multi-source, mock data only** (no external API is implemented in PR003, by
+design). Pipeline: discovery → score → CRM → dashboard.
+
+### Score Engine
+
+`calculateCreatorScore()` (`modules/creators/discovery/scorer.ts`, pure) —
+components normalized to 0–100 then weighted, integer result 0–100:
+
+| Componente  | Peso | Normalização                   |
+| ----------- | ---: | ------------------------------ |
+| Engagement  |  30% | taxa vs teto de 15%            |
+| Frequency   |  25% | posts/semana vs teto de 7      |
+| Niche Match |  20% | nicho exato = 100              |
+| Growth      |  15% | crescimento 30d vs teto de 20% |
+| Quality     |  10% | 0–100 (clamp)                  |
+
+### Data Sources (PR003)
+
+Cada profile carrega a sua origem (`CreatorProfile.source`, enum
+`CreatorSource` do Prisma) e a descoberta é resolvida **exclusivamente** pela
+factory `getCreatorCollector(source)` — nunca por um `switch` fora dela
+(garantido por teste).
+
+| Source      | Collector                   | Status                             |
+| ----------- | --------------------------- | ---------------------------------- |
+| `MOCK`      | `MockCreatorCollector`      | ✅ implementado (100 creators)     |
+| `TIKTOK`    | `TikTokCreatorCollector`    | 🧩 placeholder (`Not implemented`) |
+| `INSTAGRAM` | `InstagramCreatorCollector` | 🧩 placeholder (`Not implemented`) |
+| `SHOPEE`    | `ShopeeCreatorCollector`    | 🧩 placeholder (`Not implemented`) |
+| `MANUAL`    | — (sem collector)           | ✅ formulário do CRM               |
+
+### CRM Pipeline
+
+```
+NEW → QUALIFIED → CONTACTED → NEGOTIATING → ACTIVE     (ARCHIVED)
+```
+
+`CREATOR_STATUS_TRANSITIONS` + `canTransitionCreatorStatus()` são a fonte
+única da verdade: um passo à frente, um passo atrás, arquivo de qualquer
+estágio e reativação apenas para NEW. Transições ilegais (ex.: NEW → ACTIVE)
+são rejeitadas **antes** de qualquer write, na server action.
+
+```ts
+// modules/creators/crm/repositories/creator-profile.repository.ts
+const repository = createCreatorRepository(prisma);
+
+repository.listCreators(organizationId, { page: 1, sort: "creatorScore" });
+repository.topCreators(organizationId, { limit: 10, minScore: 80 });
+repository.changeStatus(organizationId, creatorId, "QUALIFIED");
+// organizationId é SEMPRE o 1º argumento — nenhuma query roda sem tenant.
+```
+
+### Dashboard
+
+```
+/dashboard/creators — KPIs (Creators · Score Médio · Premium · Contatados)
+                     tabela (Avatar · Creator · Nicho · Seguidores · Score ·
+                     Status) com busca, filtros (nicho/status/origem),
+                     ordenação e paginação (URL-state)
+                     Kanban do pipeline (6 colunas, movimentação MANAGER+)
+                     descoberta manual (ADMIN) · cadastro manual (MANAGER+)
+```
+
+RBAC: **ADMIN** executa a descoberta e gerencia o CRM · **MANAGER** cria
+profiles e move o pipeline · **MEMBER** somente leitura. O score é **sempre
+calculado no servidor** — nunca confiado do cliente. Re-imports da descoberta
+**nunca sobrescrevem o status do CRM**.
+
+### Seed
+
+100 mock creators com distribuição mandatória — Moda 35 · Casual 20 ·
+Street 20 · Fitness 15 · Executivo 10, seguidores de 5 mil a 2 milhões —
+gerados pelo pipeline real (coletor → score engine), com o pipeline
+distribuído entre os seis statuses, tags e 7 dias de métricas para o top 10.
+
 ### Próximo PR
 
-**PR003 — Creators & TikTok Link**: conectar o roster de creators à API real
-do TikTok (OAuth + sync de perfis) e implementar a primeira fonte real —
-basta preencher o `TikTokCollector` (o placeholder já lança `Not
-implemented` e o `getCollector(TrendSource.TIKTOK)` já o resolve). Nenhum
-consumidor muda: o contrato (`collect()` → `TrendCandidate[]`), a stamp de
-`source` e o dashboard já estão prontos e testados.
+**PR004 — AI Assistant**: implementar o provider de IA (OpenAI) atrás de
+`modules/integrations/ai`. As fontes reais de creators (TikTok, Instagram,
+Shopee) chegam em PRs futuros — basta preencher o placeholder correspondente
+(o `TikTokCreatorCollector` já lança `Not implemented` e o
+`getCreatorCollector(CreatorSource.TIKTOK)` já o resolve). Nenhum consumidor
+muda: o contrato (`collect()` → `CreatorCandidate[]`), a stamp de `source` e
+o dashboard já estão prontos e testados.
 
 ---
 
 ## Roadmap
 
-| PR          | Title                   | Scope                                                                 |
-| ----------- | ----------------------- | --------------------------------------------------------------------- |
-| **PR000**   | Bootstrap Foundation    | Infra, architecture, dark UI shell, Prisma schema, Docker, CI/CD ✅   |
-| **PR000.1** | Architecture Hotfix     | BRL currency, `Organization` tenant model, initial RBAC ✅            |
-| **PR000.2** | Tenant & Auth Hardening | Required tenancy, credentials auth, RBAC guards, tests ✅             |
-| **PR001**   | Products CRUD           | Full product management (create/edit/list), server actions, tables ✅ |
-| **PR002**   | Trend Hunter AI         | Trend collection (mock), score engine, scheduler, dashboard ✅        |
-| **PR002.1** | Multi-Source Data Arch. | TrendSource enum, collector factory, origem no dashboard ✅           |
-| **PR003**   | Creators & TikTok Link  | Creator CRUD + TikTok OAuth & profile sync (implements interface)     |
-| **PR004**   | AI Assistant            | OpenAI provider implementation, content & outreach generation         |
-| **PR005**   | Campaign Engine         | Campaign builder, product/creator assignment, scheduling              |
-| **PR006**   | Messaging & Inbox       | Conversations, notifications, multi-channel delivery                  |
-| **PR007**   | Analytics & Reporting   | Metrics pipeline, dashboards, revenue attribution                     |
-| **PR008**   | Billing & Multi-tenancy | Subscriptions, workspaces, roles & permissions hardening              |
+| PR          | Title                    | Scope                                                                        |
+| ----------- | ------------------------ | ---------------------------------------------------------------------------- |
+| **PR000**   | Bootstrap Foundation     | Infra, architecture, dark UI shell, Prisma schema, Docker, CI/CD ✅          |
+| **PR000.1** | Architecture Hotfix      | BRL currency, `Organization` tenant model, initial RBAC ✅                   |
+| **PR000.2** | Tenant & Auth Hardening  | Required tenancy, credentials auth, RBAC guards, tests ✅                    |
+| **PR001**   | Products CRUD            | Full product management (create/edit/list), server actions, tables ✅        |
+| **PR002**   | Trend Hunter AI          | Trend collection (mock), score engine, scheduler, dashboard ✅               |
+| **PR002.1** | Multi-Source Data Arch.  | TrendSource enum, collector factory, origem no dashboard ✅                  |
+| **PR003**   | Creator Discovery Engine | Creator CRM multi-source (mock), score engine, pipeline Kanban, dashboard ✅ |
+| **PR004**   | AI Assistant             | OpenAI provider implementation, content & outreach generation                |
+| **PR005**   | Campaign Engine          | Campaign builder, product/creator assignment, scheduling                     |
+| **PR006**   | Messaging & Inbox        | Conversations, notifications, multi-channel delivery                         |
+| **PR007**   | Analytics & Reporting    | Metrics pipeline, dashboards, revenue attribution                            |
+| **PR008**   | Billing & Multi-tenancy  | Subscriptions, workspaces, roles & permissions hardening                     |
 
 ---
 

@@ -30,11 +30,28 @@ enum ProductStatus {
   ARCHIVED
 }
 
+/// CRM pipeline status of a creator (PR003 — Creator Discovery Engine).
+/// Ordered funnel: NEW → QUALIFIED → CONTACTED → NEGOTIATING → ACTIVE,
+/// with ARCHIVED as the terminal side-state (see
+/// `modules/creators/interfaces/creator.interface.ts` for the transition map).
 enum CreatorStatus {
-  PROSPECT
-  INVITED
+  NEW
+  QUALIFIED
+  CONTACTED
+  NEGOTIATING
   ACTIVE
-  PAUSED
+  ARCHIVED
+}
+
+/// Origin of a creator profile (PR003 — Creator Discovery Engine).
+/// `MOCK` is the discovery default; `MANUAL` covers profiles created through
+/// the CRM form (no collector exists for it, by design).
+enum CreatorSource {
+  MOCK
+  TIKTOK
+  INSTAGRAM
+  SHOPEE
+  MANUAL
 }
 
 enum CampaignStatus {
@@ -96,7 +113,6 @@ model Organization {
   // Tenant-scoped relations
   users     User[]
   products  Product[]
-  creators  Creator[]
   campaigns Campaign[]
 
   productMedia    ProductMedia[]
@@ -107,6 +123,10 @@ model Organization {
   trendSnapshots  TrendSnapshot[]
   trendKeywords   TrendKeyword[]
   trendCategories TrendCategory[]
+
+  creatorProfiles CreatorProfile[]
+  creatorMetrics  CreatorMetric[]
+  creatorTags     CreatorTag[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -304,22 +324,42 @@ model ProductMetric {
   @@index([organizationId, date])
 }
 
-model Creator {
+/// CRM profile of a creator (PR003 — Creator Discovery Engine).
+///
+/// Supersedes the PR000 `Creator` stub. Discovery imports, manual CRM
+/// entries, the score engine and the pipeline all read/write this model.
+/// The campaign/message/sale relations keep their original field names
+/// (`creatorId`) — only the referenced type changed.
+model CreatorProfile {
   id          String        @id @default(cuid())
-  handle      String        @unique
+  handle      String
   displayName String
-  email       String?       @unique
   avatarUrl   String?
   bio         String?
-  followers   Int           @default(0)
-  status      CreatorStatus @default(PROSPECT)
+  email       String?
 
-  // Reserved for future TikTok integration (PR002/PR004) — NOT implemented here.
-  externalId String? @unique
+  followers Int @default(0)
+  /** Average views per post (denormalized for dashboard sorting). */
+  avgViews   Int @default(0)
+  /** Engagement rate in percent, e.g. 8.4 = 8.4%. */
+  engagementRate Float @default(0)
+  /** Content niche — one of `CREATOR_NICHES` (mock/CRM validated). */
+  niche      String
+  /** Weighted 0–100 score (modules/creators/discovery/scorer.ts). */
+  creatorScore Int @default(0)
+  /** CRM pipeline status. */
+  status     CreatorStatus @default(NEW)
+  /** Origin of the profile (discovery source or MANUAL). */
+  source     CreatorSource @default(MOCK)
+  /** Identifier on the source platform. `null` for MANUAL profiles. */
+  externalId String?
 
   // Tenant — REQUIRED. No domain record may exist without an Organization.
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  metrics CreatorMetric[]
+  tags    CreatorTag[]
 
   campaigns CampaignCreator[]
   messages  Message[]         @relation("MessageCreator")
@@ -328,8 +368,62 @@ model Creator {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Tenant-scoped uniqueness: the handle is the CRM identity per workspace
+  // and (source, externalId) is the dedupe key for discovery imports.
+  @@unique([organizationId, handle])
+  @@unique([organizationId, source, externalId])
+  @@unique([organizationId, email])
   @@index([status])
   @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, creatorScore])
+  @@index([organizationId, niche])
+}
+
+/// Daily performance snapshot of a creator (PR003). One row per creator per
+/// day — the discovery scheduler upserts today's row on every run.
+model CreatorMetric {
+  id   String   @id @default(cuid())
+  date DateTime @db.Date
+  views     Int @default(0)
+  likes     Int @default(0)
+  shares    Int @default(0)
+  followers Int @default(0)
+
+  creatorProfileId String
+  creatorProfile   CreatorProfile @relation(fields: [creatorProfileId], references: [id], onDelete: Cascade)
+
+  // Tenant — REQUIRED (denormalized for direct scoped queries).
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([creatorProfileId, date])
+  @@index([organizationId])
+  @@index([organizationId, date])
+}
+
+/// Free-form label attached to a creator profile (PR003). Same tag may exist
+/// on many profiles; a profile cannot carry the same tag twice.
+model CreatorTag {
+  id   String @id @default(cuid())
+  name String
+
+  creatorProfileId String
+  creatorProfile   CreatorProfile @relation(fields: [creatorProfileId], references: [id], onDelete: Cascade)
+
+  // Tenant — REQUIRED (denormalized for direct scoped queries).
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([creatorProfileId, name])
+  @@index([organizationId])
+  @@index([organizationId, name])
 }
 
 model Campaign {
@@ -374,7 +468,7 @@ model Message {
   author   User?   @relation("MessageAuthor", fields: [authorId], references: [id], onDelete: SetNull)
 
   creatorId String?
-  creator   Creator? @relation("MessageCreator", fields: [creatorId], references: [id], onDelete: SetNull)
+  creator   CreatorProfile? @relation("MessageCreator", fields: [creatorId], references: [id], onDelete: SetNull)
 
   campaignId String?
   campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
@@ -400,7 +494,7 @@ model Sale {
   product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   creatorId String?
-  creator   Creator? @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+  creator   CreatorProfile? @relation(fields: [creatorId], references: [id], onDelete: SetNull)
 
   campaignId String?
   campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
@@ -513,7 +607,7 @@ model CampaignCreator {
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   creatorId String
-  creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  creator   CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
 
   assignedAt DateTime @default(now())
 
