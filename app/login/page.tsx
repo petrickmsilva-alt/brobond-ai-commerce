@@ -29,7 +29,8 @@ export default function LoginPage() {
         </div>
 
         <p className="mt-6 text-center text-xs text-white/30">
-          Autenticação via NextAuth v5 — provedores configurados em um PR futuro.
+          Autenticação via NextAuth v5 (email e senha). O acesso é provisionado pela sua organização
+          — não há cadastro público.
         </p>
       </div>
     </div>

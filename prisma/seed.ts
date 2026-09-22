@@ -5,12 +5,26 @@
  * development. Safe to run multiple times (uses upserts).
  *
  *   npm run db:seed
+ *
+ * TENANCY: every domain record is created inside the `brobond` Organization —
+ * `organizationId` is NOT NULL on User/Product/Creator/Campaign (PR000.2).
+ *
+ * SECURITY: there is no public sign-up. The seed is the only bootstrap path
+ * for the first ADMIN account, and it stores **only a bcrypt hash**. When
+ * `SEED_ADMIN_PASSWORD` is not set, the admin is created WITHOUT a password
+ * (credentials login disabled for that account) — no password is invented.
  */
 import { PrismaClient, UserRole, ProductStatus, CreatorStatus } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import bcrypt from "bcryptjs";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
+
+const BCRYPT_COST = 12;
+
+const ADMIN_EMAIL = (process.env.SEED_ADMIN_EMAIL ?? "admin@brobond.ai").trim().toLowerCase();
+const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD?.trim() || null;
 
 async function main() {
   // Tenant boundary — everything below belongs to this Organization.
@@ -23,14 +37,21 @@ async function main() {
     },
   });
 
+  const passwordHash = ADMIN_PASSWORD ? await bcrypt.hash(ADMIN_PASSWORD, BCRYPT_COST) : null;
+
   const admin = await prisma.user.upsert({
-    where: { email: "admin@brobond.ai" },
-    update: { organizationId: organization.id },
+    where: { email: ADMIN_EMAIL },
+    // Only overwrite the hash when a password was explicitly supplied.
+    update: {
+      organizationId: organization.id,
+      ...(passwordHash ? { passwordHash } : {}),
+    },
     create: {
-      email: "admin@brobond.ai",
+      email: ADMIN_EMAIL,
       name: "Brobond Admin",
       role: UserRole.ADMIN,
       organizationId: organization.id,
+      passwordHash,
     },
   });
 
@@ -82,6 +103,9 @@ async function main() {
   console.log("Seed complete:", {
     organization: organization.slug,
     admin: admin.email,
+    adminLogin: passwordHash
+      ? "enabled (bcrypt hash stored)"
+      : "disabled — set SEED_ADMIN_PASSWORD and re-run to enable",
     product: product.slug,
     creator: creator.handle,
     campaign: campaign.slug,
