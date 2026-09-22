@@ -1,0 +1,330 @@
+// ------------------------------------------------------------------
+// Brobond AI Commerce OS — Prisma Schema
+// PR000 Bootstrap Foundation
+// ------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+  // Uses the pg driver adapter (see lib/prisma.ts) — GA since Prisma 6.16,
+  // so no preview feature flag is required.
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------------
+// Enums
+// ------------------------------------------------------------------
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  MEMBER
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum CreatorStatus {
+  PROSPECT
+  INVITED
+  ACTIVE
+  PAUSED
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageChannel {
+  SYSTEM
+  EMAIL
+  DM
+  SMS
+}
+
+enum SaleStatus {
+  PENDING
+  PAID
+  REFUNDED
+  CANCELLED
+}
+
+// ------------------------------------------------------------------
+// Tenancy
+// ------------------------------------------------------------------
+
+// Organization is the top-level tenant boundary. Every domain record
+// (users, products, creators, campaigns) belongs to exactly one
+// Organization, enabling multi-tenant data isolation.
+model Organization {
+  id     String @id @default(cuid())
+  name   String
+  slug   String @unique
+
+  // Tenant-scoped relations
+  users     User[]
+  products  Product[]
+  creators  Creator[]
+  campaigns Campaign[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug])
+}
+
+// ------------------------------------------------------------------
+// Core Models
+// ------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  image         String?
+  passwordHash  String?
+  role          UserRole  @default(MEMBER)
+  emailVerified DateTime?
+
+  // Tenant
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // NextAuth relations (adapter-ready)
+  accounts Account[]
+  sessions Session[]
+
+  // Domain relations
+  campaigns Campaign[] @relation("CampaignOwner")
+  messages  Message[]  @relation("MessageAuthor")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role])
+  @@index([organizationId])
+}
+
+model Product {
+  id          String        @id @default(cuid())
+  name        String
+  slug        String        @unique
+  description String?
+  sku         String?       @unique
+  priceCents  Int           @default(0)
+  currency    String        @default("BRL")
+  imageUrl    String?
+  status      ProductStatus @default(DRAFT)
+
+  // Tenant
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  campaigns CampaignProduct[]
+  sales     Sale[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([organizationId])
+}
+
+model Creator {
+  id          String        @id @default(cuid())
+  handle      String        @unique
+  displayName String
+  email       String?       @unique
+  avatarUrl   String?
+  bio         String?
+  followers   Int           @default(0)
+  status      CreatorStatus @default(PROSPECT)
+
+  // Reserved for future TikTok integration (PR002/PR004) — NOT implemented here.
+  externalId String? @unique
+
+  // Tenant
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  campaigns CampaignCreator[]
+  messages  Message[]         @relation("MessageCreator")
+  sales     Sale[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([organizationId])
+}
+
+model Campaign {
+  id          String         @id @default(cuid())
+  name        String
+  slug        String         @unique
+  description String?
+  status      CampaignStatus @default(DRAFT)
+  budgetCents Int            @default(0)
+  currency    String         @default("BRL")
+  startsAt    DateTime?
+  endsAt      DateTime?
+
+  // Tenant
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  ownerId String?
+  owner   User?   @relation("CampaignOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  products CampaignProduct[]
+  creators CampaignCreator[]
+  messages Message[]
+  sales    Sale[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([ownerId])
+  @@index([organizationId])
+}
+
+model Message {
+  id        String           @id @default(cuid())
+  body      String
+  direction MessageDirection @default(OUTBOUND)
+  channel   MessageChannel   @default(SYSTEM)
+  readAt    DateTime?
+
+  authorId String?
+  author   User?   @relation("MessageAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  creatorId String?
+  creator   Creator? @relation("MessageCreator", fields: [creatorId], references: [id], onDelete: SetNull)
+
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([campaignId])
+  @@index([creatorId])
+  @@index([authorId])
+}
+
+model Sale {
+  id          String     @id @default(cuid())
+  reference   String     @unique @default(cuid())
+  quantity    Int        @default(1)
+  amountCents Int        @default(0)
+  currency    String     @default("BRL")
+  status      SaleStatus @default(PENDING)
+  occurredAt  DateTime   @default(now())
+
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  creatorId String?
+  creator   Creator? @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([productId])
+  @@index([creatorId])
+  @@index([campaignId])
+}
+
+// ------------------------------------------------------------------
+// Join Tables (many-to-many)
+// ------------------------------------------------------------------
+
+model CampaignProduct {
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  assignedAt DateTime @default(now())
+
+  @@id([campaignId, productId])
+  @@index([productId])
+}
+
+model CampaignCreator {
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  creatorId String
+  creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  assignedAt DateTime @default(now())
+
+  @@id([campaignId, creatorId])
+  @@index([creatorId])
+}
+
+// ------------------------------------------------------------------
+// NextAuth v5 Adapter Models (Prisma adapter compatible)
+// ------------------------------------------------------------------
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
