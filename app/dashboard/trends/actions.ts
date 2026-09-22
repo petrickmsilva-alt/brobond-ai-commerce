@@ -1,5 +1,6 @@
 "use server";
 
+import { TrendSource } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { AuthorizationError } from "@/lib/rbac";
@@ -77,7 +78,9 @@ export async function collectDailyTrendsAction(): Promise<TrendActionResult<Sche
 
 /**
  * Manually create one trend snapshot from a raw signal. ADMIN only.
- * The score is computed server-side by the score engine.
+ * The score is computed server-side by the score engine and the snapshot is
+ * stamped with `source: MANUAL` (PR002.1) — manual trends are not collected
+ * from any collector, they come from this form.
  */
 export async function createTrendSnapshotAction(
   input: unknown,
@@ -96,6 +99,7 @@ export async function createTrendSnapshotAction(
       likes: scored.likes,
       shares: scored.shares,
       trendScore: scored.trendScore,
+      source: TrendSource.MANUAL,
     });
 
     // Keep the aggregate tables consistent with the new snapshot.

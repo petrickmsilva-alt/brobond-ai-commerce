@@ -13,12 +13,14 @@ modules/
 │       ├── dto/            serializable shapes for the UI layer
 │       ├── pricing/        pure margin math (cents + basis points)
 │       └── validators/     Zod schemas + slug helpers (pure)
-├── trends/       Trend Hunter AI (PR002 — mock source, no external APIs)
-│   ├── hunter/            collector (mock) · scorer (pure) · scheduler (manual job)
+├── trends/       Trend Hunter AI (PR002 · multi-source architecture in PR002.1)
+│   ├── hunter/            collectors (one per TrendSource) · collector.factory ·
+│   │                      scorer (pure) · scheduler (manual job, per-source)
 │   ├── repositories/      tenant-scoped Prisma data access (server-only)
-│   ├── dto/               CreateTrendDTO + serializable RSC shapes
-│   ├── validators/        Zod schemas + keyword slug helpers (pure)
-│   └── interfaces/        TrendSignal · TrendCollector · TREND_CATEGORIES
+│   ├── dto/               CreateTrendDTO (+ source) + serializable RSC shapes
+│   ├── validators/        Zod schemas (+ trendSourceSchema) + keyword slug helpers
+│   └── interfaces/        TrendCandidate · TrendCollector · TREND_SOURCES ·
+│                          TREND_CATEGORIES
 ├── creators/     Creator roster & relationships
 ├── campaigns/    Campaign orchestration
 ├── messaging/    Conversations & notifications
@@ -38,6 +40,11 @@ without a tenant scope.
 - `*.types.ts` — module-local DTOs and input schemas (Zod).
 - Integration modules expose **interfaces only** in PR000. No network calls,
   scraping, TikTok API, OpenAI, or analytics pipelines are implemented yet —
-  including the Trend Hunter, which runs on a **mock collector** (PR002): a
-  real source implements `TrendCollector` (`modules/trends/interfaces`) and
-  is returned by `getTrendCollector()` with zero caller changes.
+  including the Trend Hunter, which runs on a **mock collector** (PR002).
+  Since PR002.1 it is **multi-source**: a real source implements
+  `TrendCollector` (`modules/trends/interfaces`), lives in
+  `modules/trends/hunter/collectors/` and is resolved by
+  `getCollector(source)` (`collector.factory.ts`) with zero caller changes —
+  never by instantiating a collector or switching on the source outside the
+  factory. `MANUAL` has no collector: manual trends come from the dashboard
+  form and are stamped `source: MANUAL` server-side.

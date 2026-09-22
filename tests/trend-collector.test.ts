@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { TrendSource } from "@prisma/client";
 import {
   MOCK_TREND_SIGNALS,
   MockTrendCollector,
@@ -87,15 +88,26 @@ describe("MOCK_TREND_SIGNALS", () => {
 });
 
 describe("MockTrendCollector", () => {
-  it("implements the TrendCollector interface with source 'mock'", () => {
+  it("implements the TrendCollector interface with the MOCK source (PR002.1)", () => {
     const collector = new MockTrendCollector();
-    expect(collector.source).toBe("mock");
+    expect(collector.source).toBe(TrendSource.MOCK);
+    expect(typeof collector.collect).toBe("function");
     expect(typeof collector.collectDailyTrends).toBe("function");
   });
 
   it("collectDailyTrends() returns exactly 30 trends", async () => {
     const trends = await new MockTrendCollector().collectDailyTrends();
     expect(trends).toHaveLength(30);
+  });
+
+  it("collect() (PR002.1) returns the same 30 candidates as the alias", async () => {
+    const collector = new MockTrendCollector();
+    const [collected, aliased] = await Promise.all([
+      collector.collect(),
+      collector.collectDailyTrends(),
+    ]);
+    expect(collected).toHaveLength(30);
+    expect(collected).toEqual(aliased);
   });
 
   it("is deterministic (two runs are deeply equal)", async () => {
@@ -120,9 +132,9 @@ describe("MockTrendCollector", () => {
 });
 
 describe("getTrendCollector()", () => {
-  it("returns the mock collector (PR002 ships no external source)", () => {
+  it("returns the mock collector (MOCK remains the default source)", () => {
     const collector = getTrendCollector();
-    expect(collector.source).toBe("mock");
+    expect(collector.source).toBe(TrendSource.MOCK);
     expect(collector).toBeInstanceOf(MockTrendCollector);
   });
 

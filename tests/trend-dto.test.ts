@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { TrendCategory, TrendKeyword, TrendSnapshot } from "@prisma/client";
+import {
+  TrendSource,
+  type TrendCategory,
+  type TrendKeyword,
+  type TrendSnapshot,
+} from "@prisma/client";
 import {
   toCreateTrendDTO,
   toTrendCategoryDTO,
@@ -37,7 +42,14 @@ describe("toCreateTrendDTO", () => {
       likes: 320_000,
       shares: 48_000,
       trendScore: calculateTrendScore(SIGNAL),
+      source: TrendSource.MOCK, // PR002.1 — defaults to MOCK
     });
+  });
+
+  it("stamps an explicit source when given (the scheduler passes the collector's)", () => {
+    const dto = toCreateTrendDTO(SIGNAL, 42, TrendSource.TIKTOK);
+    expect(dto.source).toBe(TrendSource.TIKTOK);
+    expect(dto.trendScore).toBe(42); // explicit score still wins
   });
 
   it("uses an explicit score when provided (scheduler passes the precomputed one)", () => {
@@ -68,6 +80,7 @@ describe("toTrendSnapshotDTO", () => {
       likes: 196_000,
       shares: 27_500,
       trendScore: 75,
+      source: TrendSource.MOCK,
       organizationId: "org_x",
       createdAt: new Date("2026-09-22T12:00:00.000Z"),
       updatedAt: new Date("2026-09-22T12:00:00.000Z"),
@@ -77,6 +90,7 @@ describe("toTrendSnapshotDTO", () => {
     expect(dto.createdAt).toBe("2026-09-22T12:00:00.000Z");
     expect(dto.updatedAt).toBe("2026-09-22T12:00:00.000Z");
     expect(typeof dto.createdAt).toBe("string");
+    expect(dto.source).toBe(TrendSource.MOCK); // PR002.1 — crosses the RSC boundary
   });
 
   it("keeps every table column", () => {
@@ -88,6 +102,7 @@ describe("toTrendSnapshotDTO", () => {
       likes: 2,
       shares: 3,
       trendScore: 75,
+      source: TrendSource.MANUAL,
       organizationId: "org_x",
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -103,6 +118,7 @@ describe("toTrendSnapshotDTO", () => {
         "likes",
         "shares",
         "trendScore",
+        "source",
         "createdAt",
         "updatedAt",
       ].sort(),

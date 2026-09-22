@@ -82,6 +82,9 @@ export function createTrendRepository(db: TrendDatabase): TrendRepository {
         filters.keyword = { contains: query.search, mode: "insensitive" };
       }
       if (query.category) filters.category = query.category;
+      // PR002.1 — optional origin filter ("Origem"). Absent = all sources,
+      // so pre-PR002.1 callers behave exactly as before.
+      if (query.source) filters.source = query.source;
 
       // Tenant scope merged LAST — caller filters can never widen the boundary.
       const where = scopedWhere(organizationId, filters);

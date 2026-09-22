@@ -1,19 +1,29 @@
 import "server-only";
+import { TrendSource } from "@prisma/client";
 import { AuthorizationError } from "@/lib/rbac";
 import { toCreateTrendDTO } from "../dto/create-trend.dto";
-import type { TrendCollector, TrendCategoryName } from "../interfaces/trend.interface";
+import {
+  collectTrendCandidates,
+  type TrendCategoryName,
+  type TrendCollector,
+} from "../interfaces/trend.interface";
 import { trendRepository, type TrendRepository } from "../repositories/trend.repository";
 import { createTrendSchema, normalizeKeyword } from "../validators/trend.validator";
-import { getTrendCollector } from "./collector";
+import { getCollector } from "./collector.factory";
 import { scoreTrend } from "./scorer";
 
 /**
- * Trend Hunter Scheduler (PR002).
+ * Trend Hunter Scheduler (PR002 · PR002.1).
  *
  * Defines the `SchedulerJob` contract and registers the first job:
  * `collect-daily-trends` — collect → score → persist.
  *
- * IMPORTANT: execution is **manual only** in PR002. No cron, no interval,
+ * PR002.1: the job is **multi-source** — it receives a `TrendSource`
+ * (default `MOCK`, so the default behaviour is unchanged) and resolves the
+ * collector through `getCollector()`. Every persisted snapshot is stamped
+ * with the collector's source.
+ *
+ * IMPORTANT: execution is **manual only**. No cron, no interval,
  * no background worker is registered anywhere — an ADMIN triggers the job
  * from the dashboard (`/dashboard/trends`). The `schedule` field is part of
  * the interface so a future PR can wire a real scheduler without touching
@@ -36,6 +46,8 @@ export interface SchedulerJobResult {
   /** Best keyword of the run (highest score), when any signal was collected. */
   topKeyword: string | null;
   topScore: number | null;
+  /** PR002.1 — the source that was actually collected (the collector's). */
+  source: TrendSource;
   error?: string;
 }
 
@@ -57,6 +69,12 @@ export interface SchedulerJob {
 
 /** Dependencies of the collection job — injectable for testing. */
 export interface TrendJobDependencies {
+  /**
+   * PR002.1 — which source to collect from. Resolved through
+   * `getCollector()` when no explicit `collector` is injected.
+   * Defaults to `MOCK` (the PR002 behaviour — retrocompatible).
+   */
+  source?: TrendSource;
   collector?: TrendCollector;
   repository?: TrendRepository;
 }
@@ -68,19 +86,23 @@ function errorMessage(error: unknown): string {
 /**
  * Build the `collect-daily-trends` job.
  *
- * Flow: collector.collectDailyTrends() → score each signal with the score
- * engine → validate each payload (Zod) → persist snapshots → aggregate
- * keyword frequencies → materialize category scores (average of the run).
+ * Flow: getCollector(source).collect() → score each candidate with the
+ * score engine → validate each payload (Zod) → persist snapshots (stamped
+ * with the collector's source) → aggregate keyword frequencies →
+ * materialize category scores (average of the run).
+ *
+ * The default source is `MOCK` — the exact PR002 behaviour.
  */
 export function createCollectDailyTrendsJob(deps: TrendJobDependencies = {}): SchedulerJob {
-  const collector = deps.collector ?? getTrendCollector();
+  const source = deps.source ?? TrendSource.MOCK;
+  const collector = deps.collector ?? getCollector(source);
   const repository = deps.repository ?? trendRepository;
 
   return {
     key: "collect-daily-trends",
     name: "Coleta diária de tendências",
     description:
-      "Coleta as tendências do dia na fonte configurada (mock no PR002), calcula o score de cada uma e persiste os snapshots no workspace.",
+      "Coleta as tendências do dia na origem configurada (Mock por padrão — TikTok, Shopee e Instagram chegam em PRs futuros), calcula o score de cada uma e persiste os snapshots no workspace.",
     async execute(organizationId) {
       const startedAt = new Date();
       let collected = 0;
@@ -89,15 +111,18 @@ export function createCollectDailyTrendsJob(deps: TrendJobDependencies = {}): Sc
       let categoriesUpserted = 0;
 
       try {
-        const signals = await collector.collectDailyTrends();
+        const signals = await collectTrendCandidates(collector);
         collected = signals.length;
 
         // Score + validate every signal before anything is persisted.
         // Keywords are canonicalized (lowercase, single spaces) so that
         // "Camisa Masculina" and "camisa  masculina" aggregate together.
+        // Every payload is stamped with the collector's source (PR002.1).
         const payloads = signals.map((signal) => {
           const scored = scoreTrend({ ...signal, keyword: normalizeKeyword(signal.keyword) });
-          return createTrendSchema.parse(toCreateTrendDTO(scored, scored.trendScore));
+          return createTrendSchema.parse(
+            toCreateTrendDTO(scored, scored.trendScore, collector.source),
+          );
         });
 
         for (const payload of payloads) {
@@ -143,6 +168,7 @@ export function createCollectDailyTrendsJob(deps: TrendJobDependencies = {}): Sc
           categoriesUpserted,
           topKeyword: best?.keyword ?? null,
           topScore: best?.trendScore ?? null,
+          source: collector.source,
         };
       } catch (error) {
         // Authorization failures must surface as 401/403, not as a "failed job".
@@ -160,6 +186,7 @@ export function createCollectDailyTrendsJob(deps: TrendJobDependencies = {}): Sc
           categoriesUpserted,
           topKeyword: null,
           topScore: null,
+          source: collector.source,
           error: errorMessage(error),
         };
       }
@@ -167,7 +194,7 @@ export function createCollectDailyTrendsJob(deps: TrendJobDependencies = {}): Sc
   };
 }
 
-/** Default job instance (mock collector + app Prisma repository). */
+/** Default job instance (MOCK source + app Prisma repository). */
 export const collectDailyTrendsJob = createCollectDailyTrendsJob();
 
 /**

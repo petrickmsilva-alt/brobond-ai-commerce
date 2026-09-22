@@ -115,6 +115,7 @@ describe("trendListQuerySchema (dashboard URL state)", () => {
       pageSize: TREND_PAGE_SIZE_DEFAULT,
       search: undefined,
       category: undefined,
+      source: undefined, // PR002.1 — no source = all sources ("Todos")
       sort: "trendScore",
       order: "desc",
     });

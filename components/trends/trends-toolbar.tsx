@@ -6,14 +6,19 @@ import { Loader2, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { TREND_CATEGORIES } from "@/modules/trends/interfaces/trend.interface";
+import {
+  TREND_CATEGORIES,
+  TREND_SOURCE_LABELS,
+  TREND_SOURCES,
+} from "@/modules/trends/interfaces/trend.interface";
 
 /**
  * Trends dashboard filter toolbar — everything is URL-state (search params),
  * so the listing is shareable, back-button friendly and rendered on the
  * server.
  *
- * Filters: busca (keyword) · categoria. Every change resets the page to 1.
+ * Filters: busca (keyword) · categoria · origem (PR002.1). Every change
+ * resets the page to 1.
  */
 export function TrendsToolbar() {
   const router = useRouter();
@@ -49,7 +54,8 @@ export function TrendsToolbar() {
     };
   }, [search, searchParams, apply]);
 
-  const hasFilters = searchParams.get("search") || searchParams.get("category");
+  const hasFilters =
+    searchParams.get("search") || searchParams.get("category") || searchParams.get("source");
 
   return (
     <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -78,6 +84,21 @@ export function TrendsToolbar() {
           {TREND_CATEGORIES.map((category) => (
             <option key={category} value={category}>
               {category}
+            </option>
+          ))}
+        </Select>
+
+        {/* PR002.1 — filtro por origem (fonte dos dados). "Todos" = sem filtro. */}
+        <Select
+          value={searchParams.get("source") ?? ""}
+          onChange={(event) => apply({ source: event.target.value || null })}
+          className="w-40"
+          aria-label="Filtrar por origem"
+        >
+          <option value="">Todos</option>
+          {TREND_SOURCES.map((source) => (
+            <option key={source} value={source}>
+              {TREND_SOURCE_LABELS[source]}
             </option>
           ))}
         </Select>

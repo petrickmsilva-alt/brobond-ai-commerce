@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Prisma } from "@prisma/client";
+import { TrendSource, type Prisma } from "@prisma/client";
 import { AuthorizationError } from "@/lib/rbac";
 import type { CreateTrendDTO } from "@/modules/trends/dto/create-trend.dto";
 import {
@@ -551,5 +551,132 @@ describe("trendRepository — findKeywords options", () => {
     const limited = await repository.findKeywords(ORG_A, { limit: 2 });
     expect(limited).toHaveLength(2);
     expect(limited[0]?.keyword).toBe("jaqueta premium");
+  });
+});
+
+// ------------------------------------------------------------------
+// PR002.1 — source filter (listSnapshots)
+// ------------------------------------------------------------------
+
+describe("trendRepository — source filter (PR002.1)", () => {
+  let fake: ReturnType<typeof createFakeDb>;
+  let repository: ReturnType<typeof createTrendRepository>;
+
+  beforeEach(async () => {
+    fake = createFakeDb();
+    repository = createTrendRepository(fake.db);
+
+    const seeds: CreateTrendDTO[] = [
+      snapshotDTO({
+        keyword: "camisa masculina",
+        category: "Moda",
+        source: TrendSource.MOCK,
+        trendScore: 72,
+      }),
+      snapshotDTO({
+        keyword: "jaqueta premium",
+        category: "Moda",
+        source: TrendSource.TIKTOK,
+        trendScore: 92,
+      }),
+      snapshotDTO({
+        keyword: "bermuda cargo",
+        category: "Casual",
+        source: TrendSource.SHOPEE,
+        trendScore: 89,
+      }),
+      snapshotDTO({
+        keyword: "polo slim",
+        category: "Casual",
+        source: TrendSource.MANUAL,
+        trendScore: 75,
+      }),
+      snapshotDTO({
+        keyword: "regata fitness",
+        category: "Fitness",
+        source: TrendSource.MOCK,
+        trendScore: 88,
+      }),
+    ];
+    for (const seed of seeds) {
+      await repository.createSnapshot(ORG_A, seed);
+    }
+    // Another tenant's MOCK row — must NEVER leak into ORG_A's results.
+    await repository.createSnapshot(
+      ORG_B,
+      snapshotDTO({ keyword: "tênis chunky", source: TrendSource.MOCK }),
+    );
+  });
+
+  it("returns only the snapshots of the requested source", async () => {
+    const { items, total } = await repository.listSnapshots(ORG_A, query({ source: "MOCK" }));
+    expect(total).toBe(2);
+    expect(items).toHaveLength(2);
+    expect(items.every((item) => item.source === "MOCK")).toBe(true);
+  });
+
+  it("every source is filterable (TIKTOK · SHOPEE · INSTAGRAM · MANUAL)", async () => {
+    expect((await repository.listSnapshots(ORG_A, query({ source: "TIKTOK" }))).total).toBe(1);
+    expect((await repository.listSnapshots(ORG_A, query({ source: "SHOPEE" }))).total).toBe(1);
+    expect((await repository.listSnapshots(ORG_A, query({ source: "MANUAL" }))).total).toBe(1);
+    // No INSTAGRAM snapshot was seeded — the filter simply returns nothing.
+    expect((await repository.listSnapshots(ORG_A, query({ source: "INSTAGRAM" }))).total).toBe(0);
+  });
+
+  it("combines the source filter with the category filter", async () => {
+    const { total, items } = await repository.listSnapshots(
+      ORG_A,
+      query({ source: "MOCK", category: "Moda" }),
+    );
+    expect(total).toBe(1); // "camisa masculina" — not "regata fitness"
+    expect(items[0]?.keyword).toBe("camisa masculina");
+  });
+
+  it("combines the source filter with the search filter", async () => {
+    const { total } = await repository.listSnapshots(
+      ORG_A,
+      query({ source: "MOCK", search: "regata" }),
+    );
+    expect(total).toBe(1);
+  });
+
+  it("no source filter returns every source (retrocompatible)", async () => {
+    const { total } = await repository.listSnapshots(ORG_A, query());
+    expect(total).toBe(5);
+    const sources = new Set(
+      (await repository.listSnapshots(ORG_A, query({ pageSize: "10" }))).items.map(
+        (item) => item.source,
+      ),
+    );
+    expect([...sources].sort()).toEqual(["MANUAL", "MOCK", "SHOPEE", "TIKTOK"]);
+  });
+
+  it("the source filter is tenant-scoped (another tenant's MOCK rows are invisible)", async () => {
+    const { items, total } = await repository.listSnapshots(ORG_A, query({ source: "MOCK" }));
+    expect(total).toBe(2);
+    expect(items.some((item) => item.keyword === "tênis chunky")).toBe(false);
+    // And the where clause carries both the tenant scope and the source.
+    const where = fake.raw.trendSnapshot.findMany.mock.calls[0]?.[0]?.where;
+    expect(where?.organizationId).toBe(ORG_A);
+    expect(where?.source).toBe("MOCK");
+  });
+
+  it("createSnapshot persists an explicit source", async () => {
+    const created = await repository.createSnapshot(
+      ORG_A,
+      snapshotDTO({ keyword: "mochila de academia", source: TrendSource.INSTAGRAM }),
+    );
+    expect(created.source).toBe(TrendSource.INSTAGRAM);
+    expect(fake.snapshots[fake.snapshots.length - 1]?.source).toBe("INSTAGRAM");
+  });
+
+  it("createSnapshot without a source lets the database default (MOCK) apply", async () => {
+    // Pre-PR002.1 callers send no source — Prisma's @default(MOCK) covers it.
+    await repository.createSnapshot(ORG_A, snapshotDTO({ keyword: "camisa social slim" }));
+    const data = fake.raw.trendSnapshot.create.mock.calls.at(-1)?.[0]?.data as Record<
+      string,
+      unknown
+    >;
+    expect("source" in data).toBe(false);
   });
 });

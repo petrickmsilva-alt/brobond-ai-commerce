@@ -70,6 +70,17 @@ enum ProductMediaType {
   VIDEO
 }
 
+/// Origin of a trend snapshot (PR002.1 — Multi-Source Data Architecture).
+/// `MOCK` is the default so every snapshot created before PR002.1 keeps its
+/// meaning (retrocompatible — no existing row is touched by the migration).
+enum TrendSource {
+  MOCK
+  TIKTOK
+  SHOPEE
+  INSTAGRAM
+  MANUAL
+}
+
 // ------------------------------------------------------------------
 // Tenancy
 // ------------------------------------------------------------------
@@ -404,16 +415,19 @@ model Sale {
 }
 
 // ------------------------------------------------------------------
-// Trend Hunter AI (PR002)
+// Trend Hunter AI (PR002) · Multi-Source Data Architecture (PR002.1)
 // ------------------------------------------------------------------
 
 /// Daily trend snapshot produced by the Trend Hunter pipeline
 /// (`modules/trends`). One row per keyword per collection run — history is
 /// preserved so scores can be trended over time.
 ///
-/// NO external API is wired in PR002: the collector ships a mock source
-/// (`modules/trends/hunter/collector.ts`). A real provider (TikTok API,
-/// scraping) plugs in behind the `TrendCollector` interface in a future PR.
+/// NO external API is wired yet: PR002 shipped a mock source and PR002.1
+/// prepared the multi-source architecture — every snapshot records its
+/// origin in `source` (`TrendSource`), and real providers (TikTok, Shopee,
+/// Instagram API) plug in behind the `TrendCollector` interface
+/// (`modules/trends/hunter/collectors/`) via `getCollector()` without a
+/// single caller change.
 model TrendSnapshot {
   id         String @id @default(cuid())
   keyword    String
@@ -423,6 +437,8 @@ model TrendSnapshot {
   shares     Int    @default(0)
   /** Weighted 0–100 score from `modules/trends/hunter/scorer.ts`. */
   trendScore Int    @default(0)
+  /** Origin of the snapshot (PR002.1). Defaults to MOCK so pre-PR002.1 rows keep their meaning. */
+  source     TrendSource @default(MOCK)
 
   // Tenant — REQUIRED. No domain record may exist without an Organization.
   organizationId String
@@ -435,6 +451,7 @@ model TrendSnapshot {
   @@index([organizationId, trendScore])
   @@index([organizationId, category])
   @@index([organizationId, createdAt])
+  @@index([organizationId, source])
 }
 
 /// Aggregated keyword frequency across collection runs (tenant-scoped
