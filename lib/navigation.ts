@@ -15,7 +15,7 @@ export interface NavItem {
  */
 export const sidebarNav: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Produtos", href: "/dashboard/products", icon: Package, planned: true },
+  { label: "Produtos", href: "/dashboard/products", icon: Package },
   { label: "Creators", href: "/dashboard/creators", icon: Users, planned: true },
   { label: "Campanhas", href: "/dashboard/campaigns", icon: Megaphone, planned: true },
   { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3, planned: true },

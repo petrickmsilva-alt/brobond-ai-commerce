@@ -4,27 +4,31 @@
 > Updated per PR. Source of truth for "what exists" vs. "what is planned".
 
 **Last updated:** 2026-09-22
-**Current PR:** PR000.2 — Tenant & Auth Hardening
-**Status:** completed
-**Branch:** `arena/01a0c903-brobond-ai-commerce`
-**Next PR:** PR001 — Products CRUD
+**Current PR:** PR001 — Product Intelligence Core
+**Status:** completed (awaiting review/merge)
+**Branch:** `arena/01a0c921-brobond-ai-commerce`
+**Next PR:** PR002 — Creators & TikTok Link
+
+> **Workflow (instituted in PR001):** no more direct merges to `main`.
+> Feature branch → Pull Request → human audit → approval → merge → Render deploy.
 
 ---
 
 ## 1. Snapshot
 
-| Aspect       | State                                                                          |
-| ------------ | ------------------------------------------------------------------------------ |
-| Stage        | Foundation (pre-feature)                                                       |
-| Architecture | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models)        |
-| Currency     | **BRL** (default across Product, Campaign, Sale)                               |
-| Auth         | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**     |
-| RBAC         | ADMIN > MANAGER > MEMBER with `requireRole/Admin/Manager` guards               |
-| Database     | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                    |
-| Migrations   | `20260922000000_init_multitenant` · `20260922120000_require_organization`      |
-| Tests        | Vitest — 51 unit tests (RBAC, session guards, tenancy, password hashing)       |
-| Deploy       | Render Blueprint (`render.yaml`) + GitHub Actions                              |
-| Build/CI     | ✅ green (ci → validate → generate → lint → typecheck → test → build → format) |
+| Aspect       | State                                                                                                    |
+| ------------ | -------------------------------------------------------------------------------------------------------- |
+| Stage        | First feature module shipped (Products)                                                                  |
+| Architecture | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models)                                  |
+| Modules      | `modules/commerce/products` — services / repositories / dto / pricing / validators                       |
+| Currency     | **BRL** (default across Product, Campaign, Sale) · money = integer cents · margin = basis points         |
+| Auth         | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**                               |
+| RBAC         | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura    |
+| Database     | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                                              |
+| Migrations   | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core`                          |
+| Tests        | Vitest — 114 unit tests (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage) |
+| Deploy       | Render Blueprint (`render.yaml`) + GitHub Actions                                                        |
+| Build/CI     | ✅ green (ci → validate → generate → lint → typecheck → test → build → format)                           |
 
 ---
 
@@ -130,27 +134,66 @@ Session guards — `lib/session.ts`:
 
 ## 5. Data Model
 
-| Model                             | Purpose                       | Tenant-scoped     |
-| --------------------------------- | ----------------------------- | ----------------- |
-| Organization                      | Tenant boundary               | — (is the tenant) |
-| User                              | Team members + roles          | ✅ required FK    |
-| Product                           | Catalog (BRL)                 | ✅ required FK    |
-| Creator                           | Creator roster                | ✅ required FK    |
-| Campaign                          | Orchestration (BRL)           | ✅ required FK    |
-| Message                           | Conversations                 | ↳ via relations   |
-| Sale                              | Revenue records (BRL)         | ↳ via relations   |
-| CampaignProduct                   | M:N join (campaign ⇄ product) | ↳ via campaign    |
-| CampaignCreator                   | M:N join (campaign ⇄ creator) | ↳ via campaign    |
-| Account/Session/VerificationToken | NextAuth adapter              | —                 |
+| Model                             | Purpose                             | Tenant-scoped     |
+| --------------------------------- | ----------------------------------- | ----------------- |
+| Organization                      | Tenant boundary                     | — (is the tenant) |
+| User                              | Team members + roles                | ✅ required FK    |
+| Product                           | Catalog (BRL, stock, cost, margin)  | ✅ required FK    |
+| ProductMedia                      | Product images/videos (PR001)       | ✅ required FK    |
+| ProductVariant                    | Sellable variations + stock (PR001) | ✅ required FK    |
+| ProductCost                       | Cost snapshots → margin (PR001)     | ✅ required FK    |
+| ProductMetric                     | Daily performance metrics (PR001)   | ✅ required FK    |
+| Creator                           | Creator roster                      | ✅ required FK    |
+| Campaign                          | Orchestration (BRL)                 | ✅ required FK    |
+| Message                           | Conversations                       | ↳ via relations   |
+| Sale                              | Revenue records (BRL)               | ↳ via relations   |
+| CampaignProduct                   | M:N join (campaign ⇄ product)       | ↳ via campaign    |
+| CampaignCreator                   | M:N join (campaign ⇄ creator)       | ↳ via campaign    |
+| Account/Session/VerificationToken | NextAuth adapter                    | —                 |
+
+### Product Intelligence Core (PR001)
+
+- **Money** is always integer cents; **margin** is integer basis points
+  (`3550` = 35,50%) so the dashboard sorts/filters by margin in SQL.
+- `Product.currentCostCents` / `Product.marginBps` are a **denormalized
+  snapshot** of the latest `ProductCost`, recomputed automatically by
+  `recalculatePricing()` on every price/cost mutation.
+- `Product.slug` and `Product.sku` are **tenant-scoped unique**
+  (`@@unique([organizationId, slug])`) — two organizations can reuse the same
+  slug. Slug is generated automatically from the name (`resolveUniqueSlug`,
+  `-2`/`-3`… on collision).
+- Variant stock rolls up into `Product.stockQuantity` when variants exist.
+- `ProductMetric` is idempotent per `(productId, date)` — safe re-ingestion
+  for the future analytics pipeline (PR006).
+
+### Module architecture (mandated from PR001 on)
+
+```
+modules/
+└── commerce/
+    └── products/
+        ├── services/       product / media / variant / cost / metric + media-storage (server-only)
+        ├── repositories/   tenant-scoped Prisma access — organizationId is ALWAYS the 1st arg
+        ├── dto/            serializable shapes crossing the RSC boundary
+        ├── pricing/        pure margin math (cents + bps) — fully unit-tested
+        └── validators/     Zod schemas + slug helpers — single source of truth for writes
+```
+
+**Upload de imagens — interface preparada:** `services/media-storage.ts`
+defines `MediaStorageProvider` (`createUploadTicket`/`remove`), size/type
+policy (10 MB, image mime allowlist) and a `not-configured` placeholder.
+Media is attached by URL today; a real provider (S3/R2/UploadThing) plugs in
+behind `getMediaStorage()` with zero caller changes.
 
 ---
 
 ## 6. Migrations
 
-| Migration                             | Purpose                                             |
-| ------------------------------------- | --------------------------------------------------- |
-| `20260922000000_init_multitenant`     | Initial schema (nullable `organizationId`)          |
-| `20260922120000_require_organization` | Promotes `organizationId` to `NOT NULL` on 4 models |
+| Migration                                  | Purpose                                                                                                      |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `20260922000000_init_multitenant`          | Initial schema (nullable `organizationId`)                                                                   |
+| `20260922120000_require_organization`      | Promotes `organizationId` to `NOT NULL` on 4 models                                                          |
+| `20260922180000_product_intelligence_core` | PR001: 4 new product tables, stock/cost/margin columns, tenant-scoped slug/SKU uniqueness, dashboard indexes |
 
 The PR000.2 migration is **safe and non-inventive**: it never fabricates an
 Organization and never guesses an owner. A `DO $$ … $$` guard counts tenant-less
@@ -162,15 +205,36 @@ correct tenant before re-running. On a fresh database the guard is a no-op.
 
 ## 7. Routes
 
-| Route         | Status | Notes                                                 |
-| ------------- | ------ | ----------------------------------------------------- |
-| `/`           | ✅     | Landing                                               |
-| `/login`      | ✅     | RHF + Zod → `loginAction` server action → Credentials |
-| `/dashboard`  | ✅     | App shell, KPI placeholders                           |
-| `/settings`   | ✅     | Profile + integrations status                         |
-| `/api/auth/*` | ✅     | NextAuth v5 handler (Credentials provider active)     |
+| Route                      | Status | Notes                                                                                  |
+| -------------------------- | ------ | -------------------------------------------------------------------------------------- |
+| `/`                        | ✅     | Landing                                                                                |
+| `/login`                   | ✅     | RHF + Zod → `loginAction` server action → Credentials                                  |
+| `/dashboard`               | ✅     | App shell, KPI placeholders                                                            |
+| `/dashboard/products`      | ✅     | PR001 — tabela paginada, busca, filtros (status/margem/preço/estoque), ordenação, KPIs |
+| `/dashboard/products/new`  | ✅     | PR001 — criação (ADMIN only)                                                           |
+| `/dashboard/products/[id]` | ✅     | PR001 — detalhe/edição, mídia, variações, custos & margem                              |
+| `/settings`                | ✅     | Profile + integrations status                                                          |
+| `/api/auth/*`              | ✅     | NextAuth v5 handler (Credentials provider active)                                      |
 
-Server action: `app/login/actions.ts` → `loginAction()` (generic error, no leak).
+Server actions:
+
+- `app/login/actions.ts` → `loginAction()` (generic error, no leak).
+- `app/dashboard/products/actions.ts` → 12 actions (product CRUD, media,
+  variants, costs, metrics). Every action resolves the tenant from the session
+  (`requireAdmin`/`requireManager`), re-validates with Zod, and returns a
+  uniform `ActionResult` (never throws to the client).
+
+### Products RBAC (PR001)
+
+| Ação                              | ADMIN | MANAGER | MEMBER |
+| --------------------------------- | ----- | ------- | ------ |
+| Criar produto                     | ✅    | ❌      | ❌     |
+| Editar (+ mídia/variações/custos) | ✅    | ✅      | ❌     |
+| Excluir produto                   | ✅    | ❌      | ❌     |
+| Visualizar                        | ✅    | ✅      | ✅     |
+
+Enforced twice: UI affordances hidden per role **and** re-asserted in every
+server action (`requireAdmin`/`requireManager`).
 
 ---
 
@@ -211,14 +275,20 @@ never passed to a client component:
 
 ## 9. Tests
 
-`npm test` (Vitest, `tests/`) — 51 unit tests, no database required:
+`npm test` (Vitest, `tests/`) — 114 unit tests, no database required:
 
-| File                     | Covers                                                                                                                                                      |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/rbac.test.ts`     | `hasRole`, `isAdmin`, `isManager`, `assertRole`, full hierarchy matrix                                                                                      |
-| `tests/session.test.ts`  | `getCurrentUser`, `getCurrentOrganization`, `requireUser`, `requireOrganization`, `requireRole`, `requireAdmin`, `requireManager`, no-secret-leak assertion |
-| `tests/tenant.test.ts`   | `tenantWhere`, `scopedWhere`, `assertSameTenant`, cross-tenant isolation (a caller-supplied `organizationId` cannot override the scope)                     |
-| `tests/password.test.ts` | bcrypt digest shape, salting, verification, no plaintext                                                                                                    |
+| File                               | Covers                                                                                                                                                      |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/rbac.test.ts`               | `hasRole`, `isAdmin`, `isManager`, `assertRole`, full hierarchy matrix                                                                                      |
+| `tests/session.test.ts`            | `getCurrentUser`, `getCurrentOrganization`, `requireUser`, `requireOrganization`, `requireRole`, `requireAdmin`, `requireManager`, no-secret-leak assertion |
+| `tests/tenant.test.ts`             | `tenantWhere`, `scopedWhere`, `assertSameTenant`, cross-tenant isolation (a caller-supplied `organizationId` cannot override the scope)                     |
+| `tests/password.test.ts`           | bcrypt digest shape, salting, verification, no plaintext                                                                                                    |
+| `tests/pricing.test.ts`            | PR001 — `totalCostCents`, `profitCents`, `marginBps` (rounding, zero price, negative margin), display helpers                                               |
+| `tests/slug.test.ts`               | PR001 — `baseSlug` (accents, fallback, length cap), `resolveUniqueSlug` (`-2`/`-3` collision handling, max length)                                          |
+| `tests/product-validators.test.ts` | PR001 — every Zod schema incl. hostile inputs (client-supplied `organizationId` is stripped; hostile sort fields fall back)                                 |
+| `tests/product-list-where.test.ts` | PR001 — dashboard filter builder always injects the tenant scope; throws without one                                                                        |
+| `tests/products-rbac.test.ts`      | PR001 — products RBAC matrix (ADMIN cria/edita/exclui · MANAGER edita · MEMBER leitura)                                                                     |
+| `tests/media-storage.test.ts`      | PR001 — upload policy (mime allowlist, 10 MB cap) + placeholder provider contract                                                                           |
 
 ---
 
@@ -232,6 +302,58 @@ never passed to a client component:
 ---
 
 ## 11. Changelog
+
+### PR001 — Product Intelligence Core (2026-09-22) — completed
+
+**Delivery workflow (instituted here):** feature branch → Pull Request →
+human audit → approval → merge → Render deploy. No direct merges to `main`.
+
+**Schema (migration `20260922180000_product_intelligence_core`)**
+
+- New models: `ProductMedia`, `ProductVariant`, `ProductCost`, `ProductMetric`
+  — all with a **required, denormalized `organizationId`** FK for direct
+  scoped queries.
+- `Product` gained `stockQuantity`, `currentCostCents`, `marginBps`
+  (denormalized snapshot) with dashboard indexes on
+  `(organizationId, status|marginBps|priceCents)`.
+- `Product.slug`/`sku` moved from global to **tenant-scoped** uniqueness.
+
+**Module (`modules/commerce/products/`)**
+
+- Mandated layout: `services/ · repositories/ · dto/ · pricing/ · validators/`.
+- Repositories: `organizationId` is the first argument of every function;
+  updates/deletes are `updateMany/deleteMany` under `scopedWhere` so a foreign
+  id can never match.
+- `pricing/margin.ts`: pure, unit-tested margin math (integer cents → bps).
+- **Cálculo automático de margem:** `recalculatePricing()` runs on every
+  price/cost mutation.
+- **Slug automático:** `resolveUniqueSlug` derives from the name, pt-BR
+  accents stripped, `-2`/`-3`… on tenant-scoped collision.
+- **Upload preparado:** `MediaStorageProvider` interface + policy + placeholder
+  (media by URL works today; binary provider is plug-in later).
+- Legacy `modules/products/products.service.ts` removed (superseded).
+
+**UI (`/dashboard/products`)**
+
+- Paginated table (URL-state) with busca (nome/slug/SKU, debounced), filtros
+  (status, margem mínima, preço máximo, estoque), ordenação por coluna
+  (nome/preço/margem/estoque), KPI cards (total, ativos, estoque, margem média).
+- Create page (ADMIN), detail page with edit form (MANAGER+), media gallery,
+  variants panel, cost history with automatic margin recalc badge.
+- RBAC-aware affordances; MEMBER gets a read-only view.
+
+**Server actions** — `app/dashboard/products/actions.ts`: 12 actions, all
+`requireAdmin`/`requireManager` + Zod + tenant-scoped services, uniform
+`ActionResult` envelope.
+
+**Tests** — +63 unit tests (114 total): pricing, slug, validators (hostile
+input), tenant filter builder, RBAC matrix, media-storage policy.
+
+**Misc**
+
+- `lib/prisma.ts`: optional `DATABASE_POOL_MAX` env to cap the pg pool.
+- Seed updated: tenant-scoped upsert key + initial cost snapshot with margin.
+- Sidebar: "Produtos" no longer flagged as planned.
 
 ### PR000.2 — Tenant & Auth Hardening (2026-09-22) — completed
 
@@ -296,9 +418,9 @@ never passed to a client component:
 | ------- | --------------------------------- | ------- |
 | PR000   | Bootstrap Foundation              | ✅ done |
 | PR000.1 | Architecture Hotfix               | ✅ done |
-| PR000.2 | Tenant & Auth Hardening           | ✅ this |
-| PR001   | Products CRUD                     | ⏭ next  |
-| PR002   | Creators & TikTok Link            | planned |
+| PR000.2 | Tenant & Auth Hardening           | ✅ done |
+| PR001   | Product Intelligence Core         | ✅ this |
+| PR002   | Creators & TikTok Link            | ⏭ next  |
 | PR003   | AI Assistant                      | planned |
 | PR004   | Campaign Engine                   | planned |
 | PR005   | Messaging & Inbox                 | planned |

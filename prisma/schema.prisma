@@ -65,6 +65,11 @@ enum SaleStatus {
   CANCELLED
 }
 
+enum ProductMediaType {
+  IMAGE
+  VIDEO
+}
+
 // ------------------------------------------------------------------
 // Tenancy
 // ------------------------------------------------------------------
@@ -82,6 +87,11 @@ model Organization {
   products  Product[]
   creators  Creator[]
   campaigns Campaign[]
+
+  productMedia    ProductMedia[]
+  productVariants ProductVariant[]
+  productCosts    ProductCost[]
+  productMetrics  ProductMetric[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -124,17 +134,32 @@ model User {
 model Product {
   id          String        @id @default(cuid())
   name        String
-  slug        String        @unique
+  slug        String
   description String?
-  sku         String?       @unique
+  sku         String?
   priceCents  Int           @default(0)
   currency    String        @default("BRL")
   imageUrl    String?
   status      ProductStatus @default(DRAFT)
 
+  /** Aggregate stock on hand (variant stock is tracked per ProductVariant). */
+  stockQuantity Int @default(0)
+
+  // Denormalized pricing snapshot — kept in sync by modules/commerce/products/pricing.
+  // `currentCostCents` mirrors the latest ProductCost total; `marginBps` is the
+  // gross margin in basis points (e.g. 3550 = 35.50%). Denormalized so the
+  // dashboard can sort/filter by margin at the database level.
+  currentCostCents Int @default(0)
+  marginBps        Int @default(0)
+
   // Tenant — REQUIRED. No domain record may exist without an Organization.
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  media    ProductMedia[]
+  variants ProductVariant[]
+  costs    ProductCost[]
+  metrics  ProductMetric[]
 
   campaigns CampaignProduct[]
   sales     Sale[]
@@ -142,8 +167,126 @@ model Product {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Tenant-scoped uniqueness: two organizations may reuse the same slug/SKU.
+  @@unique([organizationId, slug])
+  @@unique([organizationId, sku])
   @@index([status])
   @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, marginBps])
+  @@index([organizationId, priceCents])
+}
+
+/// Media asset (image/video) attached to a product. Upload flow is interface-
+/// prepared: `url` may point to any storage provider (PR00X wires the real
+/// uploader behind modules/commerce/products/services/media-storage.ts).
+model ProductMedia {
+  id       String           @id @default(cuid())
+  type     ProductMediaType @default(IMAGE)
+  url      String
+  altText  String?
+  position Int              @default(0)
+  /** Exactly one primary media per product is enforced at the service layer. */
+  isPrimary Boolean         @default(false)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Tenant — REQUIRED (denormalized for direct scoped queries).
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+  @@index([organizationId])
+}
+
+/// Sellable variation of a product (size, color, bundle…).
+model ProductVariant {
+  id         String  @id @default(cuid())
+  name       String
+  sku        String?
+  /** Override price. `null` inherits the parent product price. */
+  priceCents Int?
+  /** Override unit cost. `null` inherits the product's current cost. */
+  costCents  Int?
+  stockQuantity Int  @default(0)
+  isActive   Boolean @default(true)
+  position   Int     @default(0)
+  /** Free-form option map, e.g. { "size": "M", "color": "black" }. */
+  attributes Json?
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Tenant — REQUIRED (denormalized for direct scoped queries).
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, sku])
+  @@index([productId])
+  @@index([organizationId])
+}
+
+/// Cost snapshot for a product. The most recent record (by `effectiveFrom`)
+/// is the product's current cost; history is preserved for future analytics.
+model ProductCost {
+  id             String @id @default(cuid())
+  /** Unit acquisition/production cost. */
+  unitCents      Int    @default(0)
+  /** Inbound freight per unit. */
+  freightCents   Int    @default(0)
+  /** Packaging per unit. */
+  packagingCents Int    @default(0)
+  /** Marketplace/platform fees per unit. */
+  feesCents      Int    @default(0)
+  /** Anything else per unit. */
+  otherCents     Int    @default(0)
+  currency       String @default("BRL")
+  note           String?
+  effectiveFrom  DateTime @default(now())
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Tenant — REQUIRED (denormalized for direct scoped queries).
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId, effectiveFrom])
+  @@index([organizationId])
+}
+
+/// Daily performance metrics per product (views, clicks, conversions, revenue).
+model ProductMetric {
+  id           String   @id @default(cuid())
+  date         DateTime @db.Date
+  views        Int      @default(0)
+  clicks       Int      @default(0)
+  conversions  Int      @default(0)
+  unitsSold    Int      @default(0)
+  revenueCents Int      @default(0)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Tenant — REQUIRED (denormalized for direct scoped queries).
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, date])
+  @@index([organizationId, date])
 }
 
 model Creator {
