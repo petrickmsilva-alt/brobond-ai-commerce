@@ -4,9 +4,10 @@
 // ------------------------------------------------------------------
 
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
+  engineType = "client"
   // Uses the pg driver adapter (see lib/prisma.ts) — GA since Prisma 6.16,
-  // so no preview feature flag is required.
+  // so no preview feature flag or Rust query-engine binary is required.
 }
 
 datasource db {
@@ -51,6 +52,13 @@ enum CreatorSource {
   TIKTOK
   INSTAGRAM
   SHOPEE
+  MANUAL
+}
+
+enum CampaignAudienceType {
+  ALL
+  NICHE
+  SCORE
   MANUAL
 }
 
@@ -201,7 +209,9 @@ model Organization {
   connectorStatuses ConnectorStatus[]
   externalContents  ExternalContent[]
 
-  productMatches ProductMatch[]
+  productMatches    ProductMatch[]
+  campaignAudiences CampaignAudience[]
+  campaignRules     CampaignRule[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -278,7 +288,8 @@ model Product {
   sales            Sale[]
   outreachMessages OutreachMessage[]
 
-  productMatches ProductMatch[]
+  productMatches    ProductMatch[]
+  campaignAudiences CampaignAudience[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -475,7 +486,8 @@ model CreatorProfile {
   tags    CreatorTag[]
 
   campaigns        CampaignCreator[]
-  messages         Message[]         @relation("MessageCreator")
+  audiences        CampaignAudience[]
+  messages         Message[]          @relation("MessageCreator")
   sales            Sale[]
   outreachMessages OutreachMessage[]
 
@@ -541,15 +553,16 @@ model CreatorTag {
 }
 
 model Campaign {
-  id          String         @id @default(cuid())
-  name        String
-  slug        String         @unique
-  description String?
-  status      CampaignStatus @default(DRAFT)
-  budgetCents Int            @default(0)
-  currency    String         @default("BRL")
-  startsAt    DateTime?
-  endsAt      DateTime?
+  id           String               @id @default(cuid())
+  name         String
+  slug         String               @unique
+  description  String?
+  status       CampaignStatus       @default(DRAFT)
+  budgetCents  Int                  @default(0)
+  currency     String               @default("BRL")
+  startsAt     DateTime?
+  endsAt       DateTime?
+  audienceType CampaignAudienceType @default(SCORE)
 
   // Tenant — REQUIRED. No domain record may exist without an Organization.
   organizationId String
@@ -563,6 +576,8 @@ model Campaign {
   messages         Message[]
   sales            Sale[]
   outreachMessages OutreachMessage[]
+  audiences        CampaignAudience[]
+  rule             CampaignRule?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -935,6 +950,57 @@ model ProductMatch {
   @@unique([externalContentId, productId])
   @@index([organizationId])
   @@index([confidence])
+}
+
+// ------------------------------------------------------------------
+// Campaign Engine & deterministic creator matching (PR006)
+// ------------------------------------------------------------------
+
+/// One creator/product recommendation generated for a campaign. Scores are
+/// deterministic snapshots and can therefore be audited and reproduced.
+model CampaignAudience {
+  id String @id @default(cuid())
+
+  organizationId String
+  campaignId     String
+  creatorId      String
+  productId      String
+  matchScore     Int
+  recommended    Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign     Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creator      CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  product      Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, creatorId, productId])
+  @@index([organizationId, matchScore])
+  @@index([campaignId, recommended])
+  @@index([creatorId])
+  @@index([productId])
+}
+
+/// Eligibility policy for one campaign. Margin uses basis points, matching
+/// Product.marginBps; all scores are integers in the 0–100 range.
+model CampaignRule {
+  id String @id @default(cuid())
+
+  organizationId       String
+  campaignId           String  @unique
+  minimumCreatorScore  Int     @default(0)
+  minimumTrendScore    Int     @default(0)
+  minimumProductMargin Int     @default(0)
+  preferredNiche       String?
+  active               Boolean @default(true)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign     Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, active])
 }
 
 // ------------------------------------------------------------------

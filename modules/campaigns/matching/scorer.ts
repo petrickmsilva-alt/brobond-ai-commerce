@@ -68,3 +68,43 @@ export function calculateMatchConfidence(
   const clamped = Math.min(Math.max(points, 0), maxPoints);
   return Math.round((clamped / maxPoints) * 100) / 100;
 }
+
+// ------------------------------------------------------------------
+// PR006 — creator/product campaign score
+// ------------------------------------------------------------------
+
+export const CAMPAIGN_MATCH_WEIGHTS = {
+  trendScore: 0.3,
+  creatorScore: 0.3,
+  margin: 0.2,
+  nicheMatch: 0.2,
+} as const;
+
+export interface MatchScoreInput {
+  trendScore: number;
+  creatorScore: number;
+  /** Product gross margin as a normalized 0–100 percentage. */
+  margin: number;
+  /** Boolean shorthand or a normalized 0–100 affinity. */
+  nicheMatch: boolean | number;
+}
+
+function scoreComponent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(0, value));
+}
+
+/**
+ * Deterministic campaign affinity in [0, 100].
+ * Trend 30% · creator quality 30% · gross margin 20% · niche affinity 20%.
+ */
+export function calculateMatchScore(input: MatchScoreInput): number {
+  const niche =
+    typeof input.nicheMatch === "boolean" ? (input.nicheMatch ? 100 : 0) : input.nicheMatch;
+  const score =
+    scoreComponent(input.trendScore) * CAMPAIGN_MATCH_WEIGHTS.trendScore +
+    scoreComponent(input.creatorScore) * CAMPAIGN_MATCH_WEIGHTS.creatorScore +
+    scoreComponent(input.margin) * CAMPAIGN_MATCH_WEIGHTS.margin +
+    scoreComponent(niche) * CAMPAIGN_MATCH_WEIGHTS.nicheMatch;
+  return Math.round(score);
+}

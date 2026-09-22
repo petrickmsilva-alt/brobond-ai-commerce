@@ -30,6 +30,7 @@ import {
   MATCH_PARTIAL_WORD_POINTS,
   MATCH_SLUG_POINTS,
   calculateMatchConfidence,
+  calculateMatchScore,
 } from "./scorer";
 import type { MatchSourceName } from "./match-source";
 
@@ -332,4 +333,168 @@ export function matchProductsToContent(
   });
 
   return drafts;
+}
+
+// ------------------------------------------------------------------
+// PR006 — campaign creator recommendations
+// ------------------------------------------------------------------
+
+export interface MatchableCampaign {
+  id: string;
+  organizationId?: string;
+  audienceType?: "ALL" | "NICHE" | "SCORE" | "MANUAL";
+}
+
+export interface CampaignProductInput {
+  id: string;
+  name: string;
+  slug?: string;
+  marginBps: number;
+  niche?: string | null;
+}
+
+export interface CampaignCreatorInput {
+  id: string;
+  creatorScore: number;
+  niche: string;
+  organizationId?: string;
+}
+
+export interface CampaignProductMatchInput {
+  productId: string;
+  confidence: number;
+}
+
+export interface CampaignTrendInput {
+  trendScore: number;
+  category: string;
+  keyword?: string;
+}
+
+export interface CampaignMatchingRule {
+  minimumCreatorScore?: number;
+  minimumTrendScore?: number;
+  /** Basis points, e.g. 2500 = 25%. */
+  minimumProductMargin?: number;
+  preferredNiche?: string | null;
+  active?: boolean;
+}
+
+export interface CreatorRecommendation {
+  campaignId: string;
+  creatorId: string;
+  productId: string;
+  matchScore: number;
+  recommended: boolean;
+  trendScore: number;
+  creatorScore: number;
+  margin: number;
+  nicheMatch: boolean;
+  niche: string;
+}
+
+function normalizedLabel(value: string | null | undefined): string {
+  return normalizeMatchText(value ?? "");
+}
+
+function termsMatch(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+function trendForPair(
+  product: CampaignProductInput,
+  creator: CampaignCreatorInput,
+  trends: readonly CampaignTrendInput[],
+): CampaignTrendInput | undefined {
+  const labels = [product.niche, product.name, product.slug, creator.niche]
+    .map(normalizedLabel)
+    .filter(Boolean);
+  const related = trends.filter((trend) => {
+    const category = normalizedLabel(trend.category);
+    const keyword = normalizedLabel(trend.keyword);
+    return labels.some((label) => termsMatch(label, category) || termsMatch(label, keyword));
+  });
+  return [...(related.length ? related : trends)].sort((a, b) => {
+    if (a.trendScore !== b.trendScore) return b.trendScore - a.trendScore;
+    return `${a.category}:${a.keyword ?? ""}`.localeCompare(`${b.category}:${b.keyword ?? ""}`);
+  })[0];
+}
+
+/**
+ * Recommends creator/product pairs using only local, deterministic inputs.
+ * ProductMatch confidence attenuates the product's trend signal; it never
+ * invents data or performs network/provider calls.
+ */
+export function recommendCreators(
+  campaign: MatchableCampaign,
+  products: readonly CampaignProductInput[],
+  creators: readonly CampaignCreatorInput[],
+  productMatches: readonly CampaignProductMatchInput[],
+  trends: readonly CampaignTrendInput[],
+  rule: CampaignMatchingRule = {},
+): CreatorRecommendation[] {
+  if (rule.active === false || campaign.audienceType === "MANUAL") return [];
+
+  const confidenceByProduct = new Map<string, number>();
+  for (const match of productMatches) {
+    const confidence = Math.min(
+      1,
+      Math.max(0, Number.isFinite(match.confidence) ? match.confidence : 0),
+    );
+    confidenceByProduct.set(
+      match.productId,
+      Math.max(confidenceByProduct.get(match.productId) ?? 0, confidence),
+    );
+  }
+
+  const recommendations: CreatorRecommendation[] = [];
+  for (const product of products) {
+    const margin = Math.min(100, Math.max(0, product.marginBps / 100));
+    if (product.marginBps < (rule.minimumProductMargin ?? 0)) continue;
+    const relevance = productMatches.length === 0 ? 1 : (confidenceByProduct.get(product.id) ?? 0);
+    if (relevance === 0) continue;
+
+    for (const creator of creators) {
+      if (creator.creatorScore < (rule.minimumCreatorScore ?? 0)) continue;
+      const trend = trendForPair(product, creator, trends);
+      const trendScore = Math.round((trend?.trendScore ?? 0) * relevance);
+      if (trendScore < (rule.minimumTrendScore ?? 0)) continue;
+
+      const creatorNiche = normalizedLabel(creator.niche);
+      const preferred = normalizedLabel(rule.preferredNiche);
+      const productNiche = normalizedLabel(product.niche);
+      const trendNiche = normalizedLabel(trend?.category);
+      const nicheMatch = preferred
+        ? termsMatch(creatorNiche, preferred)
+        : termsMatch(creatorNiche, productNiche) || termsMatch(creatorNiche, trendNiche);
+      if (campaign.audienceType === "NICHE" && !nicheMatch) continue;
+
+      const matchScore = calculateMatchScore({
+        trendScore,
+        creatorScore: creator.creatorScore,
+        margin,
+        nicheMatch,
+      });
+      recommendations.push({
+        campaignId: campaign.id,
+        creatorId: creator.id,
+        productId: product.id,
+        matchScore,
+        recommended: true,
+        trendScore,
+        creatorScore: creator.creatorScore,
+        margin,
+        nicheMatch,
+        niche: creator.niche,
+      });
+    }
+  }
+
+  return recommendations.sort(
+    (a, b) =>
+      b.matchScore - a.matchScore ||
+      a.creatorId.localeCompare(b.creatorId) ||
+      a.productId.localeCompare(b.productId),
+  );
 }

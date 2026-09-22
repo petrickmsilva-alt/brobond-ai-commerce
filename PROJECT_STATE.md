@@ -4,10 +4,10 @@
 > Updated per PR. Source of truth for "what exists" vs. "what is planned".
 
 **Last updated:** 2026-09-22
-**Current PR:** PR005.1 — Product Match Architecture
+**Current PR:** PR006 — Campaign Engine & AI Matching
 **Status:** completed (awaiting review/merge — **no merge performed**)
-**Branch:** `arena/01a0caf8-brobond-ai-commerce` (Arena session branch; requested spec branch: `feature/pr005-1-product-match`)
-**Next PR:** PR006 — Campaign Engine
+**Branch:** `arena/01a0cb31-brobond-ai-commerce` (Arena session branch; requested spec branch: `feature/pr006-campaign-engine`)
+**Next PR:** PR007 — Analytics & Attribution
 
 > **Workflow (instituted in PR001):** no more direct merges to `main`.
 > Feature branch → Pull Request → human audit → approval → merge → Render deploy.
@@ -16,22 +16,22 @@
 
 ## 1. Snapshot
 
-| Aspect       | State                                                                                                                                                                                                                                               |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stage        | Connector Framework (PR005) + Product Match Architecture (PR005.1) shipped                                                                                                                                                                          |
-| Architecture | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models) · **multi-source trends** (PR002.1)                                                                                                                                         |
-| Modules      | `modules/commerce/products` — services / repositories / dto / pricing / validators                                                                                                                                                                  |
-|              | `modules/trends` — hunter (collectors / collector factory / scorer / scheduler) / repositories / dto / …                                                                                                                                            |
-|              | `modules/connectors` — core (interface / factory / validator / dto / repository / sync) + mock / tiktok / instagram / shopee (PR005)                                                                                                                |
-|              | `modules/campaigns` — matching (matcher / scorer / match-source) · repositories · dto · validators (PR005.1)                                                                                                                                        |
-| Currency     | **BRL** (default across Product, Campaign, Sale) · money = integer cents · margin = basis points                                                                                                                                                    |
-| Auth         | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**                                                                                                                                                                          |
-| RBAC         | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura                                                                                                                                               |
-| Database     | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                                                                                                                                                                                         |
-| Migrations   | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core` · `…_trend_hunter_ai` · `…_trend_source` · `…_creator_discovery_engine` · `…_outreach_ai_sales_pipeline` · `…_connector_framework` · `…_product_match_architecture` |
-| Tests        | Vitest — 893 unit tests (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage, trends, creators, outreach, connectors, matches)                                                                                           |
-| Deploy       | Render Blueprint (`render.yaml`) + GitHub Actions                                                                                                                                                                                                   |
-| Build/CI     | ✅ green (ci → validate → generate → lint → typecheck → test → build → format)                                                                                                                                                                      |
+| Aspect       | State                                                                                                                                                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stage        | Campaign Engine & AI Matching (PR006) shipped                                                                                                                                                                                                                             |
+| Architecture | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models) · **multi-source trends** (PR002.1)                                                                                                                                                               |
+| Modules      | `modules/commerce/products` — services / repositories / dto / pricing / validators                                                                                                                                                                                        |
+|              | `modules/trends` — hunter (collectors / collector factory / scorer / scheduler) / repositories / dto / …                                                                                                                                                                  |
+|              | `modules/connectors` — core (interface / factory / validator / dto / repository / sync) + mock / tiktok / instagram / shopee (PR005)                                                                                                                                      |
+|              | `modules/campaigns` — Campaign Engine · deterministic AI Matching · ROI Engine · Audience Builder · repositories · dto · validators (PR006)                                                                                                                               |
+| Currency     | **BRL** (default across Product, Campaign, Sale) · money = integer cents · margin = basis points                                                                                                                                                                          |
+| Auth         | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**                                                                                                                                                                                                |
+| RBAC         | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura                                                                                                                                                                     |
+| Database     | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                                                                                                                                                                                                               |
+| Migrations   | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core` · `…_trend_hunter_ai` · `…_trend_source` · `…_creator_discovery_engine` · `…_outreach_ai_sales_pipeline` · `…_connector_framework` · `…_product_match_architecture` · `…_campaign_engine` |
+| Tests        | Vitest — 1,017 unit tests (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage, trends, creators, outreach, connectors, matches)                                                                                                               |
+| Deploy       | Render Blueprint (`render.yaml`) + GitHub Actions                                                                                                                                                                                                                         |
+| Build/CI     | ✅ green (ci → validate → generate → lint → typecheck → test → build → format)                                                                                                                                                                                            |
 
 ---
 
@@ -150,7 +150,7 @@ Session guards — `lib/session.ts`:
 | TrendKeyword                      | Keyword frequency (PR002)                               | ✅ required FK    |
 | TrendCategory                     | Category score (PR002)                                  | ✅ required FK    |
 | CreatorProfile                    | Creator CRM (PR003: source, niche, score, pipeline)     | ✅ required FK    |
-| Campaign                          | Orchestration (BRL)                                     | ✅ required FK    |
+| Campaign                          | Orchestration + audience strategy (BRL)                 | ✅ required FK    |
 | Message                           | Conversations                                           | ↳ via relations   |
 | Sale                              | Revenue records (BRL)                                   | ↳ via relations   |
 | CampaignProduct                   | M:N join (campaign ⇄ product)                           | ↳ via campaign    |
@@ -159,6 +159,8 @@ Session guards — `lib/session.ts`:
 | ConnectorStatus                   | Per-platform connector state + counters (PR005)         | ✅ required FK    |
 | ExternalContent                   | Imported external content + dedupe (PR005)              | ✅ required FK    |
 | ProductMatch                      | Content ⇄ product correspondence + confidence (PR005.1) | ✅ required FK    |
+| CampaignAudience                  | Ranked creator/product recommendations (PR006)          | ✅ required FK    |
+| CampaignRule                      | Campaign eligibility thresholds (PR006)                 | ✅ required FK    |
 | CampaignCreator                   | M:N join (campaign ⇄ creator)                           | ↳ via campaign    |
 | Account/Session/VerificationToken | NextAuth adapter                                        | —                 |
 
@@ -176,6 +178,15 @@ Session guards — `lib/session.ts`:
 - Variant stock rolls up into `Product.stockQuantity` when variants exist.
 - `ProductMetric` is idempotent per `(productId, date)` — safe re-ingestion
   for the future analytics pipeline (PR006).
+
+### Campaign Engine & AI Matching (PR006)
+
+- `calculateMatchScore()` is deterministic: TrendScore 30% · CreatorScore 30% · margin 20% · niche 20%.
+- `recommendCreators()` ranks creator/product pairs using tenant-owned Campaign, Product, CreatorProfile, ProductMatch and TrendSnapshot data only.
+- `buildCampaign()` applies CampaignRule eligibility and persists CampaignAudience snapshots.
+- `estimateROI()` projects revenue, gross margin, commission, freight, profit and ROI%.
+- Dashboard `/dashboard/campaigns`: recommended creators, products, average score, projected ROI and audience table.
+- Seed: 5 campaigns and 200 recommendations produced by the real matcher. No OpenAI, TikTok integration, message sending, randomness or external call.
 
 ### Module architecture (mandated from PR001 on)
 
