@@ -98,6 +98,24 @@ enum TrendSource {
   MANUAL
 }
 
+/// Lifecycle of a generated outreach message. No status sends a real message
+/// in PR004: SENT is available for imported/manual delivery records only.
+enum OutreachStatus {
+  DRAFT
+  READY
+  SCHEDULED
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum TemplateType {
+  FIRST_CONTACT
+  FOLLOW_UP
+  NEGOTIATION
+  REENGAGEMENT
+}
+
 // ------------------------------------------------------------------
 // Tenancy
 // ------------------------------------------------------------------
@@ -106,9 +124,9 @@ enum TrendSource {
 // (users, products, creators, campaigns) belongs to exactly one
 // Organization, enabling multi-tenant data isolation.
 model Organization {
-  id     String @id @default(cuid())
-  name   String
-  slug   String @unique
+  id   String @id @default(cuid())
+  name String
+  slug String @unique
 
   // Tenant-scoped relations
   users     User[]
@@ -127,6 +145,10 @@ model Organization {
   creatorProfiles CreatorProfile[]
   creatorMetrics  CreatorMetric[]
   creatorTags     CreatorTag[]
+
+  outreachMessages  OutreachMessage[]
+  messageTemplates  MessageTemplate[]
+  followUpSequences FollowUpSequence[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -156,8 +178,9 @@ model User {
   sessions Session[]
 
   // Domain relations
-  campaigns Campaign[] @relation("CampaignOwner")
-  messages  Message[]  @relation("MessageAuthor")
+  campaigns        Campaign[]        @relation("CampaignOwner")
+  messages         Message[]         @relation("MessageAuthor")
+  outreachMessages OutreachMessage[] @relation("OutreachAuthor")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -177,7 +200,9 @@ model Product {
   imageUrl    String?
   status      ProductStatus @default(DRAFT)
 
-  /** Aggregate stock on hand (variant stock is tracked per ProductVariant). */
+  /**
+   * Aggregate stock on hand (variant stock is tracked per ProductVariant).
+   */
   stockQuantity Int @default(0)
 
   // Denormalized pricing snapshot — kept in sync by modules/commerce/products/pricing.
@@ -196,8 +221,9 @@ model Product {
   costs    ProductCost[]
   metrics  ProductMetric[]
 
-  campaigns CampaignProduct[]
-  sales     Sale[]
+  campaigns        CampaignProduct[]
+  sales            Sale[]
+  outreachMessages OutreachMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -216,13 +242,15 @@ model Product {
 /// prepared: `url` may point to any storage provider (PR00X wires the real
 /// uploader behind modules/commerce/products/services/media-storage.ts).
 model ProductMedia {
-  id       String           @id @default(cuid())
-  type     ProductMediaType @default(IMAGE)
-  url      String
-  altText  String?
-  position Int              @default(0)
-  /** Exactly one primary media per product is enforced at the service layer. */
-  isPrimary Boolean         @default(false)
+  id        String           @id @default(cuid())
+  type      ProductMediaType @default(IMAGE)
+  url       String
+  altText   String?
+  position  Int              @default(0)
+  /**
+   * Exactly one primary media per product is enforced at the service layer.
+   */
+  isPrimary Boolean          @default(false)
 
   productId String
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -240,18 +268,24 @@ model ProductMedia {
 
 /// Sellable variation of a product (size, color, bundle…).
 model ProductVariant {
-  id         String  @id @default(cuid())
-  name       String
-  sku        String?
-  /** Override price. `null` inherits the parent product price. */
-  priceCents Int?
-  /** Override unit cost. `null` inherits the product's current cost. */
-  costCents  Int?
-  stockQuantity Int  @default(0)
-  isActive   Boolean @default(true)
-  position   Int     @default(0)
-  /** Free-form option map, e.g. { "size": "M", "color": "black" }. */
-  attributes Json?
+  id            String  @id @default(cuid())
+  name          String
+  sku           String?
+  /**
+   * Override price. `null` inherits the parent product price.
+   */
+  priceCents    Int?
+  /**
+   * Override unit cost. `null` inherits the product's current cost.
+   */
+  costCents     Int?
+  stockQuantity Int     @default(0)
+  isActive      Boolean @default(true)
+  position      Int     @default(0)
+  /**
+   * Free-form option map, e.g. { "size": "M", "color": "black" }.
+   */
+  attributes    Json?
 
   productId String
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -271,18 +305,28 @@ model ProductVariant {
 /// Cost snapshot for a product. The most recent record (by `effectiveFrom`)
 /// is the product's current cost; history is preserved for future analytics.
 model ProductCost {
-  id             String @id @default(cuid())
-  /** Unit acquisition/production cost. */
-  unitCents      Int    @default(0)
-  /** Inbound freight per unit. */
-  freightCents   Int    @default(0)
-  /** Packaging per unit. */
-  packagingCents Int    @default(0)
-  /** Marketplace/platform fees per unit. */
-  feesCents      Int    @default(0)
-  /** Anything else per unit. */
-  otherCents     Int    @default(0)
-  currency       String @default("BRL")
+  id             String   @id @default(cuid())
+  /**
+   * Unit acquisition/production cost.
+   */
+  unitCents      Int      @default(0)
+  /**
+   * Inbound freight per unit.
+   */
+  freightCents   Int      @default(0)
+  /**
+   * Packaging per unit.
+   */
+  packagingCents Int      @default(0)
+  /**
+   * Marketplace/platform fees per unit.
+   */
+  feesCents      Int      @default(0)
+  /**
+   * Anything else per unit.
+   */
+  otherCents     Int      @default(0)
+  currency       String   @default("BRL")
   note           String?
   effectiveFrom  DateTime @default(now())
 
@@ -331,28 +375,42 @@ model ProductMetric {
 /// The campaign/message/sale relations keep their original field names
 /// (`creatorId`) — only the referenced type changed.
 model CreatorProfile {
-  id          String        @id @default(cuid())
+  id          String  @id @default(cuid())
   handle      String
   displayName String
   avatarUrl   String?
   bio         String?
   email       String?
 
-  followers Int @default(0)
-  /** Average views per post (denormalized for dashboard sorting). */
-  avgViews   Int @default(0)
-  /** Engagement rate in percent, e.g. 8.4 = 8.4%. */
-  engagementRate Float @default(0)
-  /** Content niche — one of `CREATOR_NICHES` (mock/CRM validated). */
-  niche      String
-  /** Weighted 0–100 score (modules/creators/discovery/scorer.ts). */
-  creatorScore Int @default(0)
-  /** CRM pipeline status. */
-  status     CreatorStatus @default(NEW)
-  /** Origin of the profile (discovery source or MANUAL). */
-  source     CreatorSource @default(MOCK)
-  /** Identifier on the source platform. `null` for MANUAL profiles. */
-  externalId String?
+  followers      Int           @default(0)
+  /**
+   * Average views per post (denormalized for dashboard sorting).
+   */
+  avgViews       Int           @default(0)
+  /**
+   * Engagement rate in percent, e.g. 8.4 = 8.4%.
+   */
+  engagementRate Float         @default(0)
+  /**
+   * Content niche — one of `CREATOR_NICHES` (mock/CRM validated).
+   */
+  niche          String
+  /**
+   * Weighted 0–100 score (modules/creators/discovery/scorer.ts).
+   */
+  creatorScore   Int           @default(0)
+  /**
+   * CRM pipeline status.
+   */
+  status         CreatorStatus @default(NEW)
+  /**
+   * Origin of the profile (discovery source or MANUAL).
+   */
+  source         CreatorSource @default(MOCK)
+  /**
+   * Identifier on the source platform. `null` for MANUAL profiles.
+   */
+  externalId     String?
 
   // Tenant — REQUIRED. No domain record may exist without an Organization.
   organizationId String
@@ -361,9 +419,10 @@ model CreatorProfile {
   metrics CreatorMetric[]
   tags    CreatorTag[]
 
-  campaigns CampaignCreator[]
-  messages  Message[]         @relation("MessageCreator")
-  sales     Sale[]
+  campaigns        CampaignCreator[]
+  messages         Message[]         @relation("MessageCreator")
+  sales            Sale[]
+  outreachMessages OutreachMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -383,12 +442,12 @@ model CreatorProfile {
 /// Daily performance snapshot of a creator (PR003). One row per creator per
 /// day — the discovery scheduler upserts today's row on every run.
 model CreatorMetric {
-  id   String   @id @default(cuid())
-  date DateTime @db.Date
-  views     Int @default(0)
-  likes     Int @default(0)
-  shares    Int @default(0)
-  followers Int @default(0)
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  views     Int      @default(0)
+  likes     Int      @default(0)
+  shares    Int      @default(0)
+  followers Int      @default(0)
 
   creatorProfileId String
   creatorProfile   CreatorProfile @relation(fields: [creatorProfileId], references: [id], onDelete: Cascade)
@@ -444,10 +503,11 @@ model Campaign {
   ownerId String?
   owner   User?   @relation("CampaignOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
-  products CampaignProduct[]
-  creators CampaignCreator[]
-  messages Message[]
-  sales    Sale[]
+  products         CampaignProduct[]
+  creators         CampaignCreator[]
+  messages         Message[]
+  sales            Sale[]
+  outreachMessages OutreachMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -523,15 +583,19 @@ model Sale {
 /// (`modules/trends/hunter/collectors/`) via `getCollector()` without a
 /// single caller change.
 model TrendSnapshot {
-  id         String @id @default(cuid())
+  id         String      @id @default(cuid())
   keyword    String
   category   String
-  views      Int    @default(0)
-  likes      Int    @default(0)
-  shares     Int    @default(0)
-  /** Weighted 0–100 score from `modules/trends/hunter/scorer.ts`. */
-  trendScore Int    @default(0)
-  /** Origin of the snapshot (PR002.1). Defaults to MOCK so pre-PR002.1 rows keep their meaning. */
+  views      Int         @default(0)
+  likes      Int         @default(0)
+  shares     Int         @default(0)
+  /**
+   * Weighted 0–100 score from `modules/trends/hunter/scorer.ts`.
+   */
+  trendScore Int         @default(0)
+  /**
+   * Origin of the snapshot (PR002.1). Defaults to MOCK so pre-PR002.1 rows keep their meaning.
+   */
   source     TrendSource @default(MOCK)
 
   // Tenant — REQUIRED. No domain record may exist without an Organization.
@@ -553,7 +617,9 @@ model TrendSnapshot {
 model TrendKeyword {
   id        String @id @default(cuid())
   keyword   String
-  /** How many times the keyword has been seen across collection runs. */
+  /**
+   * How many times the keyword has been seen across collection runs.
+   */
   frequency Int    @default(1)
 
   // Tenant — REQUIRED. No domain record may exist without an Organization.
@@ -583,6 +649,86 @@ model TrendCategory {
 
   @@unique([organizationId, name])
   @@index([organizationId, score])
+}
+
+// ------------------------------------------------------------------
+// Outreach AI & Sales Pipeline (PR004)
+// ------------------------------------------------------------------
+
+model MessageTemplate {
+  id      String       @id @default(cuid())
+  name    String
+  type    TemplateType
+  content String
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  messages          OutreachMessage[]
+  followUpSequences FollowUpSequence[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId, type])
+}
+
+model OutreachMessage {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  creatorId String
+  creator   CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  templateId String
+  template   MessageTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+
+  status        OutreachStatus @default(DRAFT)
+  generatedText String
+  scheduledFor  DateTime?
+  sentAt        DateTime?
+
+  createdById String?
+  createdBy   User?   @relation("OutreachAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, status])
+  @@index([organizationId, scheduledFor])
+  @@index([creatorId])
+  @@index([productId])
+  @@index([campaignId])
+  @@index([templateId])
+}
+
+model FollowUpSequence {
+  id        String  @id @default(cuid())
+  name      String
+  daysAfter Int
+  active    Boolean @default(true)
+
+  templateId String
+  template   MessageTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId, active, daysAfter])
+  @@index([templateId])
 }
 
 // ------------------------------------------------------------------

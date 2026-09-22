@@ -21,6 +21,9 @@ import {
   CreatorSource,
   CreatorStatus,
   TrendSource,
+  OutreachStatus,
+  TemplateType,
+  type MessageTemplate,
 } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
@@ -29,6 +32,8 @@ import { scoreTrend } from "../modules/trends/hunter/scorer";
 import { normalizeKeyword } from "../modules/trends/validators/trend.validator";
 import { MOCK_CREATOR_CANDIDATES } from "../modules/creators/discovery/collectors";
 import { scoreCreator } from "../modules/creators/discovery/scorer";
+import { OUTREACH_TEMPLATES } from "../modules/outreach/prompts/templates";
+import { generateOutreachMessage } from "../modules/outreach/prompts/generator";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -234,6 +239,98 @@ async function main() {
         data: { campaignId: campaign.id, creatorId: anchor.id },
       });
     }
+  }
+
+  // PR004 — 8 tenant templates + 63 outbox records. This is deterministic,
+  // idempotent and only uses the local template engine (no provider/network).
+  const seededTemplates: MessageTemplate[] = [];
+  for (const definition of OUTREACH_TEMPLATES) {
+    seededTemplates.push(
+      await prisma.messageTemplate.upsert({
+        where: {
+          organizationId_name: { organizationId: organization.id, name: definition.name },
+        },
+        update: { type: TemplateType[definition.type], content: definition.content },
+        create: {
+          ...definition,
+          type: TemplateType[definition.type],
+          organizationId: organization.id,
+        },
+      }),
+    );
+  }
+
+  const followUpTemplates = seededTemplates.filter((template) => template.type === "FOLLOW_UP");
+  for (const [index, daysAfter] of [3, 7, 15].entries()) {
+    const template = followUpTemplates[index % followUpTemplates.length]!;
+    await prisma.followUpSequence.upsert({
+      where: {
+        organizationId_name: {
+          organizationId: organization.id,
+          name: `Follow-up +${daysAfter} dias`,
+        },
+      },
+      update: { daysAfter, templateId: template.id, active: true },
+      create: {
+        name: `Follow-up +${daysAfter} dias`,
+        daysAfter,
+        templateId: template.id,
+        active: true,
+        organizationId: organization.id,
+      },
+    });
+  }
+
+  const existingOutreach = await prisma.outreachMessage.count({
+    where: { organizationId: organization.id },
+  });
+  if (existingOutreach === 0) {
+    const creators = await prisma.creatorProfile.findMany({
+      where: { organizationId: organization.id },
+      orderBy: { creatorScore: "desc" },
+      take: 63,
+    });
+    const trend = await prisma.trendSnapshot.findFirst({
+      where: { organizationId: organization.id },
+      orderBy: { trendScore: "desc" },
+    });
+    const statuses: OutreachStatus[] = [
+      ...Array<OutreachStatus>(40).fill(OutreachStatus.DRAFT),
+      ...Array<OutreachStatus>(15).fill(OutreachStatus.SCHEDULED),
+      ...Array<OutreachStatus>(5).fill(OutreachStatus.SENT),
+      ...Array<OutreachStatus>(3).fill(OutreachStatus.FAILED),
+    ];
+    const now = new Date();
+    await prisma.outreachMessage.createMany({
+      data: statuses.map((status, index) => {
+        const creator = creators[index % creators.length]!;
+        const template = seededTemplates[index % seededTemplates.length]!;
+        const scheduledFor =
+          status === OutreachStatus.SCHEDULED
+            ? new Date(now.getTime() + (index + 1) * 3_600_000)
+            : null;
+        const sentAt =
+          status === OutreachStatus.SENT ? new Date(now.getTime() - (index + 1) * 3_600_000) : null;
+        return {
+          organizationId: organization.id,
+          creatorId: creator.id,
+          productId: product.id,
+          campaignId: campaign.id,
+          templateId: template.id,
+          createdById: admin.id,
+          status,
+          scheduledFor,
+          sentAt,
+          generatedText: generateOutreachMessage({
+            creator,
+            product,
+            campaign,
+            trend: trend ?? { keyword: creator.niche },
+            template: template.content,
+          }),
+        };
+      }),
+    });
   }
 
   // PR002 — Trend Hunter AI: 30 seeded trend snapshots via the real pipeline

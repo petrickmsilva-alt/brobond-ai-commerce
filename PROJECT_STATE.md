@@ -4,10 +4,10 @@
 > Updated per PR. Source of truth for "what exists" vs. "what is planned".
 
 **Last updated:** 2026-09-22
-**Current PR:** PR003 — Creator Discovery Engine
+**Current PR:** PR004 — Outreach AI & Sales Pipeline
 **Status:** completed (awaiting review/merge)
-**Branch:** `arena/01a0ca46-brobond-ai-commerce` (PR head — spec branch: `feature/pr003-creator-discovery`)
-**Next PR:** PR004 — AI Assistant
+**Branch:** `arena/01a0caa7-brobond-ai-commerce` (Arena session branch; requested spec branch: `feature/pr004-outreach-ai`)
+**Next PR:** PR005 — Campaign Engine
 
 > **Workflow (instituted in PR001):** no more direct merges to `main`.
 > Feature branch → Pull Request → human audit → approval → merge → Render deploy.
@@ -417,7 +417,7 @@ never passed to a client component:
 
 ## 9. Tests
 
-`npm test` (Vitest, `tests/`) — 503 unit tests, no database required:
+`npm test` (Vitest, `tests/`) — 650+ unit tests, no database required:
 
 | File                               | Covers                                                                                                                                                       |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -711,9 +711,9 @@ input), tenant filter builder, RBAC matrix, media-storage policy.
 | PR001                              | Product Intelligence Core         | ✅ done |
 | PR002                              | Trend Hunter AI                   | ✅ done |
 | PR002.1                            | Multi-Source Data Architecture    | ✅ done |
-| PR003                              | Creator Discovery Engine          | ✅ this |
-| PR004                              | AI Assistant                      | ⏭ next  |
-| PR005                              | Campaign Engine                   | planned |
+| PR003                              | Creator Discovery Engine          | ✅ done |
+| PR004                              | Outreach AI & Sales Pipeline      | ✅ this |
+| PR005                              | Campaign Engine                   | ⏭ next  |
 | PR006                              | Messaging & Inbox                 | planned |
 | PR007                              | Analytics & Reporting             | planned |
 | PR008                              | Billing & Multi-tenancy hardening | planned |
@@ -764,9 +764,41 @@ input), tenant filter builder, RBAC matrix, media-storage policy.
 | PR001   | Product Intelligence Core         | ✅ done |
 | PR002   | Trend Hunter AI                   | ✅ done |
 | PR002.1 | Multi-Source Data Architecture    | ✅ done |
-| PR003   | Creator Discovery Engine          | ✅ this |
-| PR004   | AI Assistant                      | ⏭ next  |
-| PR005   | Campaign Engine                   | planned |
+| PR003   | Creator Discovery Engine          | ✅ done |
+| PR004   | Outreach AI & Sales Pipeline      | ✅ this |
+| PR005   | Campaign Engine                   | ⏭ next  |
 | PR006   | Messaging & Inbox                 | planned |
 | PR007   | Analytics & Reporting             | planned |
 | PR008   | Billing & Multi-tenancy hardening | planned |
+
+## PR004 — Outreach AI & Sales Pipeline (2026-09-22)
+
+### Status: implemented
+
+- **Outreach AI:** `/dashboard/outreach` includes five KPIs, tenant-scoped outbox, creator/product/template data, and message actions.
+- **Prompt Engine:** deterministic `generateOutreachMessage()` with no OpenAI, provider SDK, `eval`, scraping, or network call.
+- **Templates:** 8 workspace templates: 3 `FIRST_CONTACT`, 2 `FOLLOW_UP`, 2 `NEGOTIATION`, 1 `REENGAGEMENT`.
+- **Outbox:** `createDraft`, `scheduleMessage`, `cancelMessage`, `listOutbox`, and `stats`; every operation requires `organizationId`.
+- **Follow-up:** 1st contact and +3/+7/+15-day cadence generated as DRAFT payloads.
+- **Scheduler:** due scheduled records become `READY`; PR004 never sends a message or marks it `SENT` automatically.
+- **Editor:** live preview, character counter, save, regenerate, schedule, and cancel through server actions.
+- **RBAC:** ADMIN manages templates/cancellation/scheduling; MANAGER generates, edits, regenerates and schedules; MEMBER is read-only.
+- **Prisma:** `OutreachStatus`, `TemplateType`, `OutreachMessage`, `MessageTemplate`, and `FollowUpSequence`, all tenant-scoped.
+- **Seed:** 8 templates, 40 drafts, 15 scheduled, 5 sent fixtures, and 3 failed fixtures, using existing creators/products.
+- **Integrations explicitly excluded:** WhatsApp, TikTok, Instagram, real delivery and OpenAI.
+
+### PR004 module layout
+
+```text
+modules/outreach/
+├── prompts/       generator.ts · templates.ts · variables.ts
+├── queue/         outbox.repository.ts · scheduler.ts
+├── crm/           followup.ts
+├── dto/           create-message.dto.ts
+├── validators/    outreach.validator.ts
+└── interfaces/    outreach.interface.ts
+```
+
+### Next: PR005
+
+Delivery-provider interfaces, campaign automation and delivery observability may consume `READY` outbox records. PR005 must keep providers behind adapters and must not bypass tenant scope, server-side RBAC, consent or audit controls.
