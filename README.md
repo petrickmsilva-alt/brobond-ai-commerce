@@ -573,3 +573,43 @@ o dashboard já estão prontos e testados.
 ## License
 
 Proprietary © Brobond. All rights reserved.
+
+## Outreach AI (PR004)
+
+PR004 adds a deterministic, tenant-scoped sales-outreach pipeline. It does **not**
+integrate WhatsApp, TikTok or Instagram, does not send real messages, and does
+not use OpenAI. Text generation is entirely based on reviewed templates.
+
+### Architecture
+
+```text
+modules/outreach/
+├── prompts/       template catalog, safe variable parser and generator
+├── queue/         tenant-scoped outbox repository and due-message scheduler
+├── crm/           first contact / +3 / +7 / +15 follow-up cadence
+├── dto/           server boundary data contracts
+├── validators/    Zod validation and variable allowlist
+└── interfaces/    client-safe statuses and Prompt Engine contracts
+```
+
+Prisma persists `MessageTemplate`, `OutreachMessage` and `FollowUpSequence`.
+`organizationId` is mandatory and indexed on every aggregate root. The outbox
+scheduler only promotes due `SCHEDULED` records to `READY`; it never transmits
+or automatically marks a record `SENT`.
+
+### Flow
+
+1. ADMIN seeds or creates a validated template using the five supported tokens.
+2. MANAGER chooses creator, product, campaign and template.
+3. `generateOutreachMessage()` replaces `creatorName`, `niche`, `productName`,
+   `campaignName` and `trendKeyword`, then stores a `DRAFT`.
+4. The server-action editor offers live preview, character count and deterministic
+   regeneration. A MANAGER can schedule; an ADMIN can cancel.
+5. MEMBER has read-only dashboard access. Every query is tenant-scoped.
+
+### Roadmap PR005
+
+PR005 may add delivery-provider adapters, campaign automation, audit trails and
+observability for `READY` records. Real channels and AI providers must remain
+opt-in adapters with consent, rate limiting and tenant isolation; none are part
+of PR004.
