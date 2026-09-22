@@ -5,7 +5,7 @@ import type {
   TrendCollector,
   TrendSignal,
 } from "@/modules/trends/interfaces/trend.interface";
-import type { TrendSnapshot } from "@prisma/client";
+import { TrendSource, type TrendSnapshot } from "@prisma/client";
 import {
   collectDailyTrendsJob,
   createCollectDailyTrendsJob,
@@ -45,9 +45,13 @@ function signal(overrides: Partial<TrendSignal> = {}): TrendSignal {
 }
 
 function fakeCollector(signals: TrendSignal[], spy = vi.fn()) {
+  // Modern PR002.1 shape: collect() plus the retrocompatible alias. (The
+  // legacy collectDailyTrends-only shape is covered explicitly below.)
+  const collect = spy.mockResolvedValue(signals);
   const collector: TrendCollector = {
-    source: "test",
-    collectDailyTrends: spy.mockResolvedValue(signals),
+    source: TrendSource.MOCK,
+    collect,
+    collectDailyTrends: collect,
   };
   return { collector, spy };
 }
@@ -164,6 +168,7 @@ describe("collect-daily-trends — execution flow", () => {
       likes: 200_000,
       shares: 30_000,
       trendScore: calculateTrendScore(camisaSignal),
+      source: TrendSource.MOCK, // PR002.1 — stamped with the collector's source
     });
     expect(log.snapshots[1]?.keyword).toBe("polo slim");
   });
@@ -229,9 +234,11 @@ describe("collect-daily-trends — execution flow", () => {
 
 describe("collect-daily-trends — failure handling", () => {
   it("returns a failed result (never throws) when the collector errors", async () => {
+    const failing = vi.fn().mockRejectedValue(new Error("boom na fonte"));
     const collector: TrendCollector = {
-      source: "broken",
-      collectDailyTrends: vi.fn().mockRejectedValue(new Error("boom na fonte")),
+      source: TrendSource.TIKTOK,
+      collect: failing,
+      collectDailyTrends: failing,
     };
     const { repository } = fakeRepository();
     const job = createCollectDailyTrendsJob({ collector, repository });
@@ -284,5 +291,87 @@ describe("collect-daily-trends — failure handling", () => {
     expect(result.status).toBe("failed");
     expect(result.snapshotsCreated).toBe(1);
     expect(result.error).toContain("falha no segundo snapshot");
+  });
+});
+
+// ------------------------------------------------------------------
+// PR002.1 — Multi-Source Data Architecture
+// ------------------------------------------------------------------
+
+describe("PR002.1 — multi-source architecture", () => {
+  it("the default source is MOCK — the job behaves exactly as in PR002", async () => {
+    // No collector and no source injected: the factory resolves MOCK.
+    const { repository, log } = fakeRepository();
+    const job = createCollectDailyTrendsJob({ repository });
+
+    const result = await job.execute(ORG);
+
+    expect(result.status).toBe("success");
+    expect(result.snapshotsCreated).toBe(30);
+    expect(result.source).toBe(TrendSource.MOCK);
+    expect(log.snapshots.every((snapshot) => snapshot.source === TrendSource.MOCK)).toBe(true);
+  });
+
+  it("collectDailyTrends(TrendSource.MOCK) resolves the MockCollector through the factory", async () => {
+    const { repository, log } = fakeRepository();
+    const job = createCollectDailyTrendsJob({ source: TrendSource.MOCK, repository });
+
+    const result = await job.execute(ORG);
+
+    expect(result.status).toBe("success");
+    expect(log.snapshots).toHaveLength(30);
+    expect(result.source).toBe("MOCK");
+  });
+
+  it("a placeholder source (TIKTOK) fails gracefully — 'Not implemented', never a throw", async () => {
+    const { repository, log } = fakeRepository();
+    const job = createCollectDailyTrendsJob({ source: TrendSource.TIKTOK, repository });
+
+    const result = await job.execute(ORG);
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("Not implemented");
+    expect(result.snapshotsCreated).toBe(0);
+    expect(log.snapshots).toHaveLength(0); // nothing persisted on failure
+    expect(result.source).toBe(TrendSource.TIKTOK);
+  });
+
+  it("every persisted snapshot is stamped with the collector's source", async () => {
+    const collector: TrendCollector = {
+      source: TrendSource.INSTAGRAM,
+      collect: vi.fn().mockResolvedValue([signal({ keyword: "regata fitness" })]),
+    };
+    const { repository, log } = fakeRepository();
+    const job = createCollectDailyTrendsJob({ collector, repository });
+
+    const result = await job.execute(ORG);
+
+    expect(result.status).toBe("success");
+    expect(result.snapshotsCreated).toBe(1);
+    expect(log.snapshots[0]?.source).toBe(TrendSource.INSTAGRAM);
+    expect(result.source).toBe(TrendSource.INSTAGRAM);
+  });
+
+  it("legacy PR002 collectors (collectDailyTrends only) keep working", async () => {
+    // PR002-era implementations had no collect() — the adapter falls back.
+    const legacy = {
+      source: TrendSource.MOCK,
+      collectDailyTrends: vi.fn().mockResolvedValue([signal()]),
+    } as unknown as TrendCollector;
+    const { repository, log } = fakeRepository();
+    const job = createCollectDailyTrendsJob({ collector: legacy, repository });
+
+    const result = await job.execute(ORG);
+
+    expect(result.status).toBe("success");
+    expect(result.snapshotsCreated).toBe(1);
+    expect(log.snapshots[0]?.source).toBe(TrendSource.MOCK);
+  });
+
+  it("MANUAL cannot be collected — the factory throws at job construction", () => {
+    const { repository } = fakeRepository();
+    expect(() => createCollectDailyTrendsJob({ source: TrendSource.MANUAL, repository })).toThrow(
+      /MANUAL/,
+    );
   });
 });

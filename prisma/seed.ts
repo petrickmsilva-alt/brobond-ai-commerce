@@ -14,7 +14,7 @@
  * `SEED_ADMIN_PASSWORD` is not set, the admin is created WITHOUT a password
  * (credentials login disabled for that account) — no password is invented.
  */
-import { PrismaClient, UserRole, ProductStatus, CreatorStatus } from "@prisma/client";
+import { PrismaClient, UserRole, ProductStatus, CreatorStatus, TrendSource } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 import { MOCK_TREND_SIGNALS } from "../modules/trends/hunter/collector";
@@ -154,6 +154,8 @@ async function main() {
         likes: trend.likes,
         shares: trend.shares,
         trendScore: trend.trendScore,
+        // PR002.1 — seeded snapshots come from the mock pipeline.
+        source: TrendSource.MOCK,
         organizationId: organization.id,
       })),
     });

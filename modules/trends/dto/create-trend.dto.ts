@@ -1,5 +1,6 @@
-import type { TrendCategory, TrendKeyword, TrendSnapshot } from "@prisma/client";
+import type { TrendCategory, TrendKeyword, TrendSnapshot, TrendSource } from "@prisma/client";
 import type { TrendSignal } from "../interfaces/trend.interface";
+import { DEFAULT_TREND_SOURCE } from "../interfaces/trend.interface";
 import { calculateTrendScore } from "../hunter/scorer";
 
 /**
@@ -19,14 +20,26 @@ export interface CreateTrendDTO {
   likes: number;
   shares: number;
   trendScore: number;
+  /**
+   * Origin of the snapshot (PR002.1). Optional for retrocompatibility —
+   * when omitted the database default (`MOCK`) applies.
+   */
+  source?: TrendSource;
 }
 
 /**
  * Map a raw signal to its persistence payload, scoring it with the score
  * engine unless an explicit score is supplied (the scheduler passes the
  * already-computed score; the score is NEVER trusted from a client).
+ *
+ * `source` (PR002.1) records where the signal came from — it defaults to
+ * `MOCK` so pre-PR002.1 callers behave exactly as before.
  */
-export function toCreateTrendDTO(signal: TrendSignal, trendScore?: number): CreateTrendDTO {
+export function toCreateTrendDTO(
+  signal: TrendSignal,
+  trendScore?: number,
+  source: TrendSource = DEFAULT_TREND_SOURCE,
+): CreateTrendDTO {
   return {
     keyword: signal.keyword,
     category: signal.category,
@@ -34,6 +47,7 @@ export function toCreateTrendDTO(signal: TrendSignal, trendScore?: number): Crea
     likes: signal.likes,
     shares: signal.shares,
     trendScore: trendScore ?? calculateTrendScore(signal),
+    source,
   };
 }
 
@@ -46,6 +60,8 @@ export interface TrendSnapshotItemDTO {
   likes: number;
   shares: number;
   trendScore: number;
+  /** Origin of the snapshot (PR002.1) — powers the "Origem" filter. */
+  source: TrendSource;
   createdAt: string; // ISO — serializable across the RSC boundary
   updatedAt: string;
 }
@@ -95,6 +111,7 @@ export function toTrendSnapshotDTO(snapshot: TrendSnapshot): TrendSnapshotItemDT
     likes: snapshot.likes,
     shares: snapshot.shares,
     trendScore: snapshot.trendScore,
+    source: snapshot.source,
     createdAt: snapshot.createdAt.toISOString(),
     updatedAt: snapshot.updatedAt.toISOString(),
   };

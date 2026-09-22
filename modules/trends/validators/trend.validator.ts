@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { slugify } from "@/lib/utils";
-import { TREND_CATEGORIES, type TrendCategoryName } from "../interfaces/trend.interface";
+import {
+  DEFAULT_TREND_SOURCE,
+  TREND_CATEGORIES,
+  TREND_SOURCES,
+  type TrendCategoryName,
+  type TrendSourceName,
+} from "../interfaces/trend.interface";
 
 /**
  * Zod validation — single source of truth for every Trend Hunter write path
@@ -11,8 +17,8 @@ import { TREND_CATEGORIES, type TrendCategoryName } from "../interfaces/trend.in
  * accepted from the client.
  */
 
-export { TREND_CATEGORIES };
-export type { TrendCategoryName };
+export { TREND_CATEGORIES, TREND_SOURCES };
+export type { TrendCategoryName, TrendSourceName };
 
 const engagementCountSchema = z
   .number({ invalid_type_error: "Informe um número." })
@@ -27,6 +33,11 @@ const percentSchema = z
 
 export const trendCategorySchema = z.enum(TREND_CATEGORIES, {
   errorMap: () => ({ message: `Categoria inválida. Use: ${TREND_CATEGORIES.join(", ")}.` }),
+});
+
+/** PR002.1 — origin of a trend snapshot (kept in sync with the Prisma enum). */
+export const trendSourceSchema = z.enum(TREND_SOURCES, {
+  errorMap: () => ({ message: `Origem inválida. Use: ${TREND_SOURCES.join(", ")}.` }),
 });
 
 export const keywordSchema = z
@@ -71,6 +82,8 @@ export const createTrendSchema = z.object({
     .min(0, "O score mínimo é 0.")
     .max(100, "O score máximo é 100.")
     .default(0),
+  /** PR002.1 — origin of the snapshot. Defaults to MOCK (retrocompatible). */
+  source: trendSourceSchema.default(DEFAULT_TREND_SOURCE),
 });
 
 export type CreateTrendInput = z.input<typeof createTrendSchema>;
@@ -103,6 +116,8 @@ export const trendListQuerySchema = z.object({
   /** Free-text search over the keyword. */
   search: z.string().trim().max(160).optional().catch(undefined),
   category: trendCategorySchema.optional().catch(undefined),
+  /** PR002.1 — filter by origin ("Origem"). Absent = all sources. */
+  source: trendSourceSchema.optional().catch(undefined),
   sort: z.enum(trendSortFields).catch("trendScore").default("trendScore"),
   order: z.enum(["asc", "desc"]).catch("desc").default("desc"),
 });

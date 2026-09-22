@@ -24,7 +24,9 @@ architecture, and UI shell that every subsequent feature builds on.
 > OpenAI, creator discovery, automated outreach, and the analytics pipeline are
 > **intentionally not implemented** — their contracts are defined so future PRs
 > can plug in cleanly. The **Trend Hunter** (PR002) runs entirely on **mock
-> data**: no TikTok API, no scraping, no OpenAI, no browser automation.
+> data**: no TikTok API, no scraping, no OpenAI, no browser automation. Since
+> **PR002.1** it is **multi-source**: every snapshot records its origin
+> (`TrendSource`) and real sources plug in behind the collector factory.
 
 ### Multi-tenancy
 
@@ -171,7 +173,7 @@ brobond-ai-commerce/
 │   └── ui/           button · card · badge · input
 ├── modules/
 │   ├── commerce/    products/ (PR001)
-│   ├── trends/      hunter (collector · scorer · scheduler) · repositories · dto · validators · interfaces (PR002)
+│   ├── trends/      hunter (collectors · factory · scorer · scheduler) · repositories · dto · validators · interfaces (PR002/PR002.1)
 │   ├── creators/     creators.service.ts
 │   ├── campaigns/    campaigns.service.ts
 │   ├── sales/        sales.service.ts
@@ -200,7 +202,7 @@ Monetary values default to **BRL** (stored in cents).
 - **Organization** — tenant boundary; owns users, products, creators, campaigns.
 - **User** — team members with roles (`ADMIN`, `MANAGER`, `MEMBER`); tenant **required**.
 - **Product** — catalog items with pricing (BRL) and status; tenant **required**.
-- **TrendSnapshot / TrendKeyword / TrendCategory** — Trend Hunter data (PR002); tenant **required**.
+- **TrendSnapshot / TrendKeyword / TrendCategory** — Trend Hunter data (PR002 · multi-source PR002.1); tenant **required**.
 - **Creator** — creator roster (`externalId` reserved for TikTok); tenant **required**.
 - **Campaign** — orchestration linking products ⇄ creators (M:N); tenant **required**.
 - **Message** — conversations across channels (system/email/DM/SMS).
@@ -347,30 +349,70 @@ Deployment is defined as code in [`render.yaml`](./render.yaml) (a Render Bluepr
 
 ---
 
-## Trend Hunter AI (PR002)
+## Trend Hunter AI (PR002 · PR002.1)
 
 The first **Commercial Intelligence** module: it stores, classifies and
-prioritizes product trends per tenant (`modules/trends`). PR002 runs
+prioritizes product trends per tenant (`modules/trends`). PR002 shipped it
 **entirely on mock data** — no TikTok API, no scraping, no OpenAI, no
-Selenium/Playwright/Puppeteer — with the architecture prepared for real
-sources.
+Selenium/Playwright/Puppeteer. **PR002.1** introduced the **multi-source
+data architecture**: every snapshot records its origin and real sources
+plug in behind the collector factory — still without a single network call.
+
+### Data Sources (PR002.1)
+
+Cada snapshot carrega a sua origem (`TrendSnapshot.source`, enum
+`TrendSource` do Prisma) e a coleta é resolvida **exclusivamente** pela
+factory `getCollector(source)` — nunca por um `switch` fora dela
+(garantido por teste).
+
+| Source      | Collector            | Status                             |
+| ----------- | -------------------- | ---------------------------------- |
+| `MOCK`      | `MockCollector`      | ✅ implementado (30 sinais/dia)    |
+| `TIKTOK`    | `TikTokCollector`    | 🧩 placeholder (`Not implemented`) |
+| `SHOPEE`    | `ShopeeCollector`    | 🧩 placeholder (`Not implemented`) |
+| `INSTAGRAM` | `InstagramCollector` | 🧩 placeholder (`Not implemented`) |
+| `MANUAL`    | — (sem collector)    | ✅ formulário do dashboard         |
+
+```ts
+// modules/trends/hunter/collector.factory.ts — o ÚNICO ponto de resolução
+const collector = getCollector(TrendSource.MOCK); // ou TIKTOK, SHOPEE, INSTAGRAM
+const candidates = await collector.collect(); // Promise<TrendCandidate[]>
+
+// scheduler parametrizado por origem (default: MOCK — comportamento inalterado)
+const job = createCollectDailyTrendsJob({ source: TrendSource.MOCK });
+```
+
+- **Retrocompatível**: `source` tem `@default(MOCK)` — nenhum dado existente é
+  alterado; o `collectDailyTrends()` do PR002 segue disponível como alias.
+- **Interface plugável**: `TrendCollector { source; collect() }` retorna
+  `TrendCandidate[]` (keyword · category · views · likes · shares · margin ·
+  saturation).
+- **Dashboard**: filtro **Origem** (Todos · Mock · TikTok · Shopee · Instagram ·
+  Manual) via URL-state (`?source=`), sem alterar telas existentes.
 
 ### Arquitetura
 
 ```
 modules/trends/
 ├── hunter/
-│   ├── collector.ts     TrendCollector interface + MockTrendCollector
-│   │                    (30 tendências/dia · 5 categorias · determinístico)
+│   ├── collectors/      Um TrendCollector por TrendSource (PR002.1)
+│   │   ├── MockCollector.ts        MOCK — 30 tendências/dia · 5 categorias ·
+│   │   │                           determinístico (implementado)
+│   │   ├── TikTokCollector.ts      TIKTOK — placeholder (Not implemented)
+│   │   ├── ShopeeCollector.ts      SHOPEE — placeholder (Not implemented)
+│   │   └── InstagramCollector.ts   INSTAGRAM — placeholder (Not implemented)
+│   ├── collector.factory.ts  getCollector(source) — o ÚNICO ponto onde uma
+│   │                         origem resolve para o seu collector (PR002.1)
+│   ├── collector.ts     Fachada retrocompatível do PR002 (re-exports)
 │   ├── scorer.ts        Score Engine — puro: normaliza tudo para 0–100 e
 │   │                    pondera Views 30% · Likes 20% · Shares 15% ·
 │   │                    Margin 20% · Low Saturation 15% → inteiro 0–100
 │   └── scheduler.ts     SchedulerJob interface + job collect-daily-trends
-│                        (manual — NÃO há cron no PR002)
+│                        (manual — NÃO há cron) parametrizado por TrendSource
 ├── repositories/
-│   └── trend.repository.ts   createSnapshot · listSnapshots · topTrends ·
-│                             findKeywords (+ upserts/stats) — organizationId
-│                             é SEMPRE o 1º argumento; nada roda sem tenant
+│   └── trend.repository.ts   createSnapshot · listSnapshots (+ filtro source)
+│                             · topTrends · findKeywords (+ upserts/stats) —
+│                             organizationId é SEMPRE o 1º argumento
 ├── dto/
 │   └── create-trend.dto.ts   CreateTrendDTO + shapes serializáveis (RSC)
 ├── validators/
@@ -380,9 +422,11 @@ modules/trends/
     └── trend.interface.ts    TrendSignal · TrendCollector · TREND_CATEGORIES
 ```
 
-Prisma models (migration `20260922230000_trend_hunter_ai`): `TrendSnapshot`,
-`TrendKeyword`, `TrendCategory` — all with required `organizationId`,
-`createdAt`/`updatedAt` and tenant-scoped uniqueness where applicable.
+Prisma models (migrations `20260922230000_trend_hunter_ai` ·
+`20260923050000_trend_source`): `TrendSnapshot` (com `source TrendSource
+@default(MOCK)` — PR002.1), `TrendKeyword`, `TrendCategory` — all with
+required `organizationId`, `createdAt`/`updatedAt` and tenant-scoped
+uniqueness where applicable.
 
 ### Fluxo
 
@@ -393,9 +437,9 @@ ADMIN clica em "Executar coleta" (ou cria uma tendência manual)
 collectDailyTrendsAction  ──requireAdmin()──▶  tenant garantido da sessão
         │
         ▼
-SchedulerJob collect-daily-trends
+SchedulerJob collect-daily-trends (source: TrendSource — default MOCK)
         │
-        ├─▶ collector.collectDailyTrends()   30 sinais mock (fonte plugável)
+        ├─▶ getCollector(source).collect()   TrendCandidate[] (fonte plugável)
         ├─▶ scorer.calculateTrendScore()     score 0–100 por tendência
         ├─▶ Zod createTrendSchema.parse()    validação antes de persistir
         ├─▶ repository.createSnapshot()      1 snapshot por tendência
@@ -404,8 +448,8 @@ SchedulerJob collect-daily-trends
         │
         ▼
 /dashboard/trends — KPIs (Maior Score · Keywords · Categorias · Última Coleta)
-                   tabela com busca, filtro por categoria, ordenação e
-                   paginação (URL-state), responsiva
+                   tabela com busca, filtro por categoria e por origem
+                   (PR002.1), ordenação e paginação (URL-state), responsiva
 ```
 
 RBAC: **ADMIN** executa coleta e cria snapshots · **MANAGER** visualiza ·
@@ -414,9 +458,11 @@ RBAC: **ADMIN** executa coleta e cria snapshots · **MANAGER** visualiza ·
 ### Próximo PR
 
 **PR003 — Creators & TikTok Link**: conectar o roster de creators à API real
-do TikTok (OAuth + sync de perfis) e plugar a primeira fonte real no
-`TrendCollector` do Trend Hunter — sem mudar nenhum consumidor, já que o
-contrato (`collectDailyTrends()`) já está definido e testado.
+do TikTok (OAuth + sync de perfis) e implementar a primeira fonte real —
+basta preencher o `TikTokCollector` (o placeholder já lança `Not
+implemented` e o `getCollector(TrendSource.TIKTOK)` já o resolve). Nenhum
+consumidor muda: o contrato (`collect()` → `TrendCandidate[]`), a stamp de
+`source` e o dashboard já estão prontos e testados.
 
 ---
 
@@ -429,6 +475,7 @@ contrato (`collectDailyTrends()`) já está definido e testado.
 | **PR000.2** | Tenant & Auth Hardening | Required tenancy, credentials auth, RBAC guards, tests ✅             |
 | **PR001**   | Products CRUD           | Full product management (create/edit/list), server actions, tables ✅ |
 | **PR002**   | Trend Hunter AI         | Trend collection (mock), score engine, scheduler, dashboard ✅        |
+| **PR002.1** | Multi-Source Data Arch. | TrendSource enum, collector factory, origem no dashboard ✅           |
 | **PR003**   | Creators & TikTok Link  | Creator CRUD + TikTok OAuth & profile sync (implements interface)     |
 | **PR004**   | AI Assistant            | OpenAI provider implementation, content & outreach generation         |
 | **PR005**   | Campaign Engine         | Campaign builder, product/creator assignment, scheduling              |
