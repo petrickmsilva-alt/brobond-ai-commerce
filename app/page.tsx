@@ -52,7 +52,10 @@ export default function LandingPage() {
       {/* Nav */}
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 shadow-lg shadow-brand-600/30">
+          <div
+            aria-hidden
+            className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-accent-600 shadow-[0_8px_24px_-8px_rgba(79,70,229,0.9)]"
+          >
             <Sparkles className="h-5 w-5 text-white" />
           </div>
           <span className="text-base font-semibold text-white">{APP_SHORT_NAME}</span>
@@ -71,11 +74,13 @@ export default function LandingPage() {
 
       {/* Hero */}
       <section className="mx-auto max-w-3xl px-6 py-24 text-center">
-        <Badge tone="brand" className="mb-6">
-          PR000 · Bootstrap Foundation
+        <Badge tone="brand" size="md" className="mb-6" dot>
+          Enterprise AI Commerce OS
         </Badge>
         <h1 className="text-balance text-4xl font-bold tracking-tight text-white sm:text-6xl">
-          {APP_NAME}
+          <span className="bg-gradient-to-r from-white via-white to-brand-200 bg-clip-text text-transparent">
+            {APP_NAME}
+          </span>
         </h1>
         <p className="mx-auto mt-6 max-w-xl text-balance text-lg text-white/60">
           O sistema operacional enterprise para comércio social orientado a creators. Infraestrutura
@@ -104,9 +109,12 @@ export default function LandingPage() {
             return (
               <div
                 key={feature.title}
-                className="card-gradient rounded-xl border border-surface-700/60 p-6"
+                className="glass-edge relative overflow-hidden rounded-2xl border border-white/8 bg-surface-850 bg-gradient-to-b from-white/[0.045] to-transparent p-6 transition-[border-color,transform] duration-200 hover:-translate-y-0.5 hover:border-white/15"
               >
-                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-brand-600/15 text-brand-300">
+                <div
+                  aria-hidden
+                  className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-white/8 bg-brand-500/12 text-brand-300"
+                >
                   <Icon className="h-5 w-5" />
                 </div>
                 <h3 className="text-sm font-semibold text-white">{feature.title}</h3>
@@ -117,7 +125,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="border-t border-surface-800 py-8">
+      <footer className="border-t border-white/8 py-8">
         <p className="text-center text-xs text-white/30">
           © {new Date().getFullYear()} {APP_SHORT_NAME}. Enterprise AI Commerce OS.
         </p>
