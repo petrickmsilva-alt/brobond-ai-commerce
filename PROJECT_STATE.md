@@ -1,5 +1,32 @@
 # PROJECT STATE — Brobond AI Commerce OS
 
+### PR010.4.6 — Prisma driver adapter configuration cleanup (2026-09-23) — blocked
+
+- **The schema property is not redundant on Prisma 6.19.3.** Removing only
+  `url = env("DATABASE_URL")` makes both `prisma validate` and `prisma migrate
+deploy` stop with `P1012: Argument "url" is missing in data source block
+"db"`. The property therefore remains in `prisma/schema.prisma`; `provider =
+"postgresql"` is unchanged.
+- `prisma.config.ts` also remains unchanged and continues to supply the actual
+  CLI connection through `process.env.DATABASE_URL`, `PrismaPg`, and `engine:
+"js"`. Prisma 6.19.3 emits the adapter warning even though its schema parser
+  still requires the ignored `url` property, so that warning cannot be removed
+  safely under this hotfix's version and configuration constraints.
+- **New root cause after the warning.** A migration smoke test against a valid
+  local PostgreSQL-compatible server loaded the config and datasource, found
+  all 17 migrations, and reported no missing module or `DATABASE_URL` failure.
+  It then failed in the JavaScript schema engine with `Column type 'name' could
+not be deserialized from the database` while initializing migration
+  persistence. `@prisma/adapter-pg@6.19.3` does not map PostgreSQL system type
+  OID 19 (`name`), matching upstream `prisma/prisma#27403`.
+- **Production-tree equivalence.** `npm ci --omit=dev` retained the Prisma CLI,
+  config loader, adapter, `effect`, and `fast-check`; running the same migration
+  command from that tree reached the same OID 19 failure with no
+  `MODULE_NOT_FOUND` error.
+- No workaround, dependency upgrade, model change, migration change, or
+  production behavior change was introduced. Resolution needs a separately
+  scoped Prisma/adapter version strategy or an upstream fix.
+
 ### PR010.4.5 — Prisma migration runtime dependencies (2026-09-23) — completed
 
 - **Symptom.** The build passed, but the Render deploy failed in the
