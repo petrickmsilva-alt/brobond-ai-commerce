@@ -1,124 +1,205 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { AuthError } from "next-auth";
 import { Prisma } from "@prisma/client";
 import { signIn } from "@/lib/auth";
 import { resolveNext } from "@/lib/auth-routes";
 import { signupSchema } from "@/lib/validations/auth";
+import { SignupReadinessError, assertSignupReady } from "@/modules/auth/signup-health.service";
+import { asError, logSignupEvent, logSignupFailure } from "@/modules/auth/signup-logging";
 import { SignupError, signupService } from "@/modules/auth/signup.service";
 
 /**
- * Self-signup server action (PR010.4 §4 · §8).
+ * Public self-signup server action.
  *
- * THE FLOW, IN ORDER
- * ------------------
- *   1. validate the payload (Zod, server-side — the browser's copy is a
- *      convenience, never the authority);
- *   2. provision Organization + ADMIN User + Workspace + defaults + seed in
- *      one transaction;
- *   3. sign the user in with the credentials they just chose;
- *   4. hand back the sanitised destination (`/dashboard`).
- *
- * ERROR CONTRACT (§8) — THE POINT OF THIS FILE
- * --------------------------------------------
- * "Nunca mostrar apenas: 'Revise os campos destacados'."
- *
- * Every failure this action can produce is returned as `fieldErrors`, keyed by
- * the field it belongs to, so the form can render it UNDER that input:
- *
- *   - "Este email já está sendo utilizado…"        → `email`
- *   - "A senha deve ter ao menos 8 caracteres."    → `password`
- *   - "Informe o nome da empresa."                 → `company`
- *   - "WhatsApp inválido — informe DDD e número."  → `whatsapp`
- *   - "É necessário aceitar os termos…"            → `acceptTerms`
- *
- * `error` is a SUMMARY that accompanies those field errors for screen-reader
- * users, never a replacement for them. The only case where it stands alone is
- * a genuine server fault, which by definition belongs to no field.
- *
- * SECURITY
- * --------
- * - `role` is not part of the schema. ADMIN is decided inside the service, and
- *   only ever for a brand-new empty tenant.
- * - The password is hashed inside the service; the plaintext leaves this
- *   function only to `signIn`, which re-verifies it against the digest.
- * - The redirect is resolved through `resolveNext()`, so a crafted
- *   `?next=https://evil.example` cannot bounce a user who has just been issued
- *   a session cookie.
+ * The action owns the operational boundaries around the transaction:
+ * validation → database readiness → atomic provisioning → automatic login.
+ * Every failure has a stable code, an explainable message and diagnostic
+ * details. The browser gets the actual actionable cause and the server log
+ * keeps the original stack trace under the same request id.
  */
+
+export interface SignupFailureDetails {
+  /** Correlates the UI error with structured server logs. */
+  requestId: string;
+  /** Human-readable diagnostic. Never includes the password. */
+  reason: string;
+  /** Original stacktrace retained for immediate troubleshooting. */
+  stack?: string;
+}
+
+export type SignupActionErrorCode =
+  | "VALIDATION_ERROR"
+  | "EMAIL_ALREADY_EXISTS"
+  | "PRISMA_UNAVAILABLE"
+  | "MIGRATION_PENDING"
+  | "SCHEMA_INCOMPLETE"
+  | "DATABASE_CONSTRAINT"
+  | "AUTO_LOGIN_FAILED"
+  | "SIGNUP_FAILED";
 
 export type SignupActionResult =
   | { ok: true; redirectTo: string }
-  | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
+  | {
+      ok: false;
+      code: SignupActionErrorCode;
+      message: string;
+      details: SignupFailureDetails;
+      fieldErrors?: Record<string, string[]>;
+    };
 
-/** Reserved for genuine server faults — never for a validation problem. */
-const UNEXPECTED_ERROR = "Não foi possível criar sua conta agora. Tente novamente em instantes.";
-
-/** Summary that accompanies (never replaces) the per-field messages. */
-const VALIDATION_SUMMARY = "Corrija os campos indicados abaixo para continuar.";
-
-const EMAIL_TAKEN = "Este email já está sendo utilizado. Faça login ou use outro email.";
+const EMAIL_TAKEN = "Este email já possui uma conta.";
 
 export async function signupAction(input: unknown): Promise<SignupActionResult> {
+  const requestId = randomUUID();
   const parsed = signupSchema.safeParse(input);
 
   if (!parsed.success) {
     const fieldErrors = parsed.error.flatten().fieldErrors as Record<string, string[]>;
+    const message = firstMessage(fieldErrors) ?? "Há dados obrigatórios ausentes no cadastro.";
 
     return {
       ok: false,
-      // The summary names the first concrete problem instead of the useless
-      // "revise os campos destacados" this PR is explicitly removing.
-      error: firstMessage(fieldErrors) ?? VALIDATION_SUMMARY,
+      code: "VALIDATION_ERROR",
+      message,
+      details: { requestId, reason: message },
       fieldErrors,
     };
   }
 
   const data = parsed.data;
+  // Resolve before a session cookie is minted so untrusted `next` never
+  // returns from this action unchanged.
   const redirectTo = resolveNext(data.next);
+  let stage = "HEALTHCHECK";
+  let accountCreated = false;
 
   try {
-    await signupService.register(data);
-  } catch (error) {
-    // Typed, field-attributable failure (duplicate email today).
-    if (error instanceof SignupError) {
-      return { ok: false, error: error.message, fieldErrors: { [error.field]: [error.message] } };
-    }
+    logSignupEvent("SIGNUP_START", { requestId, stage });
 
-    // The database's unique index is the authority on duplicates: it is what
-    // decides the race between two people signing up with the same email at
-    // the same instant. Map it to the same field error as the pre-check.
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return { ok: false, error: EMAIL_TAKEN, fieldErrors: { email: [EMAIL_TAKEN] } };
-    }
+    // Verifies Prisma connectivity, migration metadata and both required
+    // tables before any Organization/User write is attempted.
+    await assertSignupReady();
 
-    console.error("[signup.action] provisioning failed", error);
-    return { ok: false, error: UNEXPECTED_ERROR };
-  }
+    stage = "PROVISIONING";
+    await signupService.register(data, { requestId });
+    accountCreated = true;
 
-  // §4 — "Entrar automaticamente". The account exists at this point, so a
-  // failure here is a session problem, not a signup problem: say so, and send
-  // them to the login screen rather than implying the account was not created.
-  try {
+    stage = "LOGIN";
     await signIn("credentials", {
       email: data.email,
       password: data.password,
       redirect: false,
     });
-  } catch (error) {
-    if (error instanceof AuthError) {
-      return {
-        ok: false,
-        error: "Sua conta foi criada, mas não conseguimos entrar automaticamente. Faça login.",
-      };
-    }
-    throw error;
-  }
 
-  return { ok: true, redirectTo };
+    logSignupEvent("LOGIN_SUCCESS", { requestId, stage, code: "SIGNUP_SUCCESS" });
+    return { ok: true, redirectTo };
+  } catch (error) {
+    // Keep the original object (and its native stack) in the server log. The
+    // ActionResult below exposes the same diagnostic in a serializable shape
+    // for the technical details panel in the signup UI.
+    logSignupFailure(error, { requestId, stage });
+    return toSignupActionFailure(error, { requestId, accountCreated });
+  }
 }
 
-/** The first concrete message across all fields, for the summary line. */
+function toSignupActionFailure(
+  error: unknown,
+  context: { requestId: string; accountCreated: boolean },
+): Extract<SignupActionResult, { ok: false }> {
+  if (error instanceof SignupError && error.code === "EMAIL_TAKEN") {
+    return failure("EMAIL_ALREADY_EXISTS", EMAIL_TAKEN, error, context, {
+      fieldErrors: { email: [EMAIL_TAKEN] },
+    });
+  }
+
+  if (error instanceof SignupReadinessError) {
+    // The readiness wrapper supplies a friendly code/message, while its cause
+    // preserves the original Prisma/PostgreSQL stack in `details.stack`.
+    return failure(error.code, error.message, error.cause ?? error, context, {
+      reason: error.details,
+    });
+  }
+
+  // A unique email index decides the race between concurrent signup requests.
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+    if (isEmailConstraint(error)) {
+      return failure("EMAIL_ALREADY_EXISTS", EMAIL_TAKEN, error, context, {
+        fieldErrors: { email: [EMAIL_TAKEN] },
+      });
+    }
+
+    return failure(
+      "DATABASE_CONSTRAINT",
+      `O banco de dados rejeitou uma informação do cadastro: ${error.message}`,
+      error,
+      context,
+    );
+  }
+
+  // These errors can only occur when the generated Prisma client and deployed
+  // schema disagree. Surface that exact deployment fault instead of masking it
+  // as an account-creation failure.
+  if (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    (error.code === "P2021" || error.code === "P2022")
+  ) {
+    return failure(
+      "SCHEMA_INCOMPLETE",
+      "A estrutura do banco de dados do cadastro está incompleta. Aplique as migrations pendentes.",
+      error,
+      context,
+    );
+  }
+
+  if (error instanceof AuthError) {
+    const message = context.accountCreated
+      ? "Sua conta foi criada, mas o login automático falhou. Faça login com o email e a senha informados."
+      : "O login automático falhou antes de concluir o cadastro.";
+    return failure("AUTO_LOGIN_FAILED", message, error, context);
+  }
+
+  const original = asError(error);
+  return failure(
+    "SIGNUP_FAILED",
+    original.message.trim() || "O cadastro falhou sem uma mensagem de diagnóstico.",
+    original,
+    context,
+  );
+}
+
+function failure(
+  code: SignupActionErrorCode,
+  message: string,
+  error: unknown,
+  context: { requestId: string; accountCreated: boolean },
+  options: { fieldErrors?: Record<string, string[]>; reason?: string } = {},
+): Extract<SignupActionResult, { ok: false }> {
+  const original = asError(error);
+  const reason = options.reason ?? original.message ?? message;
+
+  return {
+    ok: false,
+    code,
+    message,
+    details: {
+      requestId: context.requestId,
+      reason,
+      stack: original.stack,
+    },
+    ...(options.fieldErrors ? { fieldErrors: options.fieldErrors } : {}),
+  };
+}
+
+function isEmailConstraint(error: Prisma.PrismaClientKnownRequestError): boolean {
+  const target = error.meta?.target;
+  const values = Array.isArray(target) ? target : typeof target === "string" ? [target] : [];
+  // PostgreSQL can report either a field (`email`) or its named unique index.
+  return values.some((value) => /email/i.test(String(value)));
+}
+
+/** The first concrete field message is also the accessible summary. */
 function firstMessage(fieldErrors: Record<string, string[]>): string | null {
   for (const messages of Object.values(fieldErrors)) {
     const message = messages?.[0];

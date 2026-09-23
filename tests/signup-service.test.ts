@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { UserRole } from "@prisma/client";
+const UserRole = {
+  ADMIN: "ADMIN",
+  MANAGER: "MANAGER",
+  MEMBER: "MEMBER",
+} as const;
 
 /**
  * PR010.4 §4 · §5 — the signup service, against an in-memory fake Prisma.
@@ -101,9 +105,27 @@ function makeDb() {
         return data;
       }),
     },
-    // The fake transaction hands the same db back, which is exactly how the
-    // Prisma interactive transaction behaves from the callback's point of view.
-    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
+    // The fake transaction hands the same db back, as Prisma's interactive
+    // transaction does, and restores every in-memory table if its callback
+    // rejects. This lets the hotfix verify the no-partial-tenant invariant.
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => {
+      const snapshot = {
+        organizations: organizations.map((row) => ({ ...row })),
+        users: users.map((row) => ({ ...row })),
+        messageTemplates: messageTemplates.map((row) => ({ ...row })),
+        accounts: accounts.map((row) => ({ ...row })),
+      };
+
+      try {
+        return await fn(db);
+      } catch (error) {
+        organizations.splice(0, organizations.length, ...snapshot.organizations);
+        users.splice(0, users.length, ...snapshot.users);
+        messageTemplates.splice(0, messageTemplates.length, ...snapshot.messageTemplates);
+        accounts.splice(0, accounts.length, ...snapshot.accounts);
+        throw error;
+      }
+    }),
   };
 
   return { db, organizations, users, messageTemplates };
@@ -198,6 +220,38 @@ describe("register() — automatic provisioning", () => {
   it("runs the whole provisioning inside one transaction", async () => {
     await service.register(PAYLOAD);
     expect(fake.db.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("persists Organization → User → Workspace → Settings in that exact order", async () => {
+    const order: string[] = [];
+    fake.db.organization.create.mockImplementationOnce(async ({ data }: { data: Row }) => {
+      order.push("organization");
+      const row = { id: "org_order", createdAt: new Date(), ...data };
+      fake.organizations.push(row);
+      return row;
+    });
+    fake.db.user.create.mockImplementationOnce(async ({ data }: { data: Row }) => {
+      order.push("user");
+      const row = { id: "user_order", createdAt: new Date(), ...data };
+      fake.users.push(row);
+      return row;
+    });
+    fake.db.organization.update.mockImplementation(async ({ data }: { data: Row }) => {
+      order.push("workspaceName" in data ? "workspace" : "settings");
+      return fake.organizations[0]!;
+    });
+
+    await service.register(PAYLOAD);
+    expect(order).toEqual(["organization", "user", "workspace", "settings"]);
+  });
+
+  it("rolls the Organization and User back when a later workspace step fails", async () => {
+    fake.db.organization.update.mockRejectedValueOnce(new Error("workspace write failed"));
+
+    await expect(service.register(PAYLOAD)).rejects.toThrow("workspace write failed");
+    expect(fake.organizations).toHaveLength(0);
+    expect(fake.users).toHaveLength(0);
+    expect(fake.messageTemplates).toHaveLength(0);
   });
 
   it("returns the ids the caller needs to sign the user in", async () => {
@@ -308,9 +362,9 @@ describe("register() — duplicate email", () => {
     await expect(service.register(PAYLOAD)).rejects.toMatchObject({ field: "email" });
   });
 
-  it("uses a message that names the actual problem", async () => {
+  it("uses the requested message for an existing email", async () => {
     await service.register(PAYLOAD);
-    await expect(service.register(PAYLOAD)).rejects.toThrow(/já está sendo utilizado/i);
+    await expect(service.register(PAYLOAD)).rejects.toThrow("Este email já possui uma conta.");
   });
 
   it("never says only 'Revise os campos destacados'", async () => {

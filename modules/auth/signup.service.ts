@@ -1,8 +1,9 @@
 import "server-only";
 
-import { UserRole, type PrismaClient } from "@prisma/client";
+import type { PrismaClient, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/password";
+import { logSignupEvent } from "@/modules/auth/signup-logging";
 import type { SignupData } from "@/lib/validations/auth";
 import { OUTREACH_TEMPLATES } from "@/modules/outreach/prompts/templates";
 import {
@@ -63,6 +64,9 @@ export type SignupDatabase = Pick<
 /** Why a signup was refused. Mapped to a FIELD by the server action (§8). */
 export type SignupErrorCode = "EMAIL_TAKEN";
 
+/** Runtime-safe enum value; the generated Prisma enum is only needed as a type. */
+const ADMIN_ROLE = "ADMIN" as UserRole;
+
 export class SignupError extends Error {
   readonly code: SignupErrorCode;
   /** The form field this error belongs under. Never a generic banner. */
@@ -99,6 +103,11 @@ export interface ProvisionTenantInput {
   image?: string | null;
 }
 
+/** Correlates transaction logs with the server action that initiated them. */
+export interface SignupProvisionContext {
+  requestId?: string;
+}
+
 export function createSignupService(db: SignupDatabase) {
   /**
    * Seed the records a brand-new workspace needs to be immediately usable.
@@ -132,58 +141,98 @@ export function createSignupService(db: SignupDatabase) {
    * first-access path (§5), so the two can never drift into provisioning
    * subtly different tenants.
    */
-  async function provision(input: ProvisionTenantInput): Promise<SignupResult> {
+  async function provision(
+    input: ProvisionTenantInput,
+    context: SignupProvisionContext = {},
+  ): Promise<SignupResult> {
     const email = input.email.trim().toLowerCase();
-
-    // Friendly, field-level duplicate check (§8). The unique index below is
-    // the authority; this exists so the common case gets a good message.
-    const existing = await db.user.findUnique({ where: { email }, select: { id: true } });
-    if (existing) {
-      throw new SignupError(
-        "EMAIL_TAKEN",
-        "email",
-        "Este email já está sendo utilizado. Faça login ou use outro email.",
-      );
-    }
-
     const workspaceName = defaultWorkspaceName(input.company);
-    const slug = await resolveTenantSlug(input.company, async (candidate) => {
-      const taken = await db.organization.findUnique({
-        where: { slug: candidate },
-        select: { id: true },
-      });
-      return Boolean(taken);
-    });
+    const requestId = context.requestId ?? `signup-${Date.now().toString(36)}`;
 
+    /**
+     * The reads that decide whether a User/slug already exists run IN the same
+     * interactive transaction as all writes. The database unique indexes still
+     * own concurrent races, but no ordinary failure can leave an orphaned
+     * Organization behind.
+     *
+     * Workspace and settings are persisted on Organization in this schema;
+     * writing them as explicit consecutive steps makes the provisioning order
+     * observable and preserves the requested invariant:
+     * Organization → User → Workspace → Settings.
+     */
     return db.$transaction(async (tx) => {
+      // Friendly duplicate pre-check. The `User.email` unique index is still
+      // the final authority for two submissions arriving at the same instant.
+      const existing = await tx.user.findUnique({ where: { email }, select: { id: true } });
+      if (existing) {
+        throw new SignupError("EMAIL_TAKEN", "email", "Este email já possui uma conta.");
+      }
+
+      const slug = await resolveTenantSlug(input.company, async (candidate) => {
+        const taken = await tx.organization.findUnique({
+          where: { slug: candidate },
+          select: { id: true },
+        });
+        return Boolean(taken);
+      });
+
+      // 1. Organization ---------------------------------------------------
       const organization = await tx.organization.create({
         data: {
           name: input.company,
           slug,
-          // §4 — "Criar Workspace" + "Criar configurações padrão".
-          workspaceName,
           whatsapp: input.whatsapp,
-          currency: DEFAULT_TENANT_SETTINGS.currency,
-          locale: DEFAULT_TENANT_SETTINGS.locale,
-          timezone: DEFAULT_TENANT_SETTINGS.timezone,
           selfServe: true,
         },
       });
+      logSignupEvent("ORG_CREATED", { requestId, organizationId: organization.id });
 
+      // 2. User -----------------------------------------------------------
       const user = await tx.user.create({
         data: {
           email,
           name: input.name,
           image: input.image ?? null,
-          // §4 — the first user of a tenant is its ADMIN. Server-side, always.
-          role: UserRole.ADMIN,
+          // The first user of a brand-new tenant is always its ADMIN.
+          role: ADMIN_ROLE,
           passwordHash: input.passwordHash,
           organizationId: organization.id,
         },
         select: { id: true, email: true, name: true, role: true, organizationId: true },
       });
+      logSignupEvent("USER_CREATED", {
+        requestId,
+        organizationId: organization.id,
+        userId: user.id,
+      });
 
-      // §4 — "Criar seed inicial".
+      // 3. Workspace ------------------------------------------------------
+      await tx.organization.update({
+        where: { id: organization.id },
+        data: { workspaceName },
+      });
+      logSignupEvent("WORKSPACE_CREATED", {
+        requestId,
+        organizationId: organization.id,
+        userId: user.id,
+      });
+
+      // 4. Settings -------------------------------------------------------
+      await tx.organization.update({
+        where: { id: organization.id },
+        data: {
+          currency: DEFAULT_TENANT_SETTINGS.currency,
+          locale: DEFAULT_TENANT_SETTINGS.locale,
+          timezone: DEFAULT_TENANT_SETTINGS.timezone,
+        },
+      });
+      logSignupEvent("SETTINGS_CREATED", {
+        requestId,
+        organizationId: organization.id,
+        userId: user.id,
+      });
+
+      // A functional empty workspace also receives its server-side templates.
       await seedWorkspace(tx, organization.id);
 
       return {
@@ -208,16 +257,19 @@ export function createSignupService(db: SignupDatabase) {
      * Takes the already-validated payload (the server action parses it with
      * `signupSchema` first), hashes the password and provisions the tenant.
      */
-    async register(data: SignupData): Promise<SignupResult> {
+    async register(data: SignupData, context: SignupProvisionContext = {}): Promise<SignupResult> {
       const passwordHash = await hashPassword(data.password);
 
-      return provision({
-        email: data.email,
-        name: data.name,
-        company: data.company,
-        whatsapp: data.whatsapp,
-        passwordHash,
-      });
+      return provision(
+        {
+          email: data.email,
+          name: data.name,
+          company: data.company,
+          whatsapp: data.whatsapp,
+          passwordHash,
+        },
+        context,
+      );
     },
 
     /**

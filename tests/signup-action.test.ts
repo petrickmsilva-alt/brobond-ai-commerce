@@ -18,6 +18,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const registerMock = vi.hoisted(() => vi.fn());
 const signInMock = vi.hoisted(() => vi.fn());
+const healthCheckMock = vi.hoisted(() => vi.fn());
 
 class FakeSignupError extends Error {
   constructor(
@@ -27,6 +28,17 @@ class FakeSignupError extends Error {
   ) {
     super(message);
     this.name = "SignupError";
+  }
+}
+
+class FakeSignupReadinessError extends Error {
+  constructor(
+    public code: "PRISMA_UNAVAILABLE" | "MIGRATION_PENDING" | "SCHEMA_INCOMPLETE",
+    message: string,
+    public details: string,
+  ) {
+    super(message);
+    this.name = "SignupReadinessError";
   }
 }
 
@@ -45,6 +57,10 @@ class FakePrismaKnownError extends Error {
 }
 
 vi.mock("@/lib/auth", () => ({ signIn: signInMock }));
+vi.mock("@/modules/auth/signup-health.service", () => ({
+  assertSignupReady: healthCheckMock,
+  SignupReadinessError: FakeSignupReadinessError,
+}));
 vi.mock("next-auth", () => ({ AuthError: FakeAuthError }));
 vi.mock("@prisma/client", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
@@ -83,6 +99,7 @@ const PROVISIONED = {
 beforeEach(() => {
   registerMock.mockReset().mockResolvedValue(PROVISIONED);
   signInMock.mockReset().mockResolvedValue(undefined);
+  healthCheckMock.mockReset().mockResolvedValue({ connected: true });
 });
 
 // ------------------------------------------------------------------
@@ -107,6 +124,14 @@ describe("signupAction() — success", () => {
   it("passes the normalized WhatsApp digits to the service", async () => {
     await signupAction(VALID);
     expect(registerMock.mock.calls[0]![0].whatsapp).toBe("11988887777");
+  });
+
+  it("checks Prisma, migration and required tables before provisioning", async () => {
+    await signupAction(VALID);
+    expect(healthCheckMock).toHaveBeenCalledTimes(1);
+    expect(registerMock.mock.invocationCallOrder[0]!).toBeGreaterThan(
+      healthCheckMock.mock.invocationCallOrder[0]!,
+    );
   });
 
   it("signs the user in automatically (§4)", async () => {
@@ -227,13 +252,13 @@ describe("signupAction() — §8 error contract", () => {
   it("never returns the generic 'Revise os campos destacados'", async () => {
     const result = await signupAction({});
     if (result.ok) throw new Error("expected failure");
-    expect(result.error).not.toMatch(/Revise os campos destacados/i);
+    expect(result.message).not.toMatch(/Revise os campos destacados/i);
   });
 
   it("uses a CONCRETE first problem as the summary", async () => {
     const result = await signupAction({ ...VALID, company: "" });
     if (result.ok) throw new Error("expected failure");
-    expect(result.error).toBe("Informe o nome da empresa.");
+    expect(result.message).toBe("Informe o nome da empresa.");
   });
 
   it("reports a short password on the password field", async () => {
@@ -282,49 +307,39 @@ describe("signupAction() — §8 error contract", () => {
 // ------------------------------------------------------------------
 
 describe("signupAction() — duplicate email", () => {
-  it("maps a SignupError to its own field", async () => {
-    registerMock.mockRejectedValue(
-      new FakeSignupError("EMAIL_TAKEN", "email", "Este email já está sendo utilizado."),
-    );
+  it("maps a SignupError to the email field with the exact requested message", async () => {
+    registerMock.mockRejectedValue(new FakeSignupError("EMAIL_TAKEN", "email", "email duplicate"));
 
     const result = await signupAction(VALID);
     if (result.ok) throw new Error("expected failure");
-    expect(result.fieldErrors?.email?.[0]).toMatch(/já está sendo utilizado/);
+    expect(result.code).toBe("EMAIL_ALREADY_EXISTS");
+    expect(result.message).toBe("Este email já possui uma conta.");
+    expect(result.fieldErrors?.email?.[0]).toBe("Este email já possui uma conta.");
   });
 
-  it("echoes the service's message as the summary", async () => {
-    registerMock.mockRejectedValue(
-      new FakeSignupError("EMAIL_TAKEN", "email", "Este email já está sendo utilizado."),
-    );
-
-    const result = await signupAction(VALID);
-    if (result.ok) throw new Error("expected failure");
-    expect(result.error).toMatch(/já está sendo utilizado/);
-  });
-
-  it("maps the database unique-index violation (P2002) to the email field", async () => {
+  it("maps the database unique-index violation (P2002) to the same email result", async () => {
     registerMock.mockRejectedValue(new FakePrismaKnownError("P2002", { target: ["email"] }));
 
     const result = await signupAction(VALID);
     if (result.ok) throw new Error("expected failure");
-    expect(result.fieldErrors?.email?.[0]).toMatch(/já está sendo utilizado/);
+    expect(result.code).toBe("EMAIL_ALREADY_EXISTS");
+    expect(result.fieldErrors?.email?.[0]).toBe("Este email já possui uma conta.");
   });
 
   it("does not sign anybody in after a duplicate", async () => {
-    registerMock.mockRejectedValue(
-      new FakeSignupError("EMAIL_TAKEN", "email", "Este email já está sendo utilizado."),
-    );
+    registerMock.mockRejectedValue(new FakeSignupError("EMAIL_TAKEN", "email", "email duplicate"));
 
     await signupAction(VALID);
     expect(signInMock).not.toHaveBeenCalled();
   });
 
-  it("never leaks a database error string to the user", async () => {
+  it("keeps the database stack in `details` while returning the friendly duplicate message", async () => {
     registerMock.mockRejectedValue(new FakePrismaKnownError("P2002", { target: ["email"] }));
 
     const result = await signupAction(VALID);
     if (result.ok) throw new Error("expected failure");
-    expect(result.error).not.toMatch(/Prisma|P2002|unique/i);
+    expect(result.message).not.toMatch(/Prisma|P2002|unique/i);
+    expect(result.details.stack).toContain("Prisma error P2002");
   });
 });
 
@@ -332,23 +347,27 @@ describe("signupAction() — duplicate email", () => {
 // Server faults
 // ------------------------------------------------------------------
 
-describe("signupAction() — unexpected failures", () => {
-  it("returns a generic message for an unknown provisioning error", async () => {
+describe("signupAction() — precise failures and diagnostics", () => {
+  it("returns the original message, code, details and stack for an unknown provisioning error", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     registerMock.mockRejectedValue(new Error("connection reset"));
 
     const result = await signupAction(VALID);
     if (result.ok) throw new Error("expected failure");
-    expect(result.error).toMatch(/Não foi possível criar sua conta/);
+    expect(result.code).toBe("SIGNUP_FAILED");
+    expect(result.message).toBe("connection reset");
+    expect(result.details.reason).toBe("connection reset");
+    expect(result.details.stack).toContain("connection reset");
   });
 
-  it("never leaks the internal error message", async () => {
+  it("returns the real connection diagnostic instead of a generic signup message", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     registerMock.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.5:5432"));
 
     const result = await signupAction(VALID);
     if (result.ok) throw new Error("expected failure");
-    expect(result.error).not.toContain("10.0.0.5");
+    expect(result.message).toContain("10.0.0.5");
+    expect(result.details.stack).toContain("10.0.0.5");
   });
 
   it("attaches NO fieldErrors to a server fault — it belongs to no field", async () => {
@@ -365,7 +384,8 @@ describe("signupAction() — unexpected failures", () => {
 
     const result = await signupAction(VALID);
     if (result.ok) throw new Error("expected failure");
-    expect(result.error).toMatch(/conta foi criada/i);
+    expect(result.code).toBe("AUTO_LOGIN_FAILED");
+    expect(result.message).toMatch(/conta foi criada/i);
   });
 
   it("directs them to log in when the auto-login fails", async () => {
@@ -373,14 +393,62 @@ describe("signupAction() — unexpected failures", () => {
 
     const result = await signupAction(VALID);
     if (result.ok) throw new Error("expected failure");
-    expect(result.error).toMatch(/Faça login/i);
+    expect(result.message).toMatch(/Faça login/i);
   });
 
-  it("re-throws a non-AuthError from signIn (e.g. a redirect signal)", async () => {
+  it("returns a diagnostic ActionResult for a non-AuthError from signIn", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
     const redirectSignal = new Error("NEXT_REDIRECT");
     signInMock.mockRejectedValue(redirectSignal);
 
-    await expect(signupAction(VALID)).rejects.toBe(redirectSignal);
+    const result = await signupAction(VALID);
+    expect(result).toMatchObject({
+      ok: false,
+      code: "SIGNUP_FAILED",
+      message: "NEXT_REDIRECT",
+      details: { stack: expect.stringContaining("NEXT_REDIRECT") },
+    });
+  });
+});
+
+// ------------------------------------------------------------------
+// Healthcheck
+// ------------------------------------------------------------------
+
+describe("signupAction() — pre-signup healthcheck", () => {
+  it("returns the migration error exactly and does not begin provisioning", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    healthCheckMock.mockRejectedValue(
+      new FakeSignupReadinessError(
+        "MIGRATION_PENDING",
+        "O cadastro está indisponível porque a migration de cadastro ainda não foi aplicada.",
+        "Execute npx prisma migrate deploy.",
+      ),
+    );
+
+    const result = await signupAction(VALID);
+    if (result.ok) throw new Error("expected failure");
+    expect(result.code).toBe("MIGRATION_PENDING");
+    expect(result.message).toMatch(/migration de cadastro/i);
+    expect(result.details.reason).toBe("Execute npx prisma migrate deploy.");
+    expect(registerMock).not.toHaveBeenCalled();
+    expect(signInMock).not.toHaveBeenCalled();
+  });
+
+  it("returns a schema-specific error when Organization or User is unavailable", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    healthCheckMock.mockRejectedValue(
+      new FakeSignupReadinessError(
+        "SCHEMA_INCOMPLETE",
+        "O cadastro está indisponível porque a estrutura Organization/User não está disponível.",
+        "Tabela(s) ausente(s): User.",
+      ),
+    );
+
+    const result = await signupAction(VALID);
+    if (result.ok) throw new Error("expected failure");
+    expect(result.code).toBe("SCHEMA_INCOMPLETE");
+    expect(result.details.reason).toContain("User");
   });
 });
 

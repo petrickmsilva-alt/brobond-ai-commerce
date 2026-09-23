@@ -214,6 +214,17 @@ describe("§8 — errors are rendered UNDER their field", () => {
     expect(signupAction).toContain("fieldErrors");
   });
 
+  it("the action failure contract includes code, message and details", () => {
+    expect(signupAction).toContain("code: SignupActionErrorCode");
+    expect(signupAction).toContain("message: string");
+    expect(signupAction).toContain("details: SignupFailureDetails");
+  });
+
+  it("the form exposes the backend diagnostic details instead of hiding a real error", () => {
+    expect(signupForm).toContain("signup-error-details");
+    expect(signupForm).toContain("errorDetails.stack");
+  });
+
   it("the action names a concrete first problem as its summary", () => {
     expect(signupAction).toContain("firstMessage");
   });

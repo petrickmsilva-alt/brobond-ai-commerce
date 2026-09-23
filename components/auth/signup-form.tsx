@@ -75,6 +75,12 @@ export function SignupForm({ next = null }: SignupFormProps) {
   const [showPassword, setShowPassword] = React.useState(false);
   const [showConfirm, setShowConfirm] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = React.useState<{
+    code: string;
+    requestId: string;
+    reason: string;
+    stack?: string;
+  } | null>(null);
 
   const {
     register,
@@ -103,6 +109,7 @@ export function SignupForm({ next = null }: SignupFormProps) {
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
+    setErrorDetails(null);
 
     const result = await signupAction({ ...values, next });
 
@@ -117,7 +124,13 @@ export function SignupForm({ next = null }: SignupFormProps) {
           setError(field as keyof FormValues, { type: "server", message });
         }
       }
-      setFormError(result.error);
+      setFormError(result.message);
+      setErrorDetails({
+        code: result.code,
+        requestId: result.details.requestId,
+        reason: result.details.reason,
+        stack: result.details.stack,
+      });
       return;
     }
 
@@ -301,6 +314,27 @@ export function SignupForm({ next = null }: SignupFormProps) {
           <AlertCircle aria-hidden className="mt-px h-3.5 w-3.5 shrink-0" />
           {formError}
         </p>
+      )}
+
+      {/* The backend returns a real code/reason/stack rather than a generic
+          failure. Keep the technical trace in a native disclosure so the
+          concrete cause is available without obscuring the field-level UI. */}
+      {errorDetails && (
+        <details
+          data-testid="signup-error-details"
+          className="rounded-xl border border-amber-400/20 bg-amber-500/[0.06] px-3.5 py-2.5 text-xs text-amber-100/80"
+        >
+          <summary className="cursor-pointer font-medium text-amber-200">
+            Detalhes técnicos ({errorDetails.code})
+          </summary>
+          <p className="mt-2 break-words leading-relaxed">{errorDetails.reason}</p>
+          <p className="mt-1 text-[11px] text-amber-100/50">Protocolo: {errorDetails.requestId}</p>
+          {errorDetails.stack && (
+            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/20 p-2 text-[10px] leading-relaxed text-amber-100/65">
+              {errorDetails.stack}
+            </pre>
+          )}
+        </details>
       )}
 
       <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>
