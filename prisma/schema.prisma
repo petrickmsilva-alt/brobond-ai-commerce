@@ -191,6 +191,38 @@ enum TikTokConnectionStatus {
   ERROR
 }
 
+/// Omnichannel delivery provider (PR010 — Omnichannel Delivery Engine).
+/// Only official Meta APIs are used: Instagram Business Messaging and the
+/// WhatsApp Business Cloud API. No scraping, no browser automation.
+enum DeliveryChannel {
+  INSTAGRAM
+  WHATSAPP
+}
+
+/// Lifecycle of one outbound omnichannel message (PR010).
+/// Contracted flow: DRAFT → QUEUED → SENDING → SENT → DELIVERED → READ.
+/// FAILED (terminal, exhausts retries) and CANCELLED (terminal, operator)
+/// are the side states — see `modules/delivery/core/delivery.interface.ts`
+/// for the full transition map enforced by the service layer.
+enum DeliveryStatus {
+  DRAFT
+  QUEUED
+  SENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  CANCELLED
+}
+
+/// OAuth lifecycle of a connected Meta delivery account (PR010).
+enum DeliveryAccountStatus {
+  CONNECTED
+  DISCONNECTED
+  EXPIRED
+  ERROR
+}
+
 // ------------------------------------------------------------------
 // Tenancy
 // ------------------------------------------------------------------
@@ -239,7 +271,13 @@ model Organization {
   // TikTok Shop Connector (PR009) — secrets always remain server-side.
   tikTokAccounts    TikTokAccount[]
   tikTokOAuthStates TikTokOAuthState[]
+
   auditLogs         AuditLog[]
+
+  // Omnichannel Delivery Engine (PR010) — Meta credentials never leave the server.
+  deliveryAccounts     DeliveryAccount[]
+  deliveryMessages     DeliveryMessage[]
+  deliveryOAuthStates DeliveryOAuthState[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1001,7 +1039,7 @@ model TikTokOAuthState {
 }
 
 /// Security and operational audit trail. Webhook event ids are unique inside a
-/// tenant so at-least-once TikTok deliveries are processed idempotently.
+/// tenant so at-least-once provider deliveries are processed idempotently.
 model AuditLog {
   id String @id @default(cuid())
 
@@ -1228,6 +1266,124 @@ model AnalyticsSnapshot {
 
   @@unique([organizationId, from, to])
   @@index([organizationId, computedAt])
+}
+
+// ------------------------------------------------------------------
+// Omnichannel Delivery Engine (PR010)
+// ------------------------------------------------------------------
+
+/// One connected Meta messaging account per (tenant, channel, provider id):
+/// an Instagram Business account or a WhatsApp Business phone number.
+///
+/// SECURITY CONTRACT: tokens are AES-256-GCM ciphertexts produced with
+/// `META_ENCRYPTION_KEY` (`modules/delivery/core/crypto.service.ts`). The
+/// plaintext NEVER reaches a DTO, a Client Component or a webhook response.
+model DeliveryAccount {
+  id String @id @default(cuid())
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  channel DeliveryChannel
+
+  /// Globally unique provider identity — the Instagram Business Account id
+  /// or the WhatsApp Cloud API phone number id. Global uniqueness lets an
+  /// inbound webhook resolve exactly one tenant (no ambiguity, no leak).
+  accountId   String  @unique
+  accountName String?
+
+  /// AES-256-GCM ciphertexts (`v1.iv.tag.value`, base64url). Never plaintext.
+  encryptedAccessToken  String? @db.Text
+  encryptedRefreshToken String? @db.Text
+
+  /// Access-token expiry. `null` for non-expiring tokens (e.g. Meta System
+  /// User tokens where the provider reports `expires_in = 0`).
+  expiresAt DateTime?
+
+  status DeliveryAccountStatus @default(DISCONNECTED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, channel, accountId])
+  @@index([organizationId, channel, status])
+}
+
+/// One outbound (or provider-acknowledged) omnichannel message (PR010).
+///
+/// IDEMPOTENCY CONTRACT: `(organizationId, executionId, channel,
+/// recipientId)` is unique, so re-dispatching the same `CommerceExecution`
+/// can never create two provider sends for one recipient — the dispatcher
+/// upserts on this key instead of inserting blindly.
+model DeliveryMessage {
+  id String @id @default(cuid())
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// Id of the approved `CommerceExecution` that originated this message.
+  executionId String
+
+  channel DeliveryChannel
+
+  /// Provider-scoped recipient identity (Instagram-scoped id or E.164 phone)
+  /// plus a denormalized display name for the dashboard.
+  recipientId   String
+  recipientName String?
+
+  status DeliveryStatus @default(DRAFT)
+
+  /// Provider-side message id (Instagram `mid` / WhatsApp `wamid`) — the
+  /// join key used by delivery/read webhook receipts.
+  providerMessageId String?
+
+  /// Versioned outbound payload: message body/template + denormalized
+  /// execution context (campaign, creator) for rendering and filtering.
+  payload Json
+
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
+
+  /// Provider send attempts consumed by the retry engine (max 3 — see
+  /// `modules/delivery/queue/retry.service.ts`).
+  attempts Int @default(0)
+
+  /// Retry scheduling (see `nextAttemptAt` below) and the last sanitized
+  /// provider error for the dashboard. `updatedAt` powers stale-claim
+  /// recovery for messages interrupted while SENDING.
+  lastAttemptAt DateTime?
+  nextAttemptAt DateTime?
+  lastError     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, executionId, channel, recipientId])
+  @@index([organizationId, status])
+  @@index([organizationId, channel])
+  @@index([organizationId, providerMessageId])
+  @@index([organizationId, executionId])
+  @@index([status, nextAttemptAt])
+}
+
+/// Short-lived, one-time server-side CSRF state for a Meta OAuth redirect
+/// (Facebook Login for Instagram Business / WhatsApp Embedded Signup).
+/// Only a SHA-256 digest of the opaque state is persisted.
+model DeliveryOAuthState {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  channel   DeliveryChannel
+  stateHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, channel, expiresAt])
 }
 
 // ------------------------------------------------------------------

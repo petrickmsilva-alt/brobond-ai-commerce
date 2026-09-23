@@ -1,6 +1,18 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { BarChart3, Coins, DollarSign, Hash, ShoppingCart, Sparkles } from "lucide-react";
+import {
+  BarChart3,
+  CheckCheck,
+  CircleAlert,
+  Coins,
+  DollarSign,
+  Eye,
+  Hash,
+  MailOpen,
+  Send,
+  ShoppingCart,
+  Sparkles,
+} from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { AnalyticsDashboard } from "@/components/analytics/analytics-dashboard";
@@ -31,7 +43,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps) {
   const days = analyticsDaysSchema.parse(Array.isArray(raw.days) ? raw.days[0] : raw.days);
 
   const dashboard = await analyticsService.getDashboard(organizationId, { days });
-  const { totals, attribution, ai } = dashboard.metrics;
+  const { totals, attribution, ai, delivery } = dashboard.metrics;
 
   return (
     <>
@@ -76,6 +88,39 @@ export default async function AnalyticsPage({ searchParams }: PageProps) {
           value={formatEstimatedCost(ai.estimatedCostUsdCents)}
           delta={`${(ai.inputTokens + ai.outputTokens).toLocaleString("pt-BR")} tokens · ${ai.totalMessages} mensagens`}
           icon={Sparkles}
+        />
+      </div>
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <KpiCard
+          label="Msgs enviadas"
+          value={String(delivery.messagesSent)}
+          delta={`${delivery.messagesQueued} na fila agora`}
+          icon={Send}
+        />
+        <KpiCard
+          label="Msgs entregues"
+          value={String(delivery.messagesDelivered)}
+          delta={`${(delivery.deliveryRate / 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}% taxa de entrega`}
+          icon={CheckCheck}
+        />
+        <KpiCard
+          label="Msgs lidas"
+          value={String(delivery.messagesRead)}
+          delta={`${(delivery.readRate / 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}% taxa de leitura`}
+          icon={Eye}
+        />
+        <KpiCard
+          label="Msgs com falha"
+          value={String(delivery.messagesFailed)}
+          delta="falhas terminais no período"
+          icon={CircleAlert}
+        />
+        <KpiCard
+          label="Taxa de leitura"
+          value={`${(delivery.readRate / 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`}
+          delta="leituras sobre entregues"
+          icon={MailOpen}
         />
       </div>
 

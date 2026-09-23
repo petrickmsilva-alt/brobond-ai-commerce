@@ -8,12 +8,23 @@ import type {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { assertOrganizationId, tenantWhere } from "@/lib/tenant";
-import type { AiUsageInput, SnapshotSaleInput } from "../metrics/snapshot-builder";
+import {
+  ZERO_DELIVERY_USAGE,
+  type AiUsageInput,
+  type DeliveryUsageInput,
+  type SnapshotSaleInput,
+} from "../metrics/snapshot-builder";
 
 export type AnalyticsDatabase = Pick<
   PrismaClient,
   "sale" | "aIGeneratedMessage" | "analyticsSnapshot"
->;
+> &
+  /**
+   * PR010 additive: `deliveryMessage` is optional so pre-PR010 consumers
+   * (and their bounded contexts) keep working — absence yields a zero
+   * delivery baseline, never an error.
+   */
+  Partial<Pick<PrismaClient, "deliveryMessage">>;
 
 export interface AnalyticsPeriodRange {
   from: Date;
@@ -108,6 +119,33 @@ export function createAnalyticsRepository(db: AnalyticsDatabase) {
         },
       });
       return result._max.updatedAt ?? null;
+    },
+
+    /**
+     * Delivery usage aggregate (PR010 §11) over the same period:
+     * messagesSent/messagesDelivered/messagesRead are receipt-dated
+     * (sentAt/deliveredAt/readAt inside `[from, to)`); failures are dated
+     * by their terminal update; the queue backlog is a point-in-time gauge.
+     * Returns the zero baseline when the delivery module is not wired.
+     */
+    async aggregateDeliveryUsage(
+      organizationId: string,
+      range: AnalyticsPeriodRange,
+    ): Promise<DeliveryUsageInput> {
+      const scope = tenantWhere(organizationId);
+      const period: Prisma.DateTimeFilter = { gte: range.from, lt: range.to };
+      const delivery = db.deliveryMessage;
+      if (!delivery) return { ...ZERO_DELIVERY_USAGE };
+
+      const [messagesSent, messagesDelivered, messagesRead, messagesFailed, messagesQueued] =
+        await Promise.all([
+          delivery.count({ where: { ...scope, sentAt: period } }),
+          delivery.count({ where: { ...scope, deliveredAt: period } }),
+          delivery.count({ where: { ...scope, readAt: period } }),
+          delivery.count({ where: { ...scope, status: "FAILED", updatedAt: period } }),
+          delivery.count({ where: { ...scope, status: { in: ["QUEUED", "SENDING"] } } }),
+        ]);
+      return { messagesSent, messagesDelivered, messagesRead, messagesFailed, messagesQueued };
     },
 
     /** AI usage aggregate (tokens/messages) over the same period. */
