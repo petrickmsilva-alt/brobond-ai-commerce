@@ -1,6 +1,5 @@
 import Link from "next/link";
 import {
-  Sparkles,
   ArrowRight,
   Package,
   Users,
@@ -11,7 +10,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { LandingHeader } from "@/components/marketing/landing-header";
 import { APP_NAME, APP_SHORT_NAME } from "@/lib/constants";
+import { getCurrentUser } from "@/lib/session";
+import { DEFAULT_AUTHENTICATED_REDIRECT, buildLoginUrl } from "@/lib/auth-routes";
 
 const features = [
   {
@@ -46,31 +48,29 @@ const features = [
   },
 ];
 
-export default function LandingPage() {
+/**
+ * Landing page (PR010.2 §1).
+ *
+ * Now an async Server Component: it resolves the session ONCE and hands a
+ * single boolean to the header and hero CTAs, so every "Dashboard" affordance
+ * points at `/dashboard` for a signed-in visitor and at
+ * `/login?next=/dashboard` for everyone else. No CTA on this page can lead to
+ * the white error screen any more.
+ *
+ * `getCurrentUser()` never throws (unlike `requireUser()`), which is exactly
+ * what a public page needs.
+ */
+export default async function LandingPage() {
+  const user = await getCurrentUser();
+  const authenticated = Boolean(user);
+  const dashboardHref = authenticated
+    ? DEFAULT_AUTHENTICATED_REDIRECT
+    : buildLoginUrl(DEFAULT_AUTHENTICATED_REDIRECT);
+
   return (
     <div className="bg-premium-glow min-h-screen">
       {/* Nav */}
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-        <div className="flex items-center gap-2.5">
-          <div
-            aria-hidden
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-accent-600 shadow-[0_8px_24px_-8px_rgba(79,70,229,0.9)]"
-          >
-            <Sparkles className="h-5 w-5 text-white" />
-          </div>
-          <span className="text-base font-semibold text-white">{APP_SHORT_NAME}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link href="/login">
-            <Button variant="ghost" size="sm">
-              Entrar
-            </Button>
-          </Link>
-          <Link href="/dashboard">
-            <Button size="sm">Dashboard</Button>
-          </Link>
-        </div>
-      </header>
+      <LandingHeader authenticated={authenticated} />
 
       {/* Hero */}
       <section className="mx-auto max-w-3xl px-6 py-24 text-center">
@@ -86,8 +86,9 @@ export default function LandingPage() {
           O sistema operacional enterprise para comércio social orientado a creators. Infraestrutura
           pronta para produção, arquitetura modular e escalável.
         </p>
-        <div className="mt-10 flex items-center justify-center gap-3">
-          <Link href="/dashboard">
+        <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+          {/* Same §1 rule as the header — resolved server-side, once. */}
+          <Link href={dashboardHref}>
             <Button size="lg">
               Acessar Dashboard
               <ArrowRight className="h-4 w-4" />
@@ -96,6 +97,11 @@ export default function LandingPage() {
           <Link href="/login">
             <Button size="lg" variant="outline">
               Fazer Login
+            </Button>
+          </Link>
+          <Link href="/request-access">
+            <Button size="lg" variant="ghost">
+              Solicitar acesso
             </Button>
           </Link>
         </div>

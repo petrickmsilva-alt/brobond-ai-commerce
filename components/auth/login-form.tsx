@@ -2,9 +2,10 @@
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { AlertCircle, Eye, EyeOff, Loader2, Lock, Mail } from "lucide-react";
+import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2, Lock, Mail } from "lucide-react";
 import { loginSchema, type LoginInput } from "@/lib/validations/auth";
 import { loginAction } from "@/app/login/actions";
 import { Input } from "@/components/ui/input";
@@ -13,23 +14,30 @@ import { cn } from "@/lib/utils";
 import { focusRingRaised } from "@/components/ui/design-system/theme";
 
 /**
- * Credentials login form (redesigned in PR010.1 — UI only).
+ * Credentials login form (PR010.2 §3).
  *
- * SECURITY — unchanged from PR000.2. The password is submitted to the
- * `loginAction` server action and verified server-side against a bcrypt
- * digest. No secret (AUTH_SECRET, DATABASE_URL, passwordHash) is ever present
- * in this client bundle, and the redirect target is still the hardcoded
- * `/dashboard` — never a value taken from the URL (no open redirect).
+ * SECURITY — the redirect is decided by the SERVER.
+ * -------------------------------------------------
+ * `next` is passed to the server action, which runs it through
+ * `resolveNext()` (same-origin absolute paths only) and returns the
+ * destination. This component navigates to whatever the action returns and
+ * never to a raw URL value, so a crafted `/login?next=https://evil.example`
+ * cannot bounce a user who has just been issued a session cookie.
+ *
+ * The password is verified server-side against a bcrypt digest. No secret
+ * (AUTH_SECRET, DATABASE_URL, passwordHash) exists in this bundle.
  *
  * ACCESSIBILITY: every field is labelled, errors are wired through
- * `aria-invalid` + `aria-describedby`, and the form-level error is an
+ * `aria-invalid` + `aria-describedby`, and the form-level error is a
  * `role="alert"` live region.
- *
- * MFA: the layout reserves the second-factor step (see `LoginPage`), but no
- * MFA logic ships here — enabling it is an auth-domain change, out of scope
- * for a UI/UX PR.
  */
-export function LoginForm() {
+
+export interface LoginFormProps {
+  /** Sanitised post-login destination resolved from `?next=` by the page. */
+  next?: string | null;
+}
+
+export function LoginForm({ next = null }: LoginFormProps) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -48,7 +56,7 @@ export function LoginForm() {
     setSubmitting(true);
     setFormError(null);
 
-    const result = await loginAction(data);
+    const result = await loginAction({ ...data, next });
 
     if (!result.ok) {
       setFormError(result.error);
@@ -56,7 +64,8 @@ export function LoginForm() {
       return;
     }
 
-    router.push("/dashboard");
+    // `redirectTo` is server-sanitised — never the raw `?next=` value.
+    router.push(result.redirectTo);
     router.refresh();
   }
 
@@ -98,15 +107,16 @@ export function LoginForm() {
           <label htmlFor="password" className="block text-xs font-medium text-white/70">
             Senha
           </label>
-          <a
-            href="mailto:suporte@brobond.ai?subject=Recupera%C3%A7%C3%A3o%20de%20acesso"
+          {/* §6 — a real route now, not a mailto: link. */}
+          <Link
+            href="/forgot-password"
             className={cn(
               "rounded text-xs font-medium text-brand-300 transition-colors hover:text-brand-200",
               focusRingRaised,
             )}
           >
             Esqueci minha senha
-          </a>
+          </Link>
         </div>
 
         <div className="relative">
@@ -164,6 +174,7 @@ export function LoginForm() {
       <Button type="submit" size="lg" className="w-full" disabled={submitting}>
         {submitting && <Loader2 aria-hidden className="h-4 w-4 animate-spin" />}
         {submitting ? "Entrando…" : "Entrar"}
+        {!submitting && <ArrowRight aria-hidden className="h-4 w-4" />}
       </Button>
     </form>
   );

@@ -5,22 +5,52 @@ import { SectionCard } from "@/components/ui/section-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { InvitationsPanel } from "@/components/settings/invitations-panel";
+import { AccessRequestsPanel } from "@/components/settings/access-requests-panel";
 import { getShellContext } from "@/lib/shell-context";
+import { requireUser } from "@/lib/session";
+import { isAdmin } from "@/lib/rbac";
+import { invitationService } from "@/modules/auth/invitation.service";
+import { accessRequestService } from "@/modules/auth/access-request.service";
 
 export const metadata: Metadata = {
   title: "Configurações",
 };
 
 /**
- * Settings (PR010.1 — UI refresh).
+ * Settings (PR010.1 UI refresh · PR010.2 §5/§7/§11 administration).
  *
- * Restyled onto `SectionCard` and seeded with the real session values instead
- * of the hardcoded PR000 placeholders. No settings mutation ships here: the
- * fields stay read-only until a settings domain + server action exists, and
- * the disabled Save button says so rather than pretending to work.
+ * PR010.2 adds the two ADMIN surfaces the auth flows need a home for:
+ * the invitation manager (§7) and the access-request queue (§5).
+ *
+ * RBAC §11 — resolved once here and passed down as `canManage`:
+ *   ADMIN   → gerencia convites · aprova acesso
+ *   MANAGER → sem convites (panels render read-only)
+ *   MEMBER  → leitura
+ *
+ * The flag only governs affordances. Every mutation re-checks with
+ * `requireAdmin()` server-side (`app/settings/actions.ts`), so hiding a button
+ * is never the thing standing between a MANAGER and an invitation.
+ *
+ * The ADMIN-only data is fetched only for an ADMIN — a MANAGER's render never
+ * even reads the access-request queue.
  */
 export default async function SettingsPage() {
   const { user, workspace, tiktokStatus } = await getShellContext();
+  const current = await requireUser();
+  const canManage = isAdmin(current.role);
+
+  // Invitations are tenant-scoped and visible to the workspace; access
+  // requests are global and ADMIN-only, so they are read conditionally.
+  const [invitations, accessRequests, accessCounts] = await Promise.all([
+    current.organizationId
+      ? invitationService.list(current.organizationId)
+      : Promise.resolve([]),
+    canManage ? accessRequestService.list({ take: 25 }) : Promise.resolve([]),
+    canManage
+      ? accessRequestService.counts()
+      : Promise.resolve({ pending: 0, approved: 0, rejected: 0, total: 0 }),
+  ]);
 
   const integrations = [
     {
@@ -101,7 +131,28 @@ export default async function SettingsPage() {
               <dd className="mt-1 text-sm text-white">{user.role}</dd>
             </div>
           </dl>
+
+          {/* RBAC §11, stated plainly where the role is shown. */}
+          <p className="mt-5 rounded-xl border border-white/8 bg-white/[0.02] px-4 py-3 text-[11px] leading-relaxed text-white/45">
+            <strong className="font-semibold text-white/65">ADMIN</strong> gerencia convites e
+            aprova solicitações de acesso ·{" "}
+            <strong className="font-semibold text-white/65">MANAGER</strong> opera o workspace, sem
+            convites · <strong className="font-semibold text-white/65">MEMBER</strong> tem acesso de
+            leitura.
+          </p>
         </SectionCard>
+
+        {/* §7 — Convites (ADMIN gerencia; demais papéis apenas visualizam). */}
+        <InvitationsPanel invitations={invitations} canManage={canManage} />
+
+        {/* §5 — Fila de solicitações de acesso, exclusiva do ADMIN. */}
+        {canManage && (
+          <AccessRequestsPanel
+            requests={accessRequests}
+            pendingCount={accessCounts.pending}
+            canManage={canManage}
+          />
+        )}
 
         <SectionCard
           title="Integrações"

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowDown, ArrowUp, ArrowUpDown, Package } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Package, Plus } from "lucide-react";
 import type { ProductListItemDTO } from "@/modules/commerce/products/dto/product.dto";
 import { formatCurrency, cn } from "@/lib/utils";
 import {
@@ -13,6 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { TableEmptyState } from "@/components/ui/table-empty-state";
 import { ProductStatusBadge } from "./product-status-badge";
 import { MarginBadge } from "./margin-badge";
 import { DeleteProductButton } from "./delete-product-button";
@@ -67,14 +69,32 @@ function SortableHead({ column, label }: { column: string; label: string }) {
 
 export function ProductsTable({ items, canEdit, canDelete }: ProductsTableProps) {
   if (items.length === 0) {
+    // §10 — an empty catalogue is an onboarding moment, not a dead end.
+    // The CTA is gated on `canEdit` so a MEMBER is never offered an action
+    // the server would refuse (RBAC §11).
     return (
-      <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-        <Package className="h-10 w-10 text-white/20" />
-        <p className="text-sm text-white/50">Nenhum produto encontrado.</p>
-        <p className="text-xs text-white/30">
-          Ajuste os filtros ou cadastre um novo produto para começar.
-        </p>
-      </div>
+      <TableEmptyState
+        icon={Package}
+        title="Nenhum produto no catálogo"
+        description="Importe seu catálogo do TikTok Shop ou cadastre o primeiro produto para começar a montar campanhas."
+        action={
+          canEdit ? (
+            <>
+              <Link href="/dashboard/products/new">
+                <Button size="sm">
+                  <Plus aria-hidden className="h-4 w-4" />
+                  Importar produtos
+                </Button>
+              </Link>
+              <Link href="/dashboard/tiktok">
+                <Button size="sm" variant="outline">
+                  Sincronizar TikTok
+                </Button>
+              </Link>
+            </>
+          ) : undefined
+        }
+      />
     );
   }
 

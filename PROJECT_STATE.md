@@ -1,5 +1,112 @@
 # PROJECT STATE — Brobond AI Commerce OS
 
+### PR010.2 — Enterprise Authentication & UX (2026-09-23) — completed
+
+- **The bug that started it:** the landing header linked "Dashboard" straight
+  at `/dashboard`. A visitor without a session hit a Server Component whose
+  `requireUser()` threw, and Next.js rendered an unstyled white page with a
+  digest hash. The most prominent button on the marketing site led to a dead
+  end. PR010.2 closes that hole at three layers — the CTA, the perimeter, and
+  the error boundary — and builds out the account lifecycle that was missing
+  around it.
+- **§1 Landing CTA — never navigates blindly.** `components/marketing/landing-header.tsx`
+  is a Server Component receiving one boolean: `authenticated` → `/dashboard`,
+  otherwise → `/login?next=%2Fdashboard`. The href is resolved server-side, so
+  it is correct in the first paint, needs no JavaScript, and cannot flash the
+  wrong destination. "Entrar" is always `/login`.
+- **§2 Perimeter — `middleware.ts`.** Protects `/dashboard`, `/products`,
+  `/creators`, `/campaigns`, `/analytics`, `/outreach`, `/ai`, `/matches`,
+  `/connectors` (plus `/settings`) and redirects anonymous traffic to
+  `/login?next=<currentPath>` with the querystring preserved. It decodes the
+  JWT with `getToken({ cookieName })` — the salt defaults to the cookie name,
+  so it must be passed explicitly — and bypasses `/api/auth`, webhooks,
+  OAuth callbacks and static assets without ever reading a token.
+- **Open-redirect defence.** `lib/auth-routes.ts` is the single sanitiser used
+  by the middleware, the landing header, the login page *and* the login
+  action. `sanitizeNext()` accepts only same-origin absolute paths, rejecting
+  `//host`, `/\host`, backslashes, `scheme:`, relative paths, control
+  characters and `%0a/%0d/%09` (checked on the **raw** string, before
+  `trim()`, so a trailing CRLF is rejected rather than silently trimmed), and
+  refuses auth routes to prevent redirect loops.
+- **§3 Login refactor.** Two columns: brand, headline, benefícios and status
+  da plataforma on the left; a glass card with email, senha, Entrar, Google
+  (conditional), Esqueci senha and Solicitar acesso on the right. An already
+  authenticated visitor is redirected before the form renders.
+- **§4 Google SSO is hidden, never disabled.** PR010.1 shipped a permanently
+  `disabled` Google button with an apologetic caption; a control that can
+  never be used reads as a broken page. `showGoogleProvider()`
+  (`lib/auth-providers.ts`) requires **both** `AUTH_GOOGLE_ID` and
+  `AUTH_GOOGLE_SECRET` — a half-configured provider would render a button that
+  dies at the callback — and `lib/auth.ts` registers the provider with the
+  same predicate, so UI and auth config cannot drift. No provider → the
+  component returns `null`, and the "ou" divider disappears with it. The
+  client receives one boolean; the credentials never enter the bundle.
+- **§5 `/request-access`.** A public form (Nome, Empresa, Email, WhatsApp,
+  Mensagem) writing one inert `AccessRequest` row with status `PENDING`. It is
+  a *lead*, not an account: no password, no role, no tenant, and nothing in
+  the authentication path reads it. Re-submitting while a request is pending
+  updates the existing row, so a scripted flood cannot swamp the ADMIN queue.
+- **§6 `/forgot-password` → `/reset-password`.** Email → token → nova senha,
+  expiring in exactly **30 minutes**. No user enumeration: known and unknown
+  emails get an identical response shape and an identical confirmation screen,
+  and nothing is written for an unknown address. Issuing a token invalidates
+  every outstanding one; consuming it is single-use and does **not** auto-login.
+- **§7 `/invite/[token]`.** Public by design (the token *is* the credential).
+  The page previews organização and role, the invitee sets a password, and the
+  action auto-signs them in. Role and tenant are read from the stored
+  invitation, never from the client payload, so a crafted request cannot
+  escalate to ADMIN. Re-inviting a pending email rotates the token and kills
+  the old link.
+- **Token security.** `lib/tokens.ts` generates 32 bytes of entropy
+  (base64url) and persists **only** the SHA-256 digest — a database dump
+  yields no usable link. Acceptance and password reset run as status-guarded
+  `updateMany` inside a `$transaction`, so a replayed link cannot create a
+  second account or rewrite a password twice.
+- **§8 Error boundaries — "remover erro branco".** `components/ui/error-state.tsx`
+  renders a branded surface with **Voltar ao Dashboard**, **Recarregar**
+  (prefers `reset()` over a reload, preserving scroll and shell) and
+  **Copiar ID**, wired into `app/error.tsx`, `app/dashboard/error.tsx` and
+  `app/global-error.tsx`. Only `error.digest` is shown in production —
+  `error.message` can carry a query, a connection string or a tenant id, so it
+  appears in development only. `global-error.tsx` replaces the root layout, so
+  it renders its own `<html>`/`<body>`, imports nothing but React and styles
+  everything inline; the app CSS may never have loaded.
+- **§9 Loading states.** `app/loading.tsx`, `app/login/loading.tsx` and
+  `app/dashboard/loading.tsx`, backed by new `PageHeaderSkeleton`,
+  `DashboardSkeleton`, `ListPageSkeleton` and `AuthCardSkeleton` primitives.
+- **§10 Empty states with a CTA.** `components/ui/table-empty-state.tsx`
+  distinguishes *no data yet* (a creation CTA — "Importar produtos",
+  "Sincronizar TikTok", "Importar conteúdo") from *filters matched nothing*
+  ("Limpar filtros"), reading `useSearchParams()` against a `FILTER_KEYS`
+  list. The CTA is supplied by the caller so RBAC stays on the page. Wired
+  into the products, creators, connector-content and matches tables.
+- **§11 RBAC.** ADMIN manages invitations and reviews access requests;
+  MANAGER cannot invite; MEMBER is read-only. `canManage` hides affordances,
+  but `requireAdmin()` inside every server action is the real gate. The invite
+  role enum is `MANAGER | MEMBER` only — an ADMIN cannot mint another ADMIN
+  through a link. Approving an access request records a decision and
+  provisions nothing; a separate, explicit invitation is the only code path
+  that creates a `User`, so PR000.2's "no public sign-up" contract holds.
+- **§13 UI.** Glassmorphism, radius 16, premium gradient and Framer Motion
+  entrances (`SlideIn` for the brand column, `FadeIn` for the cards), all
+  inert under `prefers-reduced-motion`. Every field is labelled, errors are
+  wired through `aria-invalid` + `aria-describedby`, and form-level errors are
+  `role="alert"` live regions.
+- **Schema (additive only).** Two enums (`InvitationStatus`,
+  `AccessRequestStatus`) and three models (`Invitation`,
+  `PasswordResetToken`, `AccessRequest`) plus two back-relations. No existing
+  model or enum was modified. Migration:
+  `20260928090000_enterprise_authentication_ux`.
+- **Environment.** `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` added to
+  `lib/env.ts` and `.env.example` as an optional pair — both or neither.
+- **§12 Tests:** suite grows from 1,818 to **2,090 tests** (+272) across 120
+  files. Seven new suites cover route sanitising and open-redirect defence
+  (55), the middleware redirect matrix against the real `next/server` (43),
+  UI contracts for §1/§3/§4/§9/§10/§11/§13 (42), the invitation flow incl.
+  single-use and privilege-escalation attempts (28), error boundaries (27),
+  token digests and the 30-minute TTL (24), password reset incl. user
+  enumeration (20) and the access-request queue (19).
+
 ### PR010 — Omnichannel Delivery Engine (2026-09-23) — completed
 
 - **Official Meta APIs only:** the Instagram Connector uses Facebook Login
@@ -84,9 +191,9 @@
 > Updated per PR. Source of truth for "what exists" vs. "what is planned".
 
 **Last updated:** 2026-09-23
-**Current PR:** PR010.1 — Enterprise UI/UX Redesign
+**Current PR:** PR010.2 — Enterprise Authentication & UX
 **Status:** completed (awaiting review/merge — **no merge performed**)
-**Branch:** `arena/01a0cf0c-brobond-ai-commerce`
+**Branch:** `feature/pr010-2-auth-ux`
 **Next PR:** PR011 — AI CEO & Autonomous Decisions
 
 > **Workflow (instituted in PR001):** no more direct merges to `main`.
@@ -98,7 +205,7 @@
 
 | Aspect        | State                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stage         | **Enterprise UI/UX Redesign (PR010.1)** shipped on top of Omnichannel Delivery Engine (PR010)                                                                                                                                                                                                                                                                                                                        |
+| Stage         | **Enterprise Authentication & UX (PR010.2)** shipped on top of Enterprise UI/UX Redesign (PR010.1)                                                                                                                                                                                                                                                                                                                        |
 | Architecture  | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models) · **multi-source trends** (PR002.1)                                                                                                                                                                                                                                                                                                          |
 | Modules       | `modules/commerce/products` — services / repositories / dto / pricing / validators                                                                                                                                                                                                                                                                                                                                   |
 |               | `modules/trends` — hunter (collectors / collector factory / scorer / scheduler) / repositories / dto / …                                                                                                                                                                                                                                                                                                             |
@@ -108,13 +215,13 @@
 |               | `modules/analytics` — deterministic metrics pipeline (sales metrics · attribution · snapshot builder) · materialized snapshots · lazy+refresh service · repositories · validators · deterministic sales seed (PR008)                                                                                                                                                                                                 |
 |               | `modules/delivery` — core connector interface + Map factory · instagram & whatsapp OAuth/Cloud-API connectors · dispatcher + retry engine · webhook handlers · repositories · dto · validators (PR010)                                                                                                                                                                                                               |
 | Design System | `components/ui/design-system` — `colors.ts` · `spacing.ts` (8pt grid) · `tokens.ts` (Inter, 16px radius, elevation, motion) · `theme.ts` (semantic roles + Tailwind recipes + chart theme) (PR010.1)                                                                                                                                                                                                                 |
-| UI            | **Enterprise dark premium** — glass AppShell · grouped collapsible Sidebar (6 módulos) + workspace switcher · Header com busca global ⌘K, notificações, status TikTok, Nova Campanha e avatar · Glass Dashboard (6 KPIs + 4 gráficos Recharts) · Premium Login (2 colunas) (PR010.1)                                                                                                                                 |
+| UI            | **Enterprise dark premium** — glass AppShell · grouped collapsible Sidebar (6 módulos) + workspace switcher · Header com busca global ⌘K, notificações, status TikTok, Nova Campanha e avatar · Glass Dashboard (6 KPIs + 4 gráficos Recharts) · Premium Login (2 colunas) (PR010.1) · **Error Boundaries com digest + Copiar ID · skeletons de loading · empty states com CTA · telas de convite/reset/solicitar acesso** (PR010.2)                                                                                                                                 |
 | Currency      | **BRL** (default across Product, Campaign, Sale) · money = integer cents · margin = basis points                                                                                                                                                                                                                                                                                                                     |
-| Auth          | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**                                                                                                                                                                                                                                                                                                                                           |
-| RBAC          | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura                                                                                                                                                                                                                                                                                                                |
+| Auth          | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)** + **Google SSO (opcional — botão oculto quando não configurado)** · **`middleware.ts`** protege as rotas privadas e redireciona para `/login?next=<path>` · convite, reset de senha (TTL 30 min) e solicitação de acesso (PR010.2)                                                                                                                                                                                                                                                                                                                                           |
+| RBAC          | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura · **convites e aprovação de acesso: ADMIN apenas; papel convidável limitado a MANAGER\|MEMBER** (PR010.2)                                                                                                                                                                                                                                                                                                                |
 | Database      | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                                                                                                                                                                                                                                                                                                                                                          |
-| Migrations    | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core` · `…_trend_hunter_ai` · `…_trend_source` · `…_creator_discovery_engine` · `…_outreach_ai_sales_pipeline` · `…_connector_framework` · `…_product_match_architecture` · `…_campaign_engine` · `…_ai_personalization_engine` · `…_ai_context_audit` · `…_analytics_attribution` · `…_tiktok_shop_connector` · `…_omnichannel_delivery`  |
-| Tests         | Vitest — **1,818 unit tests** (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage, trends, creators, outreach, connectors, matches, campaigns, AI personalization + AI context audit + analytics + TikTok Shop + omnichannel delivery + design-system tokens/contraste AA + navegação + dashboard read model + shell context — OpenAI/Meta/TikTok fully mocked, zero real network calls) |
+| Migrations    | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core` · `…_trend_hunter_ai` · `…_trend_source` · `…_creator_discovery_engine` · `…_outreach_ai_sales_pipeline` · `…_connector_framework` · `…_product_match_architecture` · `…_campaign_engine` · `…_ai_personalization_engine` · `…_ai_context_audit` · `…_analytics_attribution` · `…_tiktok_shop_connector` · `…_omnichannel_delivery` · `…_enterprise_authentication_ux`  |
+| Tests         | Vitest — **2,090 unit tests** (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage, trends, creators, outreach, connectors, matches, campaigns, AI personalization + AI context audit + analytics + TikTok Shop + omnichannel delivery + design-system tokens/contraste AA + navegação + dashboard read model + shell context + **middleware/redirect + sanitização de `next` + convites + reset de senha + visibilidade do Google + error boundary** — OpenAI/Meta/TikTok fully mocked, zero real network calls) |
 | Deploy        | Render Blueprint (`render.yaml`) + GitHub Actions                                                                                                                                                                                                                                                                                                                                                                    |
 | Build/CI      | ✅ green (ci → validate → generate → lint → typecheck → test → build → format)                                                                                                                                                                                                                                                                                                                                       |
 
@@ -931,6 +1038,14 @@ required:
 | `tests/navigation.test.ts`                                                                                                                                                   | PR010.1 — IA: exactly six module groups in order, every legacy route preserved, no duplicate route, groups ≤ 7 items, palette descriptions present, active-route resolution (dashboard root exact, nested detail pages, prefix-sibling rejection)                                                                                                                                                   |
 | `tests/dashboard-overview.test.ts`                                                                                                                                           | PR010.1 — overview read model: tenant injected in EVERY query (incl. Sale's relational scope), blank tenant throws before any db call, analytics totals passed through verbatim, PAID-only revenue convention, gap-free zero-filled daily series, conversion without division by zero                                                                                                               |
 | `tests/shell-context.test.ts`                                                                                                                                                | PR010.1 — shell boundary: tenant-scoped org/integration lookups, name fallbacks, TikTok health mapping, count-by-status never selects a token column, **explicit no-credential-leak assertion** on the serialized client payload                                                                                                                                                                    |
+| `tests/auth-routes.test.ts`                                                                                                                                                  | PR010.2 — sanitização de `next`: aceita só caminhos absolutos same-origin; rejeita `//host`, `/\host`, barra invertida, `scheme:`, caminhos relativos, caracteres de controle e `%0a/%0d/%09` (**verificados na string crua, antes do `trim()`**), e rotas de auth (anti-loop); `buildLoginUrl("/dashboard") === "/login?next=%2Fdashboard"`                                                        |
+| `tests/auth-middleware.test.ts`                                                                                                                                              | PR010.2 §2 — matriz de redirecionamento contra o `next/server` real (`getToken` mockado): 11 rotas protegidas → `/login?next=<path>` com querystring preservada, sessão válida passa, `/login` autenticado → destino saneado, `?next=` hostil ignorado, rotas públicas/webhooks nunca leem token, cookie `__Secure-` em https                                                                        |
+| `tests/auth-ux-contracts.test.ts`                                                                                                                                            | PR010.2 §1/§3/§4/§9/§10/§11/§13 — CTA do landing nunca aponta para `/dashboard` cru, Google sem controle `disabled` e sem credencial no bundle, campos e links do login, arquivos de loading e skeletons, empty states com CTA vs. "Limpar filtros", `requireAdmin()` em toda ação, enum de convite sem ADMIN, Framer Motion + `prefers-reduced-motion`, nenhum segredo em Client Component          |
+| `tests/auth-invitation.test.ts`                                                                                                                                              | PR010.2 §7 — fake Prisma: só o digest é persistido, convite é **uso único** (replay não cria segunda conta), papel/tenant vêm da linha e não do payload (tentativa de escalonamento a ADMIN rejeitada), reconvite rotaciona o token, expirado/revogado/aceito com razões tipadas, list/revoke escopados por tenant                                                                                   |
+| `tests/auth-error-boundary.test.ts`                                                                                                                                          | PR010.2 §8 — os quatro arquivos existem e são Client Components, botões Voltar/Recarregar/Copiar ID presentes, `reset()` preferido ao reload, `error.message` só fora de produção, stack nunca renderizada, `global-error` com `<html>`/`<body>` próprios, zero imports além do React e estilos inline                                                                                                |
+| `tests/auth-tokens.test.ts`                                                                                                                                                  | PR010.2 §6/§7 — 32 bytes base64url únicos em 500 sorteios, digest SHA-256 nunca contém o token cru, comparação em tempo constante, TTL de reset de **exatamente 30 min** e convite de 7 dias, `isExpired()` trata a borda exata e a ausência de data como expirado                                                                                                                                  |
+| `tests/auth-password-reset.test.ts`                                                                                                                                          | PR010.2 §6 — **sem enumeração de usuários** (mesma forma de resposta, nada escrito para email desconhecido), só o digest persistido, novo token invalida os pendentes, uso único (replay não reescreve a senha), expirado não altera o hash                                                                                                                                                         |
+| `tests/auth-access-request.test.ts`                                                                                                                                          | PR010.2 §5 — pedido é *lead*, não conta (sem papel, tenant ou senha), idempotente por email pendente (5 envios → 1 linha), contadores por status, aprovar **não provisiona nada** — o convite explícito continua sendo o único caminho que cria `User`                                                                                                                                              |
 
 ---
 

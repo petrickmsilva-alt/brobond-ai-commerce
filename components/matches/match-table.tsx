@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useState, useTransition } from "react";
 import { CircleAlert, CircleCheck, Inbox, Link2, Loader2, Trash2 } from "lucide-react";
 import {
@@ -12,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TableEmptyState } from "@/components/ui/table-empty-state";
 import { approveMatch, removeMatch } from "@/app/dashboard/matches/actions";
 import type { ProductMatchItemDTO } from "@/modules/campaigns/dto/product-match.dto";
 import {
@@ -79,14 +82,25 @@ export function MatchTable({ items, canManage }: MatchTableProps) {
   }
 
   if (items.length === 0) {
+    // §10 — matches are derived data: send the user to their inputs.
     return (
-      <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-        <Inbox className="h-10 w-10 text-white/20" />
-        <p className="text-sm text-white/50">Nenhum match encontrado.</p>
-        <p className="text-xs text-white/30">
-          Execute o matcher sobre o conteúdo importado ou ajuste a busca para começar.
-        </p>
-      </div>
+      <TableEmptyState
+        icon={Inbox}
+        title="Nenhum match gerado"
+        description="Os matches são calculados a partir do conteúdo importado e do seu catálogo. Importe produtos e conteúdo para gerar os primeiros pareamentos."
+        action={
+          <>
+            <Link href="/dashboard/connectors">
+              <Button size="sm">Importar conteúdo</Button>
+            </Link>
+            <Link href="/dashboard/products">
+              <Button size="sm" variant="outline">
+                Importar produtos
+              </Button>
+            </Link>
+          </>
+        }
+      />
     );
   }
 

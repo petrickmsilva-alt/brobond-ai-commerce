@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowDown, ArrowUp, ArrowUpDown, Inbox } from "lucide-react";
 import {
@@ -19,6 +21,8 @@ import {
   type ConnectorPlatformName,
   type ExternalContentTypeName,
 } from "@/modules/connectors/core/connector.interface";
+import { Button } from "@/components/ui/button";
+import { TableEmptyState } from "@/components/ui/table-empty-state";
 import { ContentStatusBadge } from "./content-status-badge";
 
 /**
@@ -83,14 +87,25 @@ function SortableHead({
 
 export function ContentTable({ items }: ContentTableProps) {
   if (items.length === 0) {
+    // §10 — nothing imported yet means "go connect a source", not "sorry".
     return (
-      <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-        <Inbox className="h-10 w-10 text-white/20" />
-        <p className="text-sm text-white/50">Nenhum conteúdo importado.</p>
-        <p className="text-xs text-white/30">
-          Execute uma sincronização (ADMIN) ou ajuste os filtros para começar.
-        </p>
-      </div>
+      <TableEmptyState
+        icon={Inbox}
+        title="Nenhum conteúdo importado"
+        description="Conecte uma plataforma e execute uma sincronização para importar vídeos, posts e produtos externos."
+        action={
+          <>
+            <Link href="/dashboard/tiktok">
+              <Button size="sm">Sincronizar TikTok</Button>
+            </Link>
+            <Link href="/dashboard/connectors">
+              <Button size="sm" variant="outline">
+                Ver conectores
+              </Button>
+            </Link>
+          </>
+        }
+      />
     );
   }
 
