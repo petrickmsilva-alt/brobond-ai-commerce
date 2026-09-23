@@ -1,5 +1,55 @@
 # PROJECT STATE — Brobond AI Commerce OS
 
+### PR010.4.5 — Prisma migration runtime dependencies (2026-09-23) — completed
+
+- **Symptom.** The build passed, but the Render deploy failed in the
+  `preDeployCommand: npx prisma migrate deploy` with
+  `Error: Cannot find module 'fast-check'`, require stack
+  `@prisma/config → effect → fast-check`.
+- **Root cause.** `prisma.config.ts` makes the Prisma CLI load
+  `prisma/config` → `@prisma/config@6.19.3`, which eagerly `require("effect")`;
+  `effect/dist/cjs/FastCheck.js` in turn eagerly `require("fast-check")`.
+  `fast-check@3.23.2` is a **normal transitive dependency** (not optional/peer)
+  that npm **hoists to the top-level `node_modules/fast-check`**. Any runtime
+  that ships `@prisma/config` without also shipping that hoisted `fast-check`
+  breaks. The Dockerfile's runner stage hand-copied a curated list of ~20 CLI
+  packages but never included the hoisted `fast-check` / `pure-rand` /
+  `empathic`, so the CLI aborted before touching the database. Reproduced with
+  the identical require stack by replaying the Dockerfile's exact copy list.
+- **Dependency tree (Prisma 6.19.3).** `prisma@6.19.3` →
+  `@prisma/config@6.19.3` → `effect@3.21.0` (nested) → `fast-check@^3.23.1`
+  (resolved 3.23.2, hoisted) → `pure-rand@6.1.0`; plus `empathic@2.0.0`,
+  `c12`, `deepmerge-ts` under `@prisma/config`. The project also has a direct
+  `effect@3.22.2` which independently requires the same `fast-check`.
+- **Fix — dependency tree.** Promoted `fast-check` to a **direct production
+  dependency** at the range the tree already requires (`^3.23.1`; no arbitrary
+  version pinned), so npm guarantees it survives dependency pruning in every
+  runtime path (`npm ci`, `npm ci --omit=dev`, Render, Docker). Lock file
+  regenerated with `npm install`.
+- **Fix — Docker.** Replaced the fragile hand-maintained package copy list
+  (which re-implemented npm's resolution and drifted) with a dedicated
+  `npm ci --omit=dev` stage (`proddeps`) whose **complete** production tree is
+  copied wholesale into the runner. This is exactly the tree Render installs
+  for the `preDeployCommand`, cannot drift from the lock file, and always
+  contains the CLI + its full closure (`@prisma/config`, `effect`,
+  `fast-check`, `pure-rand`, `empathic`, the `pg` driver, the TypeScript/jiti
+  loader). The generated `.prisma` client dir is still copied afterwards for
+  the `query_compiler_bg.wasm` runtime asset.
+- **Render.** Unchanged and intentionally so: `preDeployCommand: npx prisma
+migrate deploy`, `DATABASE_URL.fromDatabase` and the Prisma-owned migration
+  path all remain. No manual SQL, no disabled migrations.
+- **Smoke test (mandatory).** `scripts/smoke-prisma-migrate-runtime.sh`
+  (`npm run smoke:prisma-runtime`) rebuilds the production runtime in a clean
+  dir with `npm ci --omit=dev`, asserts the required packages are present, then
+  runs `prisma migrate deploy` and fails on any `MODULE_NOT_FOUND` while
+  proving the CLI loaded `prisma.config.ts` and its full closure (a mere DB
+  _connection_ error is the expected pass state without a live database). Wired
+  into CI (`.github/workflows/ci.yml`).
+- **Regression.** `npm ci`, `npx prisma validate`, `npx prisma generate`,
+  `npx prisma migrate deploy` (loads with no MODULE_NOT_FOUND), `npm run lint`,
+  `npm run typecheck`, `npm test` (2670 passed, 1 skipped), `npm run build`,
+  `npm run format:check`, and `npm run smoke:prisma-runtime` all pass.
+
 ### PR010.4.3 — Prisma lazy initialization (2026-09-23) — completed
 
 - **Build/runtime environment separation:** importing `lib/prisma.ts` is now

@@ -55,3 +55,10 @@ jobs:
 
       - name: Format check
         run: npm run format:check
+
+      # PR010.4.5 — guards the Render preDeployCommand runtime: installs the
+      # production-only tree (npm ci --omit=dev) in a clean dir and asserts
+      # `prisma migrate deploy` loads its full dependency closure (including the
+      # hoisted `fast-check`) with no MODULE_NOT_FOUND.
+      - name: Prisma migration runtime smoke test
+        run: npm run smoke:prisma-runtime

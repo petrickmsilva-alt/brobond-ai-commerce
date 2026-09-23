@@ -311,19 +311,20 @@ and creator repositories run against in-memory fake Prisma clients.
 
 ### Useful scripts
 
-| Script                   | Description                          |
-| ------------------------ | ------------------------------------ |
-| `npm run dev`            | Start the Next.js dev server         |
-| `npm run build`          | `prisma generate` + production build |
-| `npm run start`          | Run the production server            |
-| `npm run lint`           | ESLint                               |
-| `npm run format`         | Prettier (write)                     |
-| `npm run typecheck`      | TypeScript, no emit                  |
-| `npm test`               | Vitest unit tests (no DB required)   |
-| `npm run format:check`   | Prettier (check only)                |
-| `npm run prisma:migrate` | Create/apply a dev migration         |
-| `npm run prisma:studio`  | Open Prisma Studio                   |
-| `npm run db:seed`        | Seed demo data                       |
+| Script                         | Description                                                            |
+| ------------------------------ | ---------------------------------------------------------------------- |
+| `npm run dev`                  | Start the Next.js dev server                                           |
+| `npm run build`                | `prisma generate` + production build                                   |
+| `npm run start`                | Run the production server                                              |
+| `npm run lint`                 | ESLint                                                                 |
+| `npm run format`               | Prettier (write)                                                       |
+| `npm run typecheck`            | TypeScript, no emit                                                    |
+| `npm test`                     | Vitest unit tests (no DB required)                                     |
+| `npm run format:check`         | Prettier (check only)                                                  |
+| `npm run prisma:migrate`       | Create/apply a dev migration                                           |
+| `npm run prisma:studio`        | Open Prisma Studio                                                     |
+| `npm run db:seed`              | Seed demo data                                                         |
+| `npm run smoke:prisma-runtime` | Prod-only install + `prisma migrate deploy` (Render preDeploy runtime) |
 
 ### Run the full stack with Docker
 
@@ -366,12 +367,52 @@ Deployment is defined as code in [`render.yaml`](./render.yaml) (a Render Bluepr
    losing that variable can no longer take sign-in down with
    `UntrustedHost: Host must be trusted`. Set `AUTH_TRUST_HOST=false` to opt out.
 
+### Render Prisma Migration Runtime
+
+The `preDeployCommand` runs **`npx prisma migrate deploy`**, and it executes in
+a **production-only** environment (`npm ci --omit=dev`, `NODE_ENV=production`).
+That command is not just a schema push — it boots the whole Prisma CLI, which
+loads [`prisma.config.ts`](./prisma.config.ts). Loading that config drags in a
+real dependency chain at runtime:
+
+```
+prisma.config.ts → prisma/config → @prisma/config → effect → fast-check
+```
+
+Every package in that chain must exist in the `preDeployCommand` environment,
+or the CLI aborts **before it ever reaches the database** with
+`Error: Cannot find module 'fast-check'`. The subtlety is that `fast-check`
+(required by `effect`, required by `@prisma/config`) is a transitive dependency
+that npm **hoists to the top level** of `node_modules` — so any runtime that
+ships `@prisma/config` without also shipping the hoisted `fast-check` breaks.
+
+Two guarantees keep the migration runtime intact:
+
+- **`fast-check` is a direct production dependency** in `package.json`, so npm
+  never prunes it from the `--omit=dev` tree regardless of hoisting decisions.
+- **The Docker runner copies the full `npm ci --omit=dev` tree** (a dedicated
+  `proddeps` stage) instead of a hand-picked package list, so the CLI's entire
+  transitive closure — `@prisma/config`, `effect`, `fast-check`, `pure-rand`,
+  `empathic`, the `pg` driver and the TypeScript/jiti loader for the `.ts`
+  config — is always present and can never drift from the lock file.
+
+Verify the runtime the way Render sees it, in a clean production install:
+
+```bash
+npm run smoke:prisma-runtime   # npm ci --omit=dev + prisma migrate deploy, asserts no MODULE_NOT_FOUND
+```
+
+Do **not** "fix" a missing module by copying all of `node_modules`, by
+switching migrations to manual SQL, or by removing `prisma.config.ts` — those
+hide the real problem. If the CLI needs a package at runtime, it belongs in
+production `dependencies`.
+
 ### CI/CD
 
-| Trigger              | Workflow                       | Actions                                                                                              |
-| -------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| **Open / update PR** | `.github/workflows/ci.yml`     | `npm ci` → `prisma validate` → `generate` → `lint` → `typecheck` → `test` → `build` → `format:check` |
-| **Merge to `main`**  | `.github/workflows/deploy.yml` | Trigger Render deploy (hook) — Blueprint auto-deploys                                                |
+| Trigger              | Workflow                       | Actions                                                                                                                       |
+| -------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| **Open / update PR** | `.github/workflows/ci.yml`     | `npm ci` → `prisma validate` → `generate` → `lint` → `typecheck` → `test` → `build` → `format:check` → `smoke:prisma-runtime` |
+| **Merge to `main`**  | `.github/workflows/deploy.yml` | Trigger Render deploy (hook) — Blueprint auto-deploys                                                                         |
 
 > With `autoDeploy: true` in the Blueprint, Render redeploys on every push to `main`.
 > The deploy workflow additionally supports an explicit `RENDER_DEPLOY_HOOK_URL`
