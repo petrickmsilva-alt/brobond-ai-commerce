@@ -1,9 +1,10 @@
 /**
- * AI Personalization Engine — public surface (PR007).
+ * AI Personalization Engine — public surface (PR007, PR007.1).
  *
  * modules/ai/
  * ├── openai/           Responses API client, versioned prompts, generator
  * ├── personalization/  context builder + cache-aware orchestration service
+ * ├── audit/            context snapshot diff (PR007.1, pure, server+client safe)
  * ├── repositories/      tenant-scoped Prisma data access (server-only)
  * └── validators/        Zod schemas for server actions
  *
@@ -14,4 +15,5 @@
  */
 export * from "./openai/prompts";
 export * from "./personalization/context-builder";
+export * from "./audit/context-diff";
 export * from "./validators/generate-message.validator";

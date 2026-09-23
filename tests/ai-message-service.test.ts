@@ -156,3 +156,117 @@ describe("AI message service — cache contract", () => {
     expect(message.model).toBe("gpt-4o-mini");
   });
 });
+
+// ------------------------------------------------------------------
+// PR007.1 — AI Context Audit: snapshot persistence + cache invariance
+// ------------------------------------------------------------------
+
+describe("AI message service — context snapshot (PR007.1)", () => {
+  const auditedInput = {
+    ...baseInput,
+    creator: { ...baseInput.creator, score: 82 },
+    product: { ...baseInput.product, margin: 3550 },
+    trend: { keyword: "streetwear", score: 87 },
+  };
+
+  beforeEach(() => {
+    generatePersonalizedMessageMock.mockReset();
+    generatePersonalizedMessageMock.mockResolvedValue({
+      content: { title: "T", message: "M", hashtags: ["#a"], cta: "c" },
+      promptVersion: "friendly@1.0.0",
+      model: "gpt-4o-mini",
+      temperature: 0.7,
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+  });
+
+  it("persists the full structured context snapshot on create", async () => {
+    const { db } = fakeDb();
+    const service = createAiMessageService(db);
+    const { message } = await service.generate("org_a", auditedInput);
+
+    expect(message.contextSnapshot).toEqual({
+      creator: {
+        id: "creator_1",
+        name: "Ana Souza",
+        handle: "ana.souza",
+        niche: "Moda",
+        score: 82,
+      },
+      product: { id: "product_1", name: "Jaqueta Bomber", margin: 3550 },
+      campaign: { id: "campaign_1", name: "Lançamento Inverno" },
+      trend: { keyword: "streetwear", score: 87 },
+    });
+  });
+
+  it("persists exactly what serializeContext() builds for the same input", async () => {
+    const { db } = fakeDb();
+    const service = createAiMessageService(db);
+    const { message } = await service.generate("org_a", auditedInput);
+
+    const { serializeContext } = await import("@/modules/ai/personalization/context-builder");
+    expect(message.contextSnapshot).toEqual(serializeContext(auditedInput));
+  });
+
+  it("persists a null trend snapshot when the context has no trend", async () => {
+    const { db } = fakeDb();
+    const service = createAiMessageService(db);
+    const { message } = await service.generate("org_a", baseInput);
+    expect((message.contextSnapshot as { trend: unknown }).trend).toBeNull();
+  });
+
+  it("keeps the persisted snapshot of the cached row untouched on a cache hit", async () => {
+    const { db, rows } = fakeDb();
+    const service = createAiMessageService(db);
+
+    await service.generate("org_a", auditedInput);
+    const second = await service.generate("org_a", auditedInput);
+
+    expect(generatePersonalizedMessageMock).toHaveBeenCalledTimes(1);
+    expect(second.cached).toBe(true);
+    expect(rows).toHaveLength(1);
+    expect(second.message.contextSnapshot).toEqual({
+      creator: {
+        id: "creator_1",
+        name: "Ana Souza",
+        handle: "ana.souza",
+        niche: "Moda",
+        score: 82,
+      },
+      product: { id: "product_1", name: "Jaqueta Bomber", margin: 3550 },
+      campaign: { id: "campaign_1", name: "Lançamento Inverno" },
+      trend: { keyword: "streetwear", score: 87 },
+    });
+  });
+
+  it("shares the cache between calls with and without audit-only fields (score/margin)", async () => {
+    // Retrocompat invariant: creator.score / product.margin are audit-only
+    // and must NOT participate in the cache key — otherwise every legacy
+    // caller would suddenly miss the cache.
+    const { db } = fakeDb();
+    const service = createAiMessageService(db);
+
+    const plain = {
+      ...baseInput,
+      trend: { keyword: "streetwear", score: 87 },
+    };
+    const first = await service.generate("org_a", plain);
+    const second = await service.generate("org_a", auditedInput);
+
+    expect(generatePersonalizedMessageMock).toHaveBeenCalledTimes(1);
+    expect(first.cached).toBe(false);
+    expect(second.cached).toBe(true);
+    expect(second.message.id).toBe(first.message.id);
+  });
+
+  it("builds contextHash identically with or without audit-only fields", () => {
+    const plain = {
+      ...baseInput,
+      trend: { keyword: "streetwear", score: 87 },
+    };
+    const a = buildContextHash(plain, "FRIENDLY", "friendly@1.0.0");
+    const b = buildContextHash(auditedInput, "FRIENDLY", "friendly@1.0.0");
+    expect(a).toBe(b);
+  });
+});

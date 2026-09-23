@@ -4,8 +4,13 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { AuthorizationError } from "@/lib/rbac";
-import { requireManager } from "@/lib/session";
+import { requireManager, requireOrganization, requireUser } from "@/lib/session";
+import { aiMessageRepository } from "@/modules/ai/repositories/ai-message.repository";
 import { readGeneratedContent } from "@/modules/ai/personalization/message.service";
+import {
+  readContextSnapshot,
+  type ContextSnapshot,
+} from "@/modules/ai/personalization/context-builder";
 import { generateAiMessageSchema } from "@/modules/ai/validators/generate-message.validator";
 import type { GeneratedMessageContent } from "@/modules/ai/openai/generator";
 
@@ -129,6 +134,76 @@ export async function generateAiMessageAction(
         model: message.model,
         inputTokens: message.inputTokens,
         outputTokens: message.outputTokens,
+      },
+    };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+const messageIdSchema = z.string().trim().min(1);
+
+/**
+ * PR007.1 — AI Context Audit: everything the "Ver contexto" modal renders.
+ *
+ * `creator`/`product`/`campaign`/`trend` prefer the PERSISTED snapshot (the
+ * audit truth of what the model saw); rows generated before PR007.1 have no
+ * snapshot and fall back to the current related record names, flagged by
+ * `snapshotAvailable: false`.
+ */
+export interface AiMessageContextActionResult {
+  id: string;
+  creator: string | null;
+  product: string | null;
+  campaign: string | null;
+  trend: string | null;
+  promptVersion: string;
+  model: string;
+  temperature: number;
+  inputTokens: number;
+  outputTokens: number;
+  contextHash: string;
+  snapshot: ContextSnapshot | null;
+  snapshotAvailable: boolean;
+}
+
+/**
+ * Server action (PR007.1): read the audited generation context for one
+ * persisted AI message. Read-only and tenant-scoped — available to every
+ * dashboard role that can already view /dashboard/ai (generation remains
+ * MANAGER-only).
+ */
+export async function getAiMessageContextAction(
+  id: string,
+): Promise<AiActionResult<AiMessageContextActionResult>> {
+  try {
+    await requireUser();
+    const organizationId = await requireOrganization();
+    const messageId = messageIdSchema.parse(id);
+
+    const message = await aiMessageRepository.findWithContext(organizationId, messageId);
+    if (!message) {
+      throw new Error("Mensagem não encontrada neste workspace.");
+    }
+
+    const snapshot = readContextSnapshot(message.contextSnapshot);
+
+    return {
+      ok: true,
+      data: {
+        id: message.id,
+        creator: snapshot?.creator.name ?? message.creatorProfile.displayName,
+        product: snapshot?.product.name ?? message.product.name,
+        campaign: snapshot?.campaign.name ?? message.campaign.name,
+        trend: snapshot?.trend?.keyword ?? null,
+        promptVersion: message.promptVersion,
+        model: message.model,
+        temperature: message.temperature,
+        inputTokens: message.inputTokens,
+        outputTokens: message.outputTokens,
+        contextHash: message.contextHash,
+        snapshot,
+        snapshotAvailable: snapshot !== null,
       },
     };
   } catch (error) {

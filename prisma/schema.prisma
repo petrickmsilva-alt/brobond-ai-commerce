@@ -224,6 +224,8 @@ model Organization {
   campaignAudiences CampaignAudience[]
   campaignRules     CampaignRule[]
 
+  analyticsSnapshots AnalyticsSnapshot[]
+
   aiGeneratedMessages AIGeneratedMessage[]
 
   createdAt DateTime @default(now())
@@ -1080,6 +1082,14 @@ model AIGeneratedMessage {
   /// Stored as JSON so the shape can evolve without a migration.
   content Json
 
+  /// PR007.1 — AI Context Audit: complete snapshot of the structured
+  /// (creator + product + campaign + trend) context used to generate this
+  /// message (`modules/ai/personalization/context-builder.ts#serializeContext`).
+  /// Nullable purely for backwards compatibility: rows generated before
+  /// PR007.1 have no snapshot; every row generated from PR007.1 onwards
+  /// carries one. Never feeds the cache key — `contextHash` is unchanged.
+  contextSnapshot Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1091,6 +1101,48 @@ model AIGeneratedMessage {
   @@index([creatorProfileId])
   @@index([productId])
   @@index([campaignId])
+}
+
+// ------------------------------------------------------------------
+// Analytics & Attribution (PR008)
+// ------------------------------------------------------------------
+
+/// A materialized, deterministic analytics snapshot for one tenant over a
+/// half-open period `[from, to)`.
+///
+/// PR008 computes every metric from the tenant's own rows (Sale, Product,
+/// CreatorProfile, Campaign, AIGeneratedMessage) — no external tracking,
+/// no randomness, no network. Snapshots are recomputed lazily on first
+/// access or explicitly via the dashboard "Recalcular" action, and the
+/// UNIQUE key guarantees one snapshot per (tenant, period bucket).
+///
+/// `metrics` is JSON (versioned shape — see
+/// `modules/analytics/metrics/snapshot-builder.ts`) so the metric catalog
+/// can evolve additive­ly without migrations.
+model AnalyticsSnapshot {
+  id String @id @default(cuid())
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// Half-open period `[from, to)` in UTC (normalized to day boundaries).
+  from DateTime
+  to   DateTime
+
+  /// Deterministic, versioned metrics payload ({version:1, period, totals,
+  /// attribution, ai}).
+  metrics Json
+
+  /// When this snapshot was (re)computed — staleness is judged against
+  /// `to` at read time by readers, never trusted from the client.
+  computedAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, from, to])
+  @@index([organizationId, computedAt])
 }
 
 // ------------------------------------------------------------------

@@ -54,6 +54,13 @@ function fakeDb() {
   return { db: { aIGeneratedMessage }, rows, aIGeneratedMessage };
 }
 
+const baseSnapshot = {
+  creator: { id: "creator_1", name: "Ana", handle: "ana", niche: "Moda", score: 82 },
+  product: { id: "product_1", name: "Produto", margin: 3550 },
+  campaign: { id: "campaign_1", name: "Campanha" },
+  trend: { keyword: "streetwear", score: 90 },
+};
+
 const baseData = {
   creatorProfileId: "creator_1",
   productId: "product_1",
@@ -66,6 +73,7 @@ const baseData = {
   inputTokens: 100,
   outputTokens: 50,
   content: { title: "t", message: "m", hashtags: ["#a"], cta: "c" },
+  contextSnapshot: baseSnapshot,
 };
 
 describe("AI message repository", () => {
@@ -110,6 +118,58 @@ describe("AI message repository", () => {
     const created = await repository.create("org_a", baseData);
     expect(await repository.findById("org_a", created.id)).not.toBeNull();
     expect(await repository.findById("org_b", created.id)).toBeNull();
+  });
+
+  it("persists the context snapshot on create (PR007.1)", async () => {
+    const row = await repository.create("org_a", baseData);
+    expect(row.contextSnapshot).toEqual(baseSnapshot);
+  });
+
+  it("rejects a missing organization id for findWithContext", async () => {
+    await expect(repository.findWithContext("", "msg_1")).rejects.toBeInstanceOf(
+      AuthorizationError,
+    );
+  });
+
+  it("findWithContext returns the message together with its context snapshot (PR007.1)", async () => {
+    const created = await repository.create("org_a", baseData);
+    const found = await repository.findWithContext("org_a", created.id);
+
+    expect(found).not.toBeNull();
+    expect(found?.id).toBe(created.id);
+    expect(found?.contextSnapshot).toEqual(baseSnapshot);
+    expect(found?.contextHash).toBe("hash-a");
+  });
+
+  it("findWithContext uses the tenant-scoped lookup with the audit relations", async () => {
+    const created = await repository.create("org_a", baseData);
+    await repository.findWithContext("org_a", created.id);
+    expect(fake.aIGeneratedMessage.findFirst).toHaveBeenCalledWith({
+      where: { id: created.id, organizationId: "org_a" },
+      include: { creatorProfile: true, product: true, campaign: true },
+    });
+  });
+
+  it("findWithContext does not leak a message across tenants", async () => {
+    const created = await repository.create("org_a", baseData);
+    expect(await repository.findWithContext("org_b", created.id)).toBeNull();
+  });
+
+  it("findWithContext returns null for a missing id", async () => {
+    await repository.create("org_a", baseData);
+    expect(await repository.findWithContext("org_a", "msg_missing")).toBeNull();
+  });
+
+  it("findWithContext returns a null snapshot for pre-PR007.1 rows (backwards compatible)", async () => {
+    const legacy = await repository.create("org_a", {
+      ...baseData,
+      contextHash: "hash-legacy",
+      // DB column is nullable: rows generated before PR007.1 carry NULL.
+      contextSnapshot: null as never,
+    });
+    const found = await repository.findWithContext("org_a", legacy.id);
+    expect(found).not.toBeNull();
+    expect(found?.contextSnapshot).toBeNull();
   });
 
   it("lists only the caller's tenant messages", async () => {

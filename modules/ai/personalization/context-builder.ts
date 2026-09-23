@@ -19,6 +19,13 @@ export interface CreatorContextInput {
   niche: string;
   engagementRate?: number | null;
   avgViews?: number | null;
+  /**
+   * PR007.1 — weighted 0–100 creator score (`CreatorProfile.creatorScore`).
+   * Audit-only: consumed by `serializeContext()` for the persisted context
+   * snapshot. NEVER part of the prompt context or the cache-key hash, so
+   * PR007's cache contract is untouched.
+   */
+  score?: number | null;
 }
 
 export interface ProductContextInput {
@@ -27,6 +34,13 @@ export interface ProductContextInput {
   description?: string | null;
   priceCents?: number | null;
   currency?: string | null;
+  /**
+   * PR007.1 — gross margin in basis points (`Product.marginBps`,
+   * e.g. 3550 = 35.50%). Audit-only: consumed by `serializeContext()` for
+   * the persisted context snapshot. NEVER part of the prompt context or
+   * the cache-key hash, so PR007's cache contract is untouched.
+   */
+  margin?: number | null;
 }
 
 export interface CampaignContextInput {
@@ -115,9 +129,150 @@ export function buildPersonalizationContext(
 }
 
 /**
+ * PR007.1 — AI Context Audit.
+ *
+ * Stable, JSON-serializable snapshot of the full structured context used to
+ * generate an AI message. Persisted verbatim on `AIGeneratedMessage
+ * .contextSnapshot` at generation time so every stored message can answer
+ * "which creator/product/campaign/trend state produced this content?".
+ *
+ * The shape is deliberately minimal and FROZEN (fixed key order: creator →
+ * product → campaign → trend) so two snapshots can be diffed deterministically
+ * with `compareContextSnapshots()` (`modules/ai/audit/context-diff.ts`).
+ *
+ * Fields:
+ *   creator — id · name · handle · niche · score (CreatorProfile.creatorScore)
+ *   product — id · name · margin (Product.marginBps, basis points)
+ *   campaign — id · name
+ *   trend — keyword · score (null when the generation was not trend-driven)
+ *
+ * Optional inputs that were not captured at call time serialize as `null`
+ * (never omitted), keeping the snapshot shape identical across rows.
+ *
+ * ⚠️ CACHE INVARIANT: this function is AUDIT-ONLY. It must NEVER be used to
+ * compute `contextHash` — the cache key remains `serializeContextForHash()`
+ * exactly as shipped in PR007. Changing that would silently invalidate the
+ * whole generation cache.
+ */
+export interface ContextSnapshot {
+  creator: {
+    id: string;
+    name: string;
+    handle: string;
+    niche: string;
+    score: number | null;
+  };
+  product: {
+    id: string;
+    name: string;
+    margin: number | null;
+  };
+  campaign: {
+    id: string;
+    name: string;
+  };
+  trend: {
+    keyword: string;
+    score: number | null;
+  } | null;
+}
+
+/**
+ * Serialize the parse-time context input into the stable audit snapshot
+ * persisted on `AIGeneratedMessage.contextSnapshot`.
+ *
+ * Pure and deterministic: same input → byte-identical JSON. Missing optional
+ * values (`creator.score`, `product.margin`, `trend.score`) become `null`;
+ * a missing/`null` trend yields `trend: null`.
+ */
+export function serializeContext(input: PersonalizationContextInput): ContextSnapshot {
+  const { creator, product, campaign, trend } = input;
+
+  return {
+    creator: {
+      id: creator.id,
+      name: creator.displayName,
+      handle: creator.handle,
+      niche: creator.niche,
+      score: creator.score ?? null,
+    },
+    product: {
+      id: product.id,
+      name: product.name,
+      margin: product.margin ?? null,
+    },
+    campaign: {
+      id: campaign.id,
+      name: campaign.name,
+    },
+    trend: trend
+      ? {
+          keyword: trend.keyword,
+          score: trend.score ?? null,
+        }
+      : null,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isNullableNumber(value: unknown): value is number | null {
+  return typeof value === "number" || value === null;
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+/**
+ * PR007.1 — read a persisted `contextSnapshot` (unknown JSON coming back
+ * from the database) with a structural guard. Returns `null` when the value
+ * is missing (pre-PR007.1 rows) or does not match the frozen snapshot
+ * shape, so audit consumers never crash on corrupted/legacy payloads.
+ */
+export function readContextSnapshot(value: unknown): ContextSnapshot | null {
+  if (!isRecord(value)) return null;
+  const { creator, product, campaign, trend } = value;
+  if (
+    !isRecord(creator) ||
+    !isString(creator.id) ||
+    !isString(creator.name) ||
+    !isString(creator.handle) ||
+    !isString(creator.niche) ||
+    !isNullableNumber(creator.score)
+  ) {
+    return null;
+  }
+  if (
+    !isRecord(product) ||
+    !isString(product.id) ||
+    !isString(product.name) ||
+    !isNullableNumber(product.margin)
+  ) {
+    return null;
+  }
+  if (!isRecord(campaign) || !isString(campaign.id) || !isString(campaign.name)) {
+    return null;
+  }
+  if (
+    trend !== null &&
+    (!isRecord(trend) || !isString(trend.keyword) || !isNullableNumber(trend.score))
+  ) {
+    return null;
+  }
+  return value as unknown as ContextSnapshot;
+}
+
+/**
  * Deterministic, order-independent serialization of a context object plus
  * the prompt version, used as the input to the cache-key hash
  * (see `modules/ai/personalization/message.service.ts#buildContextHash`).
+ *
+ * NOTE (PR007.1): this is the ONLY serializer allowed to feed the cache
+ * hash. The audit serializer above (`serializeContext`) intentionally has a
+ * different shape and must never be hashed.
  */
 export function serializeContextForHash(
   context: PersonalizationContext,
