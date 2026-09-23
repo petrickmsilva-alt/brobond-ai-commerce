@@ -17,6 +17,20 @@ import { z } from "zod";
  * `APP_URL` and `AUTH_URL` were **removed** in PR000.2: nothing in the runtime
  * read them. `NEXTAUTH_URL` is the single canonical deployment URL.
  *
+ * FEDERATED SIGN-IN (PR010.2 §4)
+ * ------------------------------
+ * Two optional variables enable Google SSO:
+ *
+ * | Variable             | Required | Purpose                              |
+ * | -------------------- | -------- | ------------------------------------ |
+ * | `AUTH_GOOGLE_ID`     | no       | Google OAuth client id               |
+ * | `AUTH_GOOGLE_SECRET` | no       | Google OAuth client secret           |
+ *
+ * They are optional *together*: both present registers the provider and shows
+ * the button; either missing hides the button entirely (§4 — a disabled SSO
+ * button is never rendered). `lib/auth-providers.ts` owns that predicate and
+ * is the only thing the UI consults.
+ *
  * SECURITY: this module is server-only. `AUTH_SECRET` and `DATABASE_URL` must
  * never be read from, or forwarded to, a client component. Only variables
  * prefixed with `NEXT_PUBLIC_` are ever safe in the browser, and this project
@@ -39,6 +53,17 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((value) => value === "true"),
+  /**
+   * Google OAuth client id (PR010.2 §4). Optional — omit to run with
+   * credentials-only sign-in. SERVER ONLY.
+   */
+  AUTH_GOOGLE_ID: z.string().min(1).optional(),
+  /**
+   * Google OAuth client secret (PR010.2 §4). Optional, but must be supplied
+   * alongside `AUTH_GOOGLE_ID`: a half-configured provider would render a
+   * button that fails at the callback. SERVER ONLY.
+   */
+  AUTH_GOOGLE_SECRET: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

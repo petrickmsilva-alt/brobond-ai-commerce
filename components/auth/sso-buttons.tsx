@@ -1,50 +1,63 @@
 "use client";
 
 import * as React from "react";
-import { Info } from "lucide-react";
+import { signIn } from "next-auth/react";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { focusRingRaised } from "@/components/ui/design-system/theme";
 
 /**
- * SsoButtons (PR010.1) — federated sign-in affordances.
+ * Federated sign-in buttons (PR010.2 §4).
  *
- * PRESENTATION ONLY, AND DELIBERATELY DISABLED.
+ * THE RULE: "Nunca deixar botão desabilitado."
  *
- * The NextAuth v5 configuration (`lib/auth.ts`) currently registers exactly
- * one provider: Credentials. Rendering an *enabled* Google button would post
- * to `/api/auth/signin/google`, which does not exist — a broken promise to the
- * user and a support ticket waiting to happen.
+ * PR010.1 rendered a permanently `disabled` Google button with an apologetic
+ * caption. A control that can never be used is not a feature — it reads as a
+ * broken page. So this component renders the button ONLY when the provider is
+ * actually wired, and renders **nothing at all** otherwise.
  *
- * So the button ships in its final visual form but `disabled`, with an
- * explicit explanation. Turning it on is a one-line auth-domain change
- * (register the Google provider + its credentials) in a future PR; no UI work
- * will be required.
+ * The decision is not made here. A Server Component calls
+ * `showGoogleProvider()` (`lib/auth-providers.ts`) — the same predicate
+ * `lib/auth.ts` uses to decide whether to register the provider — and passes
+ * the resulting boolean down. UI and auth config therefore cannot drift: if
+ * the button is visible, `/api/auth/signin/google` exists.
+ *
+ * SECURITY: this client component receives one boolean. `AUTH_GOOGLE_ID` and
+ * `AUTH_GOOGLE_SECRET` are never serialized into the bundle.
  */
-export function SsoButtons() {
+
+export interface SsoButtonsProps {
+  /** Resolved server-side by `showGoogleProvider()`. */
+  google: boolean;
+  /** Sanitised post-login destination, forwarded to the OAuth callback. */
+  callbackUrl?: string;
+}
+
+export function SsoButtons({ google, callbackUrl = "/dashboard" }: SsoButtonsProps) {
+  const [pending, setPending] = React.useState(false);
+
+  // §4: no provider → render nothing. Not a disabled button, not a caption.
+  if (!google) return null;
+
   return (
     <div className="space-y-3">
       <button
         type="button"
-        disabled
-        aria-describedby="sso-hint"
+        onClick={() => {
+          setPending(true);
+          void signIn("google", { callbackUrl });
+        }}
+        aria-busy={pending}
         className={cn(
           "flex h-11 w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/[0.04]",
-          "text-sm font-medium text-white/70 transition-colors",
-          "disabled:cursor-not-allowed disabled:opacity-55",
+          "text-sm font-medium text-white transition-[background-color,border-color] duration-150",
+          "hover:border-white/20 hover:bg-white/[0.08]",
           focusRingRaised,
         )}
       >
-        <GoogleMark />
-        Continuar com Google
+        {pending ? <Loader2 aria-hidden className="h-4 w-4 animate-spin" /> : <GoogleMark />}
+        {pending ? "Redirecionando…" : "Continuar com Google"}
       </button>
-
-      <p
-        id="sso-hint"
-        className="flex items-start gap-1.5 text-[11px] leading-relaxed text-white/35"
-      >
-        <Info aria-hidden className="mt-px h-3 w-3 shrink-0" />
-        SSO com Google será habilitado quando o provedor for provisionado pela sua organização.
-      </p>
     </div>
   );
 }

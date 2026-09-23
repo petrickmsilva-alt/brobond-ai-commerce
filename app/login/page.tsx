@@ -1,9 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { BarChart3, ShieldCheck, Sparkles, Users, Zap } from "lucide-react";
 import { LoginForm } from "@/components/auth/login-form";
 import { SsoButtons } from "@/components/auth/sso-buttons";
+import { PlatformStatus } from "@/components/auth/platform-status";
+import { FadeIn, SlideIn } from "@/components/ui/motion";
 import { APP_NAME, APP_SHORT_NAME } from "@/lib/constants";
+import { showGoogleProvider } from "@/lib/auth-providers";
+import { getCurrentUser } from "@/lib/session";
+import { resolveNext, sanitizeNext } from "@/lib/auth-routes";
 
 export const metadata: Metadata = {
   title: "Login",
@@ -33,18 +39,47 @@ const benefits = [
 ];
 
 /**
- * Premium login (PR010.1).
+ * Enterprise login (PR010.2 §3 — full refactor).
  *
- * Two-column layout: a brand/value panel on the left (hidden below `lg`, where
- * it collapses into a compact header) and the glass authentication card on the
- * right. The MFA step is reserved in the markup as a documented placeholder —
- * no MFA behaviour ships in this UI-only PR.
+ * LAYOUT (§3)
+ *   Esquerda: brand · headline · benefícios · status da plataforma
+ *   Direita:  card glass · email · senha · entrar · Google (condicional) ·
+ *             esqueci senha · solicitar acesso
+ *
+ * BEHAVIOUR
+ * ---------
+ * - Already authenticated? Redirect straight to the destination instead of
+ *   showing a second login form. The middleware does this too; doing it here
+ *   as well means a direct server render (or a cached HTML shell) can't leave
+ *   a signed-in user staring at a login box.
+ * - `?next=` is sanitised HERE (server-side) before it is handed to the form,
+ *   and sanitised AGAIN inside the login action. Two independent gates, both
+ *   rejecting anything that is not a same-origin absolute path.
+ * - The Google button is rendered only when the provider is actually
+ *   registered (§4) — `showGoogleProvider()` reads the same environment the
+ *   auth config reads, so the button can never point at a 404.
  */
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const rawNext = Array.isArray(params.next) ? params.next[0] : params.next;
+
+  // `null` (not "/dashboard") when absent, so the form only sends a `next`
+  // when the user actually had a destination in mind.
+  const next = sanitizeNext(rawNext);
+
+  const user = await getCurrentUser();
+  if (user) redirect(resolveNext(next));
+
+  const google = showGoogleProvider();
+
   return (
     <div className="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
       {/* ---------------------------------------------------------------- */}
-      {/* Left — brand, headline, benefits                                  */}
+      {/* Left — brand, headline, benefits, platform status                 */}
       {/* ---------------------------------------------------------------- */}
       <aside className="bg-premium-glow relative hidden flex-col justify-between overflow-hidden border-r border-white/8 bg-surface-900 p-12 lg:flex xl:p-16">
         {/* Decorative gradient orbs */}
@@ -72,7 +107,10 @@ export default function LoginPage() {
           </span>
         </Link>
 
-        <div className="relative max-w-lg">
+        {/* §13 — the brand column slides in from the edge it sits on.
+            `SlideIn` collapses to a static box under
+            `prefers-reduced-motion`, so the entrance is opt-out by default. */}
+        <SlideIn className="relative max-w-lg">
           <h2 className="text-balance text-4xl font-bold leading-[1.1] tracking-tight text-white xl:text-[2.75rem]">
             O sistema operacional do{" "}
             <span className="bg-gradient-to-r from-brand-300 to-accent-300 bg-clip-text text-transparent">
@@ -106,18 +144,23 @@ export default function LoginPage() {
               );
             })}
           </ul>
-        </div>
+        </SlideIn>
 
-        <p className="relative text-xs text-white/30">
-          © {new Date().getFullYear()} {APP_NAME}.
-        </p>
+        <div className="relative flex flex-wrap items-center justify-between gap-4">
+          {/* §3 — status da plataforma */}
+          <PlatformStatus />
+          <p className="text-xs text-white/30">
+            © {new Date().getFullYear()} {APP_NAME}.
+          </p>
+        </div>
       </aside>
 
       {/* ---------------------------------------------------------------- */}
-      {/* Right — authentication card                                       */}
+      {/* Right — glass authentication card                                 */}
       {/* ---------------------------------------------------------------- */}
       <main className="bg-app-mesh flex items-center justify-center px-4 py-12 sm:px-8">
-        <div className="w-full max-w-sm">
+        {/* §13 — the card rises 8px into place, a beat after the brand column. */}
+        <FadeIn delay={0.06} className="w-full max-w-sm">
           {/* Compact brand lockup for viewports without the left panel. */}
           <Link
             href="/"
@@ -136,34 +179,41 @@ export default function LoginPage() {
             </p>
 
             <div className="mt-7">
-              <LoginForm />
+              <LoginForm next={next} />
             </div>
 
-            {/* ------------------------------------------------------------
-                MFA STEP — RESERVED SLOT (PR010.1)
+            {/* §4 — the divider belongs to the Google button: when no provider
+                is configured `SsoButtons` renders null, so showing an "ou"
+                separator above nothing would be its own small broken promise. */}
+            {google && (
+              <>
+                <div className="my-6 flex items-center gap-3" aria-hidden>
+                  <span className="h-px flex-1 bg-white/8" />
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/30">
+                    ou
+                  </span>
+                  <span className="h-px flex-1 bg-white/8" />
+                </div>
 
-                The second-factor challenge renders here, between the
-                credentials form and the federated providers, once MFA is
-                enabled in the auth domain (`lib/auth.ts`). No MFA logic ships
-                in this UI-only PR: adding a factor changes the authentication
-                contract and belongs to an auth PR.
-               ------------------------------------------------------------ */}
-
-            <div className="my-6 flex items-center gap-3" aria-hidden>
-              <span className="h-px flex-1 bg-white/8" />
-              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/30">
-                ou
-              </span>
-              <span className="h-px flex-1 bg-white/8" />
-            </div>
-
-            <SsoButtons />
+                <SsoButtons google={google} callbackUrl={resolveNext(next)} />
+              </>
+            )}
           </div>
 
-          <p className="mt-6 text-center text-xs leading-relaxed text-white/30">
+          {/* §3 — solicitar acesso */}
+          <p className="mt-6 text-center text-xs leading-relaxed text-white/40">
+            Ainda não tem acesso?{" "}
+            <Link
+              href="/request-access"
+              className="font-medium text-brand-300 underline-offset-4 transition-colors hover:text-brand-200 hover:underline"
+            >
+              Solicitar acesso
+            </Link>
+          </p>
+          <p className="mt-2 text-center text-[11px] leading-relaxed text-white/25">
             O acesso é provisionado pela sua organização — não há cadastro público.
           </p>
-        </div>
+        </FadeIn>
       </main>
     </div>
   );

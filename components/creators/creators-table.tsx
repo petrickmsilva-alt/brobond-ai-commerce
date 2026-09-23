@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowDown, ArrowUp, ArrowUpDown, Users } from "lucide-react";
 import type { CreatorListItemDTO } from "@/modules/creators/crm/dto/creator.dto";
@@ -15,6 +16,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { TableEmptyState } from "@/components/ui/table-empty-state";
 import { CreatorAvatar } from "./creator-avatar";
 import { CreatorScoreBadge } from "./creator-score-badge";
 import { CreatorStatusBadge } from "./creator-status-badge";
@@ -81,14 +84,25 @@ function SortableHead({
 
 export function CreatorsTable({ items }: CreatorsTableProps) {
   if (items.length === 0) {
+    // §10 — point at the two ways a workspace gets its first creators.
     return (
-      <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-        <Users className="h-10 w-10 text-white/20" />
-        <p className="text-sm text-white/50">Nenhum creator encontrado.</p>
-        <p className="text-xs text-white/30">
-          Execute a descoberta (ADMIN) ou adicione um profile manual para começar.
-        </p>
-      </div>
+      <TableEmptyState
+        icon={Users}
+        title="Nenhum creator no CRM"
+        description="Sincronize o TikTok Shop para descobrir creators do marketplace ou cadastre um profile manualmente."
+        action={
+          <>
+            <Link href="/dashboard/tiktok">
+              <Button size="sm">Sincronizar TikTok</Button>
+            </Link>
+            <Link href="/dashboard/connectors">
+              <Button size="sm" variant="outline">
+                Conectar uma fonte
+              </Button>
+            </Link>
+          </>
+        }
+      />
     );
   }
 

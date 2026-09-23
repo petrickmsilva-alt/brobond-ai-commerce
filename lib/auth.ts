@@ -1,10 +1,12 @@
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { equalizeVerificationTiming, verifyPassword } from "@/lib/password";
 import { credentialsSchema } from "@/lib/validations/auth";
+import { isGoogleProviderConfigured } from "@/lib/auth-providers";
 
 /**
  * NextAuth v5 configuration.
@@ -35,6 +37,27 @@ interface AuthenticatedUser {
   organizationId: string;
 }
 
+/**
+ * Federated providers, registered ONLY when fully provisioned (PR010.2 §4).
+ *
+ * An unconfigured Google provider is absent from this array, so
+ * `/api/auth/signin/google` legitimately 404s and the UI — reading the same
+ * `isGoogleProviderConfigured()` predicate — hides the button instead of
+ * rendering a dead, disabled control. The two can never disagree.
+ *
+ * NOTE: registering Google does NOT open public sign-up. The `signIn`
+ * callback below still requires a pre-provisioned account.
+ */
+const federatedProviders = isGoogleProviderConfigured()
+  ? [
+      Google({
+        clientId: process.env.AUTH_GOOGLE_ID,
+        clientSecret: process.env.AUTH_GOOGLE_SECRET,
+        allowDangerousEmailAccountLinking: false,
+      }),
+    ]
+  : [];
+
 export const authConfig = {
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
@@ -42,6 +65,7 @@ export const authConfig = {
     signIn: "/login",
   },
   providers: [
+    ...federatedProviders,
     Credentials({
       id: "credentials",
       name: "Email e senha",
@@ -101,11 +125,56 @@ export const authConfig = {
     authorized({ auth }) {
       return !!auth?.user;
     },
+    /**
+     * Gate for federated sign-in (PR010.2 §4).
+     *
+     * SECURITY: Google authenticates an identity; it does NOT create one.
+     * A Google login is accepted only when a `User` with that email already
+     * exists — provisioned by the seed, by an ADMIN, or by accepting an
+     * `Invitation`. This keeps the PR000.2 "no public sign-up" contract
+     * intact now that an OAuth provider can be registered: without it,
+     * anyone with a Google account could mint a tenant-less user.
+     *
+     * Credentials sign-in is unchanged — `authorize()` already proved the
+     * account exists and the password matched.
+     */
+    async signIn({ user, account }) {
+      if (!account || account.provider === "credentials") return true;
+
+      const email = user?.email?.trim().toLowerCase();
+      if (!email) return false;
+
+      const existing = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true, organizationId: true },
+      });
+
+      // Unknown email, or an account not bound to a tenant → refuse.
+      return Boolean(existing?.organizationId);
+    },
     // Persist role + organization on the JWT so RBAC/tenant checks avoid a DB hit.
     async jwt({ token, user, trigger }) {
       if (user) {
-        token.role = (user as Partial<AuthenticatedUser>).role ?? UserRole.MEMBER;
-        token.organizationId = (user as Partial<AuthenticatedUser>).organizationId ?? null;
+        const claims = user as Partial<AuthenticatedUser>;
+        token.role = claims.role ?? UserRole.MEMBER;
+        token.organizationId = claims.organizationId ?? null;
+
+        // A federated profile (PR010.2 §4) carries no role/tenant — those
+        // live only in our database. Resolve them now so the very first
+        // token minted by a Google sign-in is already tenant-bound, exactly
+        // like a credentials one. `signIn()` has already proven the account
+        // exists, so this lookup always hits.
+        if (!token.organizationId && token.sub) {
+          const fresh = await prisma.user.findUnique({
+            where: { id: token.sub },
+            select: { role: true, organizationId: true },
+          });
+          if (fresh) {
+            token.role = fresh.role;
+            token.organizationId = fresh.organizationId;
+          }
+        }
+
         return token;
       }
 
@@ -153,3 +222,15 @@ export {
   isAdmin,
   isManager,
 } from "@/lib/rbac";
+
+// ------------------------------------------------------------------
+// Provider availability re-exports (PR010.2 §4)
+// ------------------------------------------------------------------
+// Re-exported from the pure `lib/auth-providers.ts` so a caller that already
+// imports the auth domain does not need a second import. Both return plain
+// booleans — no client id, no secret.
+export {
+  getAvailableProviders,
+  isGoogleProviderConfigured,
+  showGoogleProvider,
+} from "@/lib/auth-providers";
