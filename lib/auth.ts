@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { equalizeVerificationTiming, verifyPassword } from "@/lib/password";
 import { credentialsSchema } from "@/lib/validations/auth";
 import { isGoogleProviderConfigured, resolveGoogleCredentials } from "@/lib/auth-providers";
+import { resolveTrustHost } from "@/lib/auth-trust-host";
 
 /**
  * NextAuth v5 configuration.
@@ -85,6 +86,23 @@ const federatedProviders =
     : [];
 
 export const authConfig = {
+  /**
+   * HOST TRUST (production incident fix).
+   *
+   * Render/Docker terminate TLS in front of the Node process, so every request
+   * arrives with the public host in `X-Forwarded-Host` instead of `Host`.
+   * Auth.js refuses to use a forwarded host unless it is told the proxy is
+   * trusted, which is what produced, on every `/api/auth/session` call:
+   *
+   *   [auth][error] UntrustedHost: Host must be trusted.
+   *   URL was: https://brobond-ai-commerce.onrender.com/api/auth/session
+   *
+   * The policy lives in `lib/auth-trust-host.ts`: trusted by default, with
+   * `AUTH_TRUST_HOST=false` as an explicit opt-out. Asserting it here means
+   * sign-in no longer depends on one dashboard variable surviving every
+   * future deploy.
+   */
+  trustHost: resolveTrustHost(),
   // PR010.4 §5 — wraps `createUser` so a first-time federated user is
   // provisioned with a tenant. Every other method is the stock Prisma adapter.
   adapter: createTenantAwareAdapter(),
