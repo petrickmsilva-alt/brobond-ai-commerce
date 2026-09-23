@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && node scripts/ensure-prisma-wasm.cjs && next build",
     "prestart": "tsx scripts/startup-check.ts",
     "start": "next start",
     "lint": "next lint",
