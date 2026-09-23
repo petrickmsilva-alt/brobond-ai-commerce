@@ -71,15 +71,15 @@ describe("CONNECTOR_PLATFORMS (client-safe mirror)", () => {
     expect(DEFAULT_CONNECTOR_PLATFORM).toBe(ConnectorPlatform.MOCK);
   });
 
-  it("marks exactly TikTok, Instagram and Shopee as placeholders", () => {
-    expect([...PLACEHOLDER_CONNECTOR_PLATFORMS]).toEqual(["TIKTOK", "INSTAGRAM", "SHOPEE"]);
-    expect(PLACEHOLDER_CONNECTOR_PLATFORMS).not.toContain("MOCK");
+  it("keeps only Instagram and Shopee as placeholders after PR009", () => {
+    expect([...PLACEHOLDER_CONNECTOR_PLATFORMS]).toEqual(["INSTAGRAM", "SHOPEE"]);
+    expect(PLACEHOLDER_CONNECTOR_PLATFORMS).not.toContain("TIKTOK");
   });
 
-  it("placeholders + default cover every registered platform", () => {
-    expect(new Set([DEFAULT_CONNECTOR_PLATFORM, ...PLACEHOLDER_CONNECTOR_PLATFORMS])).toEqual(
-      new Set(CONNECTOR_PLATFORMS),
-    );
+  it("default plus real TikTok plus placeholders cover every registered platform", () => {
+    expect(
+      new Set([DEFAULT_CONNECTOR_PLATFORM, "TIKTOK", ...PLACEHOLDER_CONNECTOR_PLATFORMS]),
+    ).toEqual(new Set(CONNECTOR_PLATFORMS));
   });
 });
 

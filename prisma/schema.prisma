@@ -183,6 +183,14 @@ enum AiMessageTone {
   FITNESS
 }
 
+/// OAuth lifecycle of a TikTok Shop seller account (PR009).
+enum TikTokConnectionStatus {
+  CONNECTED
+  DISCONNECTED
+  EXPIRED
+  ERROR
+}
+
 // ------------------------------------------------------------------
 // Tenancy
 // ------------------------------------------------------------------
@@ -227,6 +235,11 @@ model Organization {
   analyticsSnapshots AnalyticsSnapshot[]
 
   aiGeneratedMessages AIGeneratedMessage[]
+
+  // TikTok Shop Connector (PR009) — secrets always remain server-side.
+  tikTokAccounts    TikTokAccount[]
+  tikTokOAuthStates TikTokOAuthState[]
+  auditLogs         AuditLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -279,6 +292,9 @@ model Product {
   currency    String        @default("BRL")
   imageUrl    String?
   status      ProductStatus @default(DRAFT)
+  /// Stable product identifier from the official TikTok Shop API. It is the
+  /// idempotency key used by PR009 imports; null for products created locally.
+  tiktokProductId String?
 
   /**
    * Aggregate stock on hand (variant stock is tracked per ProductVariant).
@@ -315,6 +331,7 @@ model Product {
   // Tenant-scoped uniqueness: two organizations may reuse the same slug/SKU.
   @@unique([organizationId, slug])
   @@unique([organizationId, sku])
+  @@unique([organizationId, tiktokProductId])
   @@index([status])
   @@index([organizationId])
   @@index([organizationId, status])
@@ -933,6 +950,74 @@ model ExternalContent {
   @@index([organizationId, status])
   @@index([organizationId, createdAt])
   @@index([connectorStatusId])
+}
+
+// ------------------------------------------------------------------
+// TikTok Shop Connector (PR009)
+// ------------------------------------------------------------------
+
+/// One authorized TikTok Shop seller account per workspace/shop. OAuth tokens
+/// are AES-256-GCM ciphertexts, never plaintext, and are never selected by
+/// dashboard DTOs or sent to the browser.
+model TikTokAccount {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// Globally unique provider shop identity. A shop may belong to one tenant
+  /// only, preventing an inbound webhook from ever resolving ambiguously.
+  shopId     String @unique
+  shopCipher String
+  shopName   String?
+  sellerId   String?
+
+  accessToken  String? @db.Text
+  refreshToken String? @db.Text
+  expiresAt    DateTime?
+  status       TikTokConnectionStatus @default(DISCONNECTED)
+  lastSync     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, shopId])
+  @@index([organizationId, status])
+}
+
+/// Short-lived, one-time server-side CSRF state for a TikTok OAuth redirect.
+/// Only a SHA-256 digest of the opaque state is persisted.
+model TikTokOAuthState {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  stateHash String @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, expiresAt])
+}
+
+/// Security and operational audit trail. Webhook event ids are unique inside a
+/// tenant so at-least-once TikTok deliveries are processed idempotently.
+model AuditLog {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  action         String
+  entityType     String
+  entityId       String?
+  externalEventId String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@unique([organizationId, externalEventId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, action])
 }
 
 // ------------------------------------------------------------------

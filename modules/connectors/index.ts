@@ -8,7 +8,7 @@
  * | Adapter              | Platform    | Status                             |
  * | -------------------- | ----------- | ---------------------------------- |
  * | `MockConnector`      | `MOCK`      | ✅ implemented (40 deterministic)  |
- * | `TikTokConnector`    | `TIKTOK`    | 🧩 placeholder ("Not implemented") |
+ * | `TikTokConnector`    | `TIKTOK`    | ✅ official TikTok Shop API (PR009) |
  * | `InstagramConnector` | `INSTAGRAM` | 🧩 placeholder ("Not implemented") |
  * | `ShopeeConnector`    | `SHOPEE`    | 🧩 placeholder ("Not implemented") |
  *
@@ -17,7 +17,7 @@
  * ├── core/       connector.interface · connector.factory · connector.validator
  * │               · connector.dto · connector.repository · connector.sync
  * ├── mock/       MockConnector (deterministic dataset)
- * ├── tiktok/     TikTokConnector (placeholder)
+ * ├── tiktok/     official OAuth · API · importer · webhook connector (PR009)
  * ├── instagram/  InstagramConnector (placeholder)
  * └── shopee/     ShopeeConnector (placeholder)
  * ```

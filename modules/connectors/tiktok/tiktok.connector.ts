@@ -1,42 +1,84 @@
-/**
- * TikTok Connector — PLACEHOLDER (PR005).
- *
- * Reserved for the real TikTok source (a future PR): Content Posting /
- * Display API. The contract is already pinned here and tested, so wiring
- * the real implementation must not touch any caller —
- * `getConnector(ConnectorPlatform.TIKTOK)` keeps resolving to this class
- * until then.
- *
- * NO network access, NO SDK, NO credentials are used in PR005 — by design.
- * When the real adapter lands it must:
- *   1. read its secret through a server-only secret reference (never a raw
- *      token in the database, never in the client bundle);
- *   2. map the provider payload onto `NormalizedContent` inside this file,
- *      so nothing downstream learns the provider's shape;
- *   3. flip `implemented` to `true` — the dashboard and the sync service
- *      key off that flag, not off try/catch.
- */
+import "server-only";
 
 import { ConnectorPlatform } from "@prisma/client";
+import { TikTokApiClient, getTikTokApiConfig } from "./api/client";
+import { getProducts } from "./api/products";
+import { mapTikTokProduct } from "./sync/mapper";
 import type {
   Connector,
   ConnectorHealth,
   FetchContentOptions,
   NormalizedContent,
 } from "../core/connector.interface";
-import { ConnectorNotImplementedError, placeholderHealth } from "../core/connector.interface";
 
+export class TikTokConnectionRequiredError extends Error {
+  constructor(message = "Connect a TikTok Shop account before synchronizing this connector.") {
+    super(message);
+    this.name = "TikTokConnectionRequiredError";
+  }
+}
+
+/**
+ * TikTok Shop adapter backed exclusively by the official Shop API. The generic
+ * connector framework imports normalized PRODUCT ExternalContent; the richer
+ * PR009 importer additionally writes Product and CreatorProfile records.
+ */
 export class TikTokConnector implements Connector {
   readonly platform: ConnectorPlatform = ConnectorPlatform.TIKTOK;
-  readonly name = "TikTok Connector";
-  readonly implemented = false;
+  readonly name = "TikTok Shop";
+  readonly implemented = true;
 
-  async fetchContent(_options: FetchContentOptions = {}): Promise<NormalizedContent[]> {
-    void _options;
-    throw new ConnectorNotImplementedError(this.platform);
+  async fetchContent(options: FetchContentOptions = {}): Promise<NormalizedContent[]> {
+    if (!options.organizationId) {
+      throw new TikTokConnectionRequiredError("TikTok Shop sync requires an organization scope.");
+    }
+    // Importing account/token services lazily keeps this adapter safe to
+    // describe in generic connector UI without constructing Prisma in a
+    // browser-adjacent module graph.
+    const [{ tiktokTokenRepository }, { tiktokOAuthService }] = await Promise.all([
+      import("./auth/token.service"),
+      import("./auth/oauth.service"),
+    ]);
+    const accounts = await tiktokTokenRepository.findConnected(options.organizationId);
+    if (accounts.length === 0) throw new TikTokConnectionRequiredError();
+
+    const items: NormalizedContent[] = [];
+    for (const account of accounts) {
+      const token = await tiktokOAuthService.getValidAccessToken(options.organizationId, account);
+      const response = await getProducts(new TikTokApiClient(getTikTokApiConfig()), {
+        accessToken: token,
+        shopCipher: account.shopCipher,
+        pageSize: Math.min(options.limit ?? 100, 100),
+      });
+      for (const product of response.products) {
+        const mapped = mapTikTokProduct(product);
+        items.push({
+          externalId: `product:${account.shopId}:${mapped.tiktokProductId}`,
+          type: "PRODUCT",
+          title: mapped.name,
+          thumbnailUrl: mapped.imageUrl ?? undefined,
+          caption: mapped.description ?? undefined,
+          raw: {
+            provider: "tiktok-shop",
+            shopId: account.shopId,
+            productId: mapped.tiktokProductId,
+          },
+        });
+        if (options.limit && items.length >= options.limit) return items;
+      }
+    }
+    return items;
   }
 
   async testConnection(): Promise<ConnectorHealth> {
-    return placeholderHealth(this.platform, this.name);
+    return {
+      platform: this.platform,
+      ok: Boolean(process.env.TIKTOK_APP_KEY && process.env.TIKTOK_APP_SECRET),
+      implemented: true,
+      message:
+        process.env.TIKTOK_APP_KEY && process.env.TIKTOK_APP_SECRET
+          ? "Integração oficial pronta. Conecte uma conta TikTok Shop para validar as permissões."
+          : "Configure TIKTOK_APP_KEY e TIKTOK_APP_SECRET no servidor para conectar uma conta.",
+    };
   }
 }
