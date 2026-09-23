@@ -10,6 +10,7 @@ import {
   Plug,
   Music2,
   Link2,
+  Send,
   Settings,
   Sparkles,
 } from "lucide-react";
@@ -37,6 +38,7 @@ export const sidebarNav: NavItem[] = [
   { label: "TikTok Shop", href: "/dashboard/tiktok", icon: Music2 },
   { label: "Matches", href: "/dashboard/matches", icon: Link2 },
   { label: "Campanhas", href: "/dashboard/campaigns", icon: Megaphone },
+  { label: "Delivery", href: "/dashboard/delivery", icon: Send },
   { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { label: "Configurações", href: "/settings", icon: Settings },
 ];

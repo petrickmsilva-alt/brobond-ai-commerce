@@ -1,5 +1,56 @@
 # PROJECT STATE — Brobond AI Commerce OS
 
+### PR010 — Omnichannel Delivery Engine (2026-09-23) — completed
+
+- **Official Meta APIs only:** the Instagram Connector uses Facebook Login
+  for Instagram Business Messaging and the WhatsApp Connector uses the
+  WhatsApp Business Cloud API (Embedded Signup). No scraping, no browser
+  automation, no unofficial APIs, no exceptions. Every request is
+  server-side; app credentials are read lazily from the environment and
+  never serialized into DTOs or browser responses.
+- **Crypto:** every Meta token is AES-256-GCM ciphertext
+  (`META_ENCRYPTION_KEY`, versioned `v1.iv.tag.value` format), refreshed
+  before expiry (Instagram long-lived rotation), destroyed on disconnect.
+  OAuth states are random, SHA-256-hashed at rest, single-use and expire in
+  ten minutes.
+- **Schema:** `DeliveryAccount` (tenant + channel + globally-unique provider
+  `accountId` for webhook tenant resolution, encrypted tokens, lifecycle),
+  `DeliveryMessage` (tenant + `executionId` idempotency key, status
+  lifecycle, provider id, retry scheduling) and `DeliveryOAuthState`.
+  Migration: `20260927090000_omnichannel_delivery`.
+- **Delivery Engine:** `modules/delivery/` ships a Map-based Delivery
+  Factory (the ONLY channel→connector mapping — no switch outside it), one
+  `DeliveryConnector` per channel, a dispatcher consuming APPROVED
+  `CommerceExecution`s through `QUEUED → SENDING → SENT → DELIVERED → READ`
+  with an enforced transition map, and a retry engine (3 attempts,
+  deterministic exponential backoff, retryable-only).
+- **Idempotency:** enqueue anchored on
+  `(organizationId, executionId, channel, recipientId)`; optimistic
+  QUEUED→SENDING claim makes concurrent workers safe; webhook receipts are
+  forward-only and deduplicated with the tenant-unique
+  `AuditLog.externalEventId` key.
+- **Webhooks:** `POST /api/webhooks/instagram` and
+  `POST /api/webhooks/whatsapp` validate Meta's `X-Hub-Signature-256` HMAC in
+  constant time and reject with an immediate **401** before any parsing;
+  `GET` handshakes verify `META_VERIFY_TOKEN`. Instagram handles
+  `message.received/delivered/read` (+ echo SENT confirmation); WhatsApp
+  handles `message_status` (sent/delivered/read/failed) and
+  `message_received`. Accepted events write `AuditLog`.
+- **Dashboard:** `/dashboard/delivery` (new nav item) shows the contracted
+  KPIs — Fila · Enviadas · Entregues · Lidas · Falhas — plus a
+  channel/status/campaign-filtered message table with tentativas and tempo
+  de entrega, account cards and per-row reprocess. **RBAC §10:** ADMIN
+  connects/disconnects/reprocesses; MANAGER sends and dispatches; MEMBER is
+  read-only.
+- **Analytics:** `AnalyticsSnapshot.metrics` gains an additive `delivery`
+  section — `messagesSent`, `messagesDelivered`, `messagesRead`,
+  `messagesFailed`, `messagesQueued`, `deliveryRate` and `readRate` (integer
+  basis points) — with zero-baseline backfill for pre-PR010 snapshots and a
+  matching KPI row on `/dashboard/analytics`.
+- **Tests:** suite grows from 1,319 to **1,742 tests** (+423) covering
+  crypto, OAuth both channels, webhook security + handlers, retry,
+  dispatcher, factory, RBAC, tenant isolation and end-to-end idempotency.
+
 ### PR009 — TikTok Shop Connector (2026-09-23) — completed
 
 - **Official API only:** seller OAuth uses TikTok Shop Partner Center's
@@ -33,9 +84,9 @@
 > Updated per PR. Source of truth for "what exists" vs. "what is planned".
 
 **Last updated:** 2026-09-23
-**Current PR:** PR009 — TikTok Shop Connector
+**Current PR:** PR010 — Omnichannel Delivery Engine
 **Status:** completed (awaiting review/merge — **no merge performed**)
-**Branch:** `arena/01a0cdd9-brobond-ai-commerce`
+**Branch:** `arena/01a0ce2e-brobond-ai-commerce`
 **Next PR:** TBD
 
 > **Workflow (instituted in PR001):** no more direct merges to `main`.
@@ -45,24 +96,25 @@
 
 ## 1. Snapshot
 
-| Aspect       | State                                                                                                                                                                                                                                                                                                                                                                                    |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stage        | TikTok Shop Connector (PR009) shipped on top of Analytics & Attribution (PR008)                                                                                                                                                                                                                                                                                                          |
-| Architecture | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models) · **multi-source trends** (PR002.1)                                                                                                                                                                                                                                                                              |
-| Modules      | `modules/commerce/products` — services / repositories / dto / pricing / validators                                                                                                                                                                                                                                                                                                       |
-|              | `modules/trends` — hunter (collectors / collector factory / scorer / scheduler) / repositories / dto / …                                                                                                                                                                                                                                                                                 |
-|              | `modules/connectors` — core + official `tiktok` OAuth/API/importer/webhook (PR009) + mock / instagram / shopee                                                                                                                                                                                                                                                                           |
-|              | `modules/campaigns` — Campaign Engine · deterministic AI Matching · ROI Engine · Audience Builder · repositories · dto · validators (PR006)                                                                                                                                                                                                                                              |
-|              | `modules/ai` — OpenAI Responses API client · versioned prompts (5 tones) · generator · personalization context-builder · cache-aware message service · repositories (PR007) · context audit: `serializeContext()` snapshot · `findWithContext()` · `compareContextSnapshots()` (PR007.1)                                                                                                 |
-|              | `modules/analytics` — deterministic metrics pipeline (sales metrics · attribution · snapshot builder) · materialized snapshots · lazy+refresh service · repositories · validators · deterministic sales seed (PR008)                                                                                                                                                                     |
-| Currency     | **BRL** (default across Product, Campaign, Sale) · money = integer cents · margin = basis points                                                                                                                                                                                                                                                                                         |
-| Auth         | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**                                                                                                                                                                                                                                                                                                               |
-| RBAC         | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura                                                                                                                                                                                                                                                                                    |
-| Database     | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                                                                                                                                                                                                                                                                                                                              |
-| Migrations   | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core` · `…_trend_hunter_ai` · `…_trend_source` · `…_creator_discovery_engine` · `…_outreach_ai_sales_pipeline` · `…_connector_framework` · `…_product_match_architecture` · `…_campaign_engine` · `…_ai_personalization_engine` · `…_ai_context_audit` · `…_analytics_attribution` · `…_tiktok_shop_connector` |
-| Tests        | Vitest — **1,292 unit tests** (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage, trends, creators, outreach, connectors, matches, campaigns, AI personalization + AI context audit + analytics — OpenAI fully mocked, zero real network calls)                                                                                                             |
-| Deploy       | Render Blueprint (`render.yaml`) + GitHub Actions                                                                                                                                                                                                                                                                                                                                        |
-| Build/CI     | ✅ green (ci → validate → generate → lint → typecheck → test → build → format)                                                                                                                                                                                                                                                                                                           |
+| Aspect       | State                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stage        | Omnichannel Delivery Engine (PR010) shipped on top of TikTok Shop Connector (PR009)                                                                                                                                                                                                                                                                                                                                 |
+| Architecture | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models) · **multi-source trends** (PR002.1)                                                                                                                                                                                                                                                                                                         |
+| Modules      | `modules/commerce/products` — services / repositories / dto / pricing / validators                                                                                                                                                                                                                                                                                                                                  |
+|              | `modules/trends` — hunter (collectors / collector factory / scorer / scheduler) / repositories / dto / …                                                                                                                                                                                                                                                                                                            |
+|              | `modules/connectors` — core + official `tiktok` OAuth/API/importer/webhook (PR009) + mock / instagram / shopee                                                                                                                                                                                                                                                                                                      |
+|              | `modules/campaigns` — Campaign Engine · deterministic AI Matching · ROI Engine · Audience Builder · repositories · dto · validators (PR006)                                                                                                                                                                                                                                                                         |
+|              | `modules/ai` — OpenAI Responses API client · versioned prompts (5 tones) · generator · personalization context-builder · cache-aware message service · repositories (PR007) · context audit: `serializeContext()` snapshot · `findWithContext()` · `compareContextSnapshots()` (PR007.1)                                                                                                                            |
+|              | `modules/analytics` — deterministic metrics pipeline (sales metrics · attribution · snapshot builder) · materialized snapshots · lazy+refresh service · repositories · validators · deterministic sales seed (PR008)                                                                                                                                                                                                |
+|              | `modules/delivery` — core connector interface + Map factory · instagram & whatsapp OAuth/Cloud-API connectors · dispatcher + retry engine · webhook handlers · repositories · dto · validators (PR010)                                                                                                                                                                                                              |
+| Currency     | **BRL** (default across Product, Campaign, Sale) · money = integer cents · margin = basis points                                                                                                                                                                                                                                                                                                                    |
+| Auth         | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**                                                                                                                                                                                                                                                                                                                                          |
+| RBAC         | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura                                                                                                                                                                                                                                                                                                               |
+| Database     | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                                                                                                                                                                                                                                                                                                                                                         |
+| Migrations   | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core` · `…_trend_hunter_ai` · `…_trend_source` · `…_creator_discovery_engine` · `…_outreach_ai_sales_pipeline` · `…_connector_framework` · `…_product_match_architecture` · `…_campaign_engine` · `…_ai_personalization_engine` · `…_ai_context_audit` · `…_analytics_attribution` · `…_tiktok_shop_connector` · `…_omnichannel_delivery` |
+| Tests        | Vitest — **1,742 unit tests** (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage, trends, creators, outreach, connectors, matches, campaigns, AI personalization + AI context audit + analytics + TikTok Shop + omnichannel delivery — OpenAI/Meta/TikTok fully mocked, zero real network calls)                                                                                       |
+| Deploy       | Render Blueprint (`render.yaml`) + GitHub Actions                                                                                                                                                                                                                                                                                                                                                                   |
+| Build/CI     | ✅ green (ci → validate → generate → lint → typecheck → test → build → format)                                                                                                                                                                                                                                                                                                                                      |
 
 ---
 

@@ -13,6 +13,7 @@ import {
   toAnalyticsPeriod,
   type AnalyticsMetrics,
   type AiUsageInput,
+  type DeliveryUsageInput,
   type SnapshotSaleInput,
 } from "../metrics/snapshot-builder";
 
@@ -53,14 +54,25 @@ export function createAnalyticsService(db: AnalyticsDatabase) {
     to: Date,
     days: number,
     now: Date,
-  ): Promise<{ sales: SnapshotSaleInput[]; aiUsage: AiUsageInput; metrics: AnalyticsMetrics }> {
-    const [sales, aiUsage] = await Promise.all([
+  ): Promise<{
+    sales: SnapshotSaleInput[];
+    aiUsage: AiUsageInput;
+    deliveryUsage: DeliveryUsageInput;
+    metrics: AnalyticsMetrics;
+  }> {
+    const [sales, aiUsage, deliveryUsage] = await Promise.all([
       repo.listSalesForPeriod(orgId, { from, to }),
       repo.aggregateAiUsage(orgId, { from, to }),
+      repo.aggregateDeliveryUsage(orgId, { from, to }),
     ]);
-    const metrics = buildAnalyticsMetrics(sales, aiUsage, toAnalyticsPeriod(from, to, days));
+    const metrics = buildAnalyticsMetrics(
+      sales,
+      aiUsage,
+      toAnalyticsPeriod(from, to, days),
+      deliveryUsage,
+    );
     void now;
-    return { sales, aiUsage, metrics };
+    return { sales, aiUsage, deliveryUsage, metrics };
   }
 
   return {
