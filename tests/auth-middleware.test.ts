@@ -245,3 +245,69 @@ describe("matcher config", () => {
     expect(pattern).toContain("favicon.ico");
   });
 });
+
+// ------------------------------------------------------------------
+// PR010.3 — new routes in the perimeter
+// ------------------------------------------------------------------
+
+describe("PR010.3 routes", () => {
+  it("protects /dashboard/settings/access and preserves the destination", async () => {
+    signedOut();
+    const response = await middleware(
+      makeRequest("https://app.brobond.ai/dashboard/settings/access"),
+    );
+
+    expect(response.status).toBe(307);
+    const location = new URL(response.headers.get("location") as string);
+    expect(location.pathname).toBe("/login");
+    expect(location.searchParams.get("next")).toBe("/dashboard/settings/access");
+  });
+
+  it("lets an authenticated user through to /dashboard/settings/access", async () => {
+    signedIn();
+    const response = await middleware(
+      makeRequest("https://app.brobond.ai/dashboard/settings/access"),
+    );
+    expect(response.headers.get("location")).toBeNull();
+  });
+
+  it("never reads the token for /request-access/success", async () => {
+    signedOut();
+    getTokenMock.mockClear();
+    const response = await middleware(makeRequest("https://app.brobond.ai/request-access/success"));
+
+    expect(response.headers.get("location")).toBeNull();
+    expect(getTokenMock).not.toHaveBeenCalled();
+  });
+
+  it.each(["/invite/invalid", "/invite/expired"])(
+    "never reads the token for the invite error page %s",
+    async (path) => {
+      signedOut();
+      getTokenMock.mockClear();
+      const response = await middleware(makeRequest(`https://app.brobond.ai${path}`));
+
+      expect(response.headers.get("location")).toBeNull();
+      expect(getTokenMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("passes an authenticated visitor through to the request-access success page", async () => {
+    // Public by design: the page renders the same confirmation for everyone
+    // and holds no data, so even a signed-in visitor may land on it.
+    signedIn();
+    const response = await middleware(makeRequest("https://app.brobond.ai/request-access/success"));
+    expect(response.headers.get("location")).toBeNull();
+  });
+
+  it("APP_URL (when https) selects the __Secure- cookie", async () => {
+    process.env.APP_URL = "https://app.brobond.ai";
+    delete process.env.NEXTAUTH_URL;
+    signedIn();
+    await middleware(makeRequest("http://internal-host:3000/dashboard"));
+
+    const args = getTokenMock.mock.calls[0]?.[0];
+    expect(args.secureCookie).toBe(true);
+    delete process.env.APP_URL;
+  });
+});

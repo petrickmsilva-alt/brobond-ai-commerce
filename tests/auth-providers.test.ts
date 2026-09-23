@@ -60,7 +60,13 @@ describe("isGoogleProviderConfigured()", () => {
   });
 
   it("documents exactly which variables enable the provider", () => {
-    expect(GOOGLE_ENV_KEYS).toEqual(["AUTH_GOOGLE_ID", "AUTH_GOOGLE_SECRET"]);
+    // PR010.3 §12 adds the GOOGLE_CLIENT_* aliases to the PR010.2 pair.
+    expect(GOOGLE_ENV_KEYS).toEqual([
+      "AUTH_GOOGLE_ID",
+      "AUTH_GOOGLE_SECRET",
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
+    ]);
   });
 });
 

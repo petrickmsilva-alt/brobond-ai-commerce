@@ -4,13 +4,10 @@ import { revalidatePath } from "next/cache";
 import { UserRole } from "@prisma/client";
 import { AuthorizationError } from "@/lib/rbac";
 import { requireAdmin } from "@/lib/session";
-import {
-  createInvitationSchema,
-  reviewAccessRequestSchema,
-  revokeInvitationSchema,
-} from "@/lib/validations/auth";
-import { accessRequestService } from "@/modules/auth/access-request.service";
+import { createInvitationSchema, revokeInvitationSchema } from "@/lib/validations/auth";
 import { InvitationError, invitationService } from "@/modules/auth/invitation.service";
+import { approvalService } from "@/modules/auth/approval.service";
+import { reviewAccessRequestAction as reviewAccessRequest } from "@/app/dashboard/settings/access/actions";
 
 /**
  * Administration server actions for Configurações (PR010.2 §5, §7, §11).
@@ -55,6 +52,11 @@ function fail(error: unknown, scope: string): AdminActionResult<never> {
  * Returns the invite URL exactly once so the ADMIN can copy it. The raw token
  * is never persisted and never re-readable: if it is lost, the ADMIN re-sends
  * the invite, which rotates the token and kills the previous link.
+ *
+ * PR010.3 §9/§12: the link is built from `APP_URL` (falling back to
+ * `NEXTAUTH_URL`) and delivered through the `InvitationMailer` — the
+ * ConsoleMailer logs it today, a Resend transport can drop in later without
+ * touching this action.
  */
 export async function createInvitationAction(
   input: unknown,
@@ -63,18 +65,27 @@ export async function createInvitationAction(
     const admin = await requireAdmin();
     const data = createInvitationSchema.parse(input);
 
-    const { token } = await invitationService.create(admin.organizationId, {
+    const { invitation, token } = await invitationService.create(admin.organizationId, {
       email: data.email,
       name: data.name,
       role: data.role as UserRole,
       invitedBy: admin.id,
     });
 
-    const baseUrl = process.env.NEXTAUTH_URL?.replace(/\/$/, "") ?? "";
-    const inviteUrl = `${baseUrl}/invite/${token}`;
+    // Shared with the approve flow: resolves the org name, builds the URL
+    // from APP_URL/NEXTAUTH_URL and hands it to the mailer. A mailer failure
+    // is non-fatal — the invitation exists and the URL is still returned.
+    const delivery = await approvalService.deliverInvitation({
+      organizationId: admin.organizationId,
+      email: invitation.email,
+      name: invitation.name,
+      role: invitation.role,
+      token,
+      expiresAt: invitation.expiresAt,
+    });
 
     revalidatePath(SETTINGS_PATH);
-    return { ok: true, data: { inviteUrl, email: data.email } };
+    return { ok: true, data: { inviteUrl: delivery.inviteUrl, email: data.email } };
   } catch (error) {
     return fail(error, "createInvitation");
   }
@@ -105,22 +116,18 @@ export async function revokeInvitationAction(input: unknown): Promise<AdminActio
 /**
  * Approve or reject a pending access request.
  *
- * Approving records the decision ONLY. It does not create a user and does not
- * send anything: the ADMIN still has to issue an invitation explicitly. Two
- * deliberate steps mean a misclick can never provision access.
+ * PR010.3 §2 — "Ao aprovar: Criar Invitation": this now delegates to the
+ * canonical action behind `/dashboard/settings/access`, which reviews the
+ * request AND issues + delivers the invitation (role MEMBER) in one step.
+ * The delegate (not a copy) is what keeps the two surfaces from ever
+ * disagreeing. Reject still records the decision only — nothing is created,
+ * nothing is sent.
  */
-export async function reviewAccessRequestAction(input: unknown): Promise<AdminActionResult> {
+export async function reviewAccessRequestAction(
+  input: unknown,
+): Promise<AdminActionResult<{ inviteUrl?: string; delivered?: boolean }>> {
   try {
-    const admin = await requireAdmin();
-    const data = reviewAccessRequestSchema.parse(input);
-
-    const reviewed = await accessRequestService.review(data.id, data.decision, admin.id, data.note);
-    if (!reviewed) {
-      return { ok: false, error: "Solicitação não encontrada." };
-    }
-
-    revalidatePath(SETTINGS_PATH);
-    return { ok: true };
+    return await reviewAccessRequest(input);
   } catch (error) {
     return fail(error, "reviewAccessRequest");
   }

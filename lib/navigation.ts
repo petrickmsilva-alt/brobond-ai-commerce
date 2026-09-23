@@ -19,6 +19,7 @@ import {
   Rocket,
   Cable,
   SlidersHorizontal,
+  UserCheck,
 } from "lucide-react";
 
 export interface NavItem {
@@ -170,6 +171,12 @@ export const navigationGroups: NavGroup[] = [
         href: "/settings",
         icon: Settings,
         description: "Organização, membros e preferências",
+      },
+      {
+        label: "Acesso",
+        href: "/dashboard/settings/access",
+        icon: UserCheck,
+        description: "Aprovação de solicitações de acesso e convites (ADMIN)",
       },
     ],
   },

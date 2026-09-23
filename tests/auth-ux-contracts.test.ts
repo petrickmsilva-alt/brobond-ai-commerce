@@ -273,6 +273,10 @@ describe("§13 — design system", () => {
       "app/forgot-password/page.tsx",
       "app/reset-password/page.tsx",
       "app/invite/[token]/page.tsx",
+      // PR010.3 §10 — dedicated terminal/confirmation pages.
+      "app/invite/invalid/page.tsx",
+      "app/invite/expired/page.tsx",
+      "app/request-access/success/page.tsx",
     ]) {
       expect(exists(file), file).toBe(true);
     }
@@ -290,6 +294,8 @@ describe("no secret reaches the browser", () => {
       "components/auth/request-access-form.tsx",
       "components/settings/invitations-panel.tsx",
       "components/settings/access-requests-panel.tsx",
+      // PR010.3 §2 — the ADMIN approval table.
+      "components/settings/access-requests-table.tsx",
     ];
 
     for (const file of clientFiles) {

@@ -28,6 +28,27 @@ export const DEFAULT_AUTHENTICATED_REDIRECT = "/dashboard";
 export const LOGIN_ROUTE = "/login";
 
 /**
+ * Reserved invite endpoints (PR010.3 §10).
+ *
+ * `/invite/[token]` redirects here instead of rendering an inline error, so a
+ * dead link has a stable, shareable URL with its own explanation. Being static
+ * siblings of `[token]`, Next.js resolves them before the dynamic segment —
+ * the words themselves can never collide with a real token (tokens are
+ * base64url, ≥ 16 chars).
+ */
+export const INVITE_INVALID_ROUTE = "/invite/invalid";
+export const INVITE_EXPIRED_ROUTE = "/invite/expired";
+
+/**
+ * The confirmation screen shown after a successful access request (PR010.3 §1).
+ *
+ * A dedicated route — not an inline state — is what guarantees "nunca
+ * retornar para o formulário": the form navigates away with `router.replace`,
+ * so the populated form is gone from the history stack entirely.
+ */
+export const REQUEST_ACCESS_SUCCESS_ROUTE = "/request-access/success";
+
+/**
  * Route prefixes that require an authenticated session.
  *
  * Every entry is matched as "the path itself, or any path below it", so

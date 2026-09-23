@@ -49,6 +49,10 @@ import {
 
 /** `__Secure-` cookie prefix is used whenever the deployment is HTTPS. */
 function usesSecureCookies(request: NextRequest): boolean {
+  // APP_URL (PR010.3 §12) is the canonical public URL; NEXTAUTH_URL remains
+  // as the fallback so deployments that only set the NextAuth variable keep
+  // the same behaviour.
+  if (process.env.APP_URL?.startsWith("https://")) return true;
   if (process.env.NEXTAUTH_URL?.startsWith("https://")) return true;
   return request.nextUrl.protocol === "https:";
 }
