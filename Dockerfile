@@ -32,10 +32,15 @@ ENV HOSTNAME=0.0.0.0
 RUN addgroup --system --gid 1001 nodejs \
   && adduser --system --uid 1001 nextjs
 
-# Standalone server + static assets + prisma schema/engine
+# Standalone server + static assets + Prisma runtime artifacts.
+# Prisma's client engine uses query_compiler_bg.wasm even with engineType
+# ="client". Next standalone tracing does not reliably include this generated
+# binary, so copy the generated .prisma directory explicitly. Without it the
+# first database operation fails at runtime with ENOENT.
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/prisma ./prisma
 
 USER nextjs
