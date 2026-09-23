@@ -1,6 +1,12 @@
 import "server-only";
 
-import type { Prisma, PrismaClient, TikTokAccount } from "@prisma/client";
+import type {
+  ConnectorPlatform,
+  CreatorSource,
+  Prisma,
+  PrismaClient,
+  TikTokAccount,
+} from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { scopedWhere, tenantWhere } from "@/lib/tenant";
 import { getCreators } from "../api/creators";
@@ -54,7 +60,10 @@ export function createTikTokImportRepository(db: TikTokImportDatabase) {
 
     async upsertCreator(organizationId: string, creator: TikTokCreatorImport) {
       const existing = await db.creatorProfile.findFirst({
-        where: scopedWhere(organizationId, { source: "TIKTOK", externalId: creator.externalId }),
+        where: scopedWhere(organizationId, {
+          source: "TIKTOK" as CreatorSource,
+          externalId: creator.externalId,
+        }),
       });
       if (existing) {
         await db.creatorProfile.update({
@@ -100,7 +109,10 @@ export function createTikTokImportRepository(db: TikTokImportDatabase) {
       content: ReturnType<typeof mapTikTokProductExternalContent>,
     ) {
       const existing = await db.externalContent.findFirst({
-        where: scopedWhere(organizationId, { platform: "TIKTOK", externalId: content.externalId }),
+        where: scopedWhere(organizationId, {
+          platform: "TIKTOK" as ConnectorPlatform,
+          externalId: content.externalId,
+        }),
       });
       if (existing) {
         await db.externalContent.update({
