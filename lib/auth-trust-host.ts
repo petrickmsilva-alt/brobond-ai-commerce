@@ -20,6 +20,20 @@
  */
 
 /**
+ * The only slice of the environment this policy reads.
+ *
+ * Deliberately NOT `NodeJS.ProcessEnv`: Next augments that interface with a
+ * REQUIRED `NODE_ENV`, so a test could not pass a plain `{ AUTH_TRUST_HOST }`
+ * literal without also restating an unrelated variable.
+ */
+export interface TrustHostEnv {
+  AUTH_TRUST_HOST?: string | undefined;
+  // Keeps `process.env` (which shares no *declared* property with a one-key
+  // interface) assignable, instead of tripping TypeScript's weak-type check.
+  [key: string]: string | undefined;
+}
+
+/**
  * Whether Auth.js may derive its base URL from the incoming (forwarded) host.
  *
  * - `AUTH_TRUST_HOST=false`/`0` — explicit opt-out, always respected, for a
@@ -27,7 +41,7 @@
  * - anything else (including unset) — trusted: this app is only ever served
  *   behind a reverse proxy in production, and from localhost in development.
  */
-export function resolveTrustHost(env: NodeJS.ProcessEnv = process.env): boolean {
+export function resolveTrustHost(env: TrustHostEnv = process.env): boolean {
   const flag = env.AUTH_TRUST_HOST?.trim().toLowerCase();
   return !(flag === "false" || flag === "0");
 }
