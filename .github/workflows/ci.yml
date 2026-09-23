@@ -17,6 +17,7 @@ jobs:
       # Dummy values so `prisma generate` and `next build` run without secrets.
       DATABASE_URL: postgresql://user:pass@localhost:5432/db?schema=public
       AUTH_SECRET: ci-placeholder-secret-value-not-used-at-runtime
+      NEXTAUTH_URL: http://localhost:3000
       NEXT_TELEMETRY_DISABLED: "1"
       TIKTOK_APP_KEY: ci-tiktok-app-key
       TIKTOK_APP_SECRET: ci-tiktok-app-secret

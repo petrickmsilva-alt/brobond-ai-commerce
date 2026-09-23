@@ -344,10 +344,13 @@ Deployment is defined as code in [`render.yaml`](./render.yaml) (a Render Bluepr
 2. In Render, choose **New → Blueprint** and point it at the repo.
 3. Render provisions:
    - a managed **PostgreSQL** database (`brobond-db`), and
-   - a Dockerized **web service** (`brobond-ai-commerce`).
+   - a native Node **web service** (`brobond-ai-commerce`).
 4. `DATABASE_URL` is injected from the database; `AUTH_SECRET` is auto-generated.
-   Set `NEXTAUTH_URL` to your service URL (e.g. `https://brobond-ai-commerce.onrender.com`).
-5. `preDeployCommand` runs `prisma migrate deploy` before each release.
+   Set the required `NEXTAUTH_URL` to your service URL (e.g. `https://brobond-ai-commerce.onrender.com`).
+5. `buildCommand` runs the locked install, Prisma generation and Next.js build.
+6. `preDeployCommand` runs `prisma migrate deploy` before each release.
+7. Startup blocks until Prisma, the required migration and schema pass; Render
+   probes `/api/health/database` before routing traffic.
 
 ### CI/CD
 

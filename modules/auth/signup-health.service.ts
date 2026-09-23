@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { PrismaClient } from "@prisma/client";
+import { REQUIRED_DATABASE_MIGRATION } from "@/lib/database-health";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -8,7 +9,7 @@ import { prisma } from "@/lib/prisma";
  * self-signup. A generated Prisma client can be newer than the deployed
  * database, so this is checked explicitly before beginning a write.
  */
-export const SELF_SIGNUP_MIGRATION = "20260929090000_self_signup_first_tenant";
+export const SELF_SIGNUP_MIGRATION = REQUIRED_DATABASE_MIGRATION;
 
 export type SignupReadinessCode = "PRISMA_UNAVAILABLE" | "MIGRATION_PENDING" | "SCHEMA_INCOMPLETE";
 
@@ -56,10 +57,11 @@ export async function assertSignupReady(
   try {
     await db.$queryRaw<Array<{ connected: number }>>`SELECT 1 AS connected`;
   } catch (error) {
+    const cause = error instanceof Error ? error.message : String(error);
     throw new SignupReadinessError(
       "PRISMA_UNAVAILABLE",
-      "Não foi possível conectar ao banco de dados para concluir o cadastro.",
-      "A verificação de conexão do Prisma falhou antes de iniciar a transação.",
+      "Banco de dados indisponível.",
+      `A verificação Prisma SELECT 1 falhou antes do cadastro.${cause ? ` ${cause}` : ""}`,
       error,
     );
   }

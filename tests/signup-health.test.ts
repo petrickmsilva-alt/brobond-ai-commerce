@@ -32,8 +32,8 @@ describe("assertSignupReady()", () => {
 
     await expect(assertSignupReady(db as never)).rejects.toMatchObject({
       code: "PRISMA_UNAVAILABLE",
-      message: expect.stringMatching(/conectar ao banco/i),
-      details: expect.stringMatching(/Prisma/i),
+      message: "Banco de dados indisponível.",
+      details: expect.stringMatching(/Prisma.*ECONNREFUSED/i),
     });
   });
 

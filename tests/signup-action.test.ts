@@ -416,6 +416,27 @@ describe("signupAction() — precise failures and diagnostics", () => {
 // ------------------------------------------------------------------
 
 describe("signupAction() — pre-signup healthcheck", () => {
+  it("returns PRISMA_UNAVAILABLE with diagnostic details before provisioning", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    healthCheckMock.mockRejectedValue(
+      new FakeSignupReadinessError(
+        "PRISMA_UNAVAILABLE",
+        "Banco de dados indisponível.",
+        "A verificação Prisma SELECT 1 falhou: connect ECONNREFUSED.",
+      ),
+    );
+
+    const result = await signupAction(VALID);
+    if (result.ok) throw new Error("expected failure");
+    expect(result).toMatchObject({
+      code: "PRISMA_UNAVAILABLE",
+      message: "Banco de dados indisponível.",
+      details: { reason: expect.stringContaining("ECONNREFUSED") },
+    });
+    expect(registerMock).not.toHaveBeenCalled();
+    expect(signInMock).not.toHaveBeenCalled();
+  });
+
   it("returns the migration error exactly and does not begin provisioning", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     healthCheckMock.mockRejectedValue(

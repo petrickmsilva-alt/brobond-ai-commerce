@@ -2,10 +2,7 @@ import path from "node:path";
 import { defineConfig } from "prisma/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-/**
- * Prisma configuration (Prisma 6+).
- * Replaces the deprecated `prisma` key in package.json.
- */
+/** Prisma CLI configuration (Prisma 6+). */
 export default defineConfig({
   schema: path.join("prisma", "schema.prisma"),
   migrations: {
@@ -13,8 +10,11 @@ export default defineConfig({
   },
   experimental: { adapter: true },
   engine: "js",
-  adapter: async () =>
-    new PrismaPg({
-      connectionString: process.env.DATABASE_URL ?? "postgresql://user:pass@localhost:5432/db",
-    }),
+  adapter: async () => {
+    const connectionString = process.env.DATABASE_URL?.trim();
+    if (!connectionString) {
+      throw new Error("DATABASE_URL is required for Prisma database commands.");
+    }
+    return new PrismaPg({ connectionString });
+  },
 });

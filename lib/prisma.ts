@@ -2,35 +2,46 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 /**
- * Global Prisma client singleton.
+ * Process-wide Prisma singleton.
  *
- * This client uses the Rust-free query compiler with the `pg` driver
- * adapter — no native query-engine binary is downloaded or bundled.
- *
- * In development, Next.js hot-reloading can create many client instances
- * and exhaust the database connection pool, so we cache the client on the
- * global object.
+ * Next.js can evaluate the module through more than one server bundle and its
+ * development hot reloader evaluates it repeatedly. The instance therefore
+ * lives on `globalThis` in every environment, including production. That is a
+ * stronger guarantee than relying on the ESM cache and prevents duplicate pg
+ * pools from exhausting Render PostgreSQL connections.
  */
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
+const globalForPrisma = globalThis as typeof globalThis & {
+  __brobondPrisma?: PrismaClient;
 };
 
 function createPrismaClient(): PrismaClient {
-  // Optional pool cap (e.g. Render starter Postgres or a dev single-connection
-  // proxy). Unset → pg's default pool size.
-  const poolMax = Number.parseInt(process.env.DATABASE_POOL_MAX ?? "", 10);
+  const connectionString = process.env.DATABASE_URL?.trim();
+  if (!connectionString) {
+    // The prestart check validates the complete runtime environment first;
+    // this guard keeps every direct/standalone import fail-safe as well.
+    throw new Error("DATABASE_URL is required to initialize Prisma.");
+  }
+
+  const poolMax = positiveInteger(process.env.DATABASE_POOL_MAX);
+  const connectionTimeoutMillis = positiveInteger(process.env.DATABASE_CONNECTION_TIMEOUT_MS);
   const adapter = new PrismaPg({
-    connectionString: process.env.DATABASE_URL,
-    ...(Number.isFinite(poolMax) && poolMax > 0 ? { max: poolMax } : {}),
+    connectionString,
+    ...(poolMax ? { max: poolMax } : {}),
+    ...(connectionTimeoutMillis ? { connectionTimeoutMillis } : {}),
   });
+
   return new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+function positiveInteger(value: string | undefined): number | undefined {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
+
+export const prisma = globalForPrisma.__brobondPrisma ?? createPrismaClient();
+
+// Cache in production too: server chunks must share exactly one client/pool.
+globalForPrisma.__brobondPrisma = prisma;
