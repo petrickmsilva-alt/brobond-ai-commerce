@@ -256,7 +256,7 @@ Core runtime variables:
 | `AUTH_SECRET`     | yes      | NextAuth v5 JWT/session signing secret                                                               |
 | `NEXTAUTH_URL`    | prod     | Canonical URL for NextAuth callbacks/redirects                                                       |
 | `DATABASE_URL`    | yes      | PostgreSQL connection string (Prisma)                                                                |
-| `AUTH_TRUST_HOST` | no       | Trust the proxy `Host` header (Render/Docker)                                                        |
+| `AUTH_TRUST_HOST` | no       | Set to `false` to stop trusting the proxy's forwarded host; trusted by default (Render/Docker)       |
 | `APP_URL`         | no       | PR010.3 — public base URL for links handed to users (invitation links); falls back to `NEXTAUTH_URL` |
 
 Optional Google SSO (PR010.3 §5/§12) — set **one complete pair**, never a mix:
@@ -348,9 +348,23 @@ Deployment is defined as code in [`render.yaml`](./render.yaml) (a Render Bluepr
 4. `DATABASE_URL` is injected from the database; `AUTH_SECRET` is auto-generated.
    Set the required `NEXTAUTH_URL` to your service URL (e.g. `https://brobond-ai-commerce.onrender.com`).
 5. `buildCommand` runs the locked install, Prisma generation and Next.js build.
-6. `preDeployCommand` runs `prisma migrate deploy` before each release.
+6. `prisma migrate deploy` runs **twice, by design**: once as
+   `preDeployCommand` (the right place for it — once per release) and again at
+   the head of `startCommand`. `preDeployCommand` is a paid-plan feature and is
+   silently ignored on plans that do not have it, which is exactly how a
+   deployment can end up serving an application whose database has no schema at
+   all (`relation "_prisma_migrations" does not exist`). `migrate deploy` is
+   idempotent, so the second run is a no-op once the schema is current.
+   The Docker image gets the same guarantee from
+   [`scripts/docker-entrypoint.sh`](./scripts/docker-entrypoint.sh); set
+   `RUN_MIGRATIONS=false` to opt a container out when a separate release job
+   owns migrations.
 7. Startup blocks until Prisma, the required migration and schema pass; Render
    probes `/api/health/database` before routing traffic.
+8. `AUTH_TRUST_HOST` stays in the blueprint, but host trust no longer depends on
+   it: `lib/auth-trust-host.ts` trusts the proxy's forwarded host by default, so
+   losing that variable can no longer take sign-in down with
+   `UntrustedHost: Host must be trusted`. Set `AUTH_TRUST_HOST=false` to opt out.
 
 ### CI/CD
 

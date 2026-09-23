@@ -21,8 +21,16 @@ services:
     branch: main
     autoDeploy: true
     buildCommand: npm ci && npx prisma generate && npm run build
+    # `preDeployCommand` is a paid-plan feature and is silently ignored on some
+    # plans — which is how production ended up serving a database that had
+    # never been migrated ("relation _prisma_migrations does not exist"). It is
+    # kept, because running migrations once per release is the right place for
+    # them, but the start command now applies them too. `migrate deploy` is
+    # idempotent, so the second invocation is a no-op on an up-to-date
+    # database, and `npm start`'s prestart gate still refuses to boot if the
+    # schema is somehow still incomplete.
     preDeployCommand: npx prisma migrate deploy
-    startCommand: npm start
+    startCommand: npx prisma migrate deploy && npm start
     healthCheckPath: /api/health/database
     envVars:
       # Do not set NODE_ENV here: Render also applies envVars during `npm ci`,

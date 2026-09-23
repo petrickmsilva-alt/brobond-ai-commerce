@@ -12,7 +12,7 @@ import { z } from "zod";
  * | `AUTH_SECRET`     | yes      | NextAuth v5 JWT/session signing secret         |
  * | `NEXTAUTH_URL`    | yes      | Canonical URL for NextAuth callbacks/redirects |
  * | `DATABASE_URL`    | yes      | PostgreSQL connection string (Prisma)          |
- * | `AUTH_TRUST_HOST` | no       | Trust the proxy `Host` header (Render/Docker)  |
+ * | `AUTH_TRUST_HOST` | no       | `false` disables proxy host trust (on by default) |
  *
  * `APP_URL` was removed in PR000.2 (nothing read it) and is **reintroduced by
  * PR010.3 §12** with a narrower mandate: it is the canonical *public* base URL
@@ -77,7 +77,13 @@ const envSchema = z.object({
    * button that fails at the callback. SERVER ONLY.
    */
   GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
-  /** Trust the reverse-proxy `Host` header (required on Render/Docker). */
+  /**
+   * Opt OUT of trusting the reverse-proxy forwarded host (`false`/`0`).
+   *
+   * Trust is on by default — see `lib/auth-trust-host.ts`. It used to be
+   * driven solely by this variable, and losing it in the Render dashboard took
+   * every `/api/auth/session` call down with `UntrustedHost`.
+   */
   AUTH_TRUST_HOST: z
     .string()
     .optional()
