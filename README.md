@@ -693,3 +693,85 @@ MEMBER is read-only (re-asserted server-side on every action).
 matches** generated through the real matcher engine — 20 `AI` · 20
 `RULE` · 10 `MANUAL`, confidence between `0.55` and `0.99` — using the
 existing `ExternalContent` rows. Idempotent.
+
+---
+
+## AI Context Audit (PR007.1)
+
+Retrocompatible hotfix on top of the AI Personalization Engine (PR007).
+Every AI-generated message now carries a **complete snapshot of the
+structured context** that produced it — creator, product, campaign and
+trend — so any generated content can be audited and reproduced later.
+
+**Nothing from PR007 changed**: the Responses API client, the prompt
+templates, the cache contract and the dashboard behave exactly as before.
+
+### Context Snapshot
+
+`AIGeneratedMessage.contextSnapshot` (new nullable `JSONB` column, purely
+additive migration) persists the stable object built by
+`serializeContext()` (`modules/ai/personalization/context-builder.ts`):
+
+```json
+{
+  "creator": { "id": "…", "name": "…", "handle": "…", "niche": "…", "score": 82 },
+  "product": { "id": "…", "name": "…", "margin": 3550 },
+  "campaign": { "id": "…", "name": "…" },
+  "trend": { "keyword": "streetwear", "score": 87 }
+}
+```
+
+- `creator.score` mirrors `CreatorProfile.creatorScore` (0–100).
+- `product.margin` mirrors `Product.marginBps` (basis points, 3550 = 35.50%).
+- `trend` is `null` for non trend-driven generations.
+- Uncaptured optionals serialize as `null`, never omitted — the shape is
+  frozen and JSON-stable (fixed key order, byte-identical for equal input).
+- The column is **nullable only for backwards compatibility**: rows
+  generated before PR007.1 carry `NULL`; every new row is snapshotted at
+  generation time.
+
+> **Cache invariant:** `serializeContext()` is audit-only. The cache key
+> remains `serializeContextForHash()` + `buildContextHash()` exactly as
+> shipped in PR007 — the snapshot is never hashed, and `creator.score` /
+> `product.margin` participate in neither the prompt nor the hash, so the
+> existing cache keeps hitting across the hotfix.
+
+### Prompt Audit
+
+Each row already pins `promptVersion`, `model`, `temperature`,
+`inputTokens`, `outputTokens` and `contextHash` (PR007). Combined with the
+new snapshot, a message answers _"which exact context, prompt version and
+sampling parameters produced this content?"_ — the full prompt-audit
+trail, tenant-scoped via `aiMessageRepository.findWithContext()`.
+
+### Dashboard — "Ver contexto"
+
+`/dashboard/ai` gains a **Ver contexto** button per message (the rest of
+the dashboard is untouched). It opens a read-only modal with:
+
+- **Creator · Produto · Campanha · Trend** — from the persisted snapshot
+  (falling back to the current record names for pre-PR007.1 rows),
+- **Prompt Version · Model · Temperature · Tokens · Context Hash**,
+- the **formatted JSON snapshot**, strictly read-only.
+
+Data is fetched lazily by `getAiMessageContextAction()` (server action,
+tenant-scoped, read-only — generation stays MANAGER-only).
+
+### Context Diff
+
+`compareContextSnapshots(a, b)`
+(`modules/ai/audit/context-diff.ts`, pure, zero dependencies) diffs two
+snapshots field by field and returns deterministic dotted-path entries:
+
+```ts
+compareContextSnapshots(snapshotA, snapshotB);
+// [
+//   { path: "creator.score",  before: 82,   after: 91 },
+//   { path: "product.margin", before: 3550, after: 3990 },
+//   { path: "trend.keyword",  before: "streetwear", after: "y2k" },
+// ]
+```
+
+Use it to answer _"what changed between these two generations?"_ — e.g.
+same creator/product/campaign whose score, margin or trend moved between
+snapshots.

@@ -11,6 +11,7 @@ import { generatePersonalizedMessage, type GeneratedMessageContent } from "../op
 import { getPromptDefinition, type AiMessageTone } from "../openai/prompts";
 import {
   buildPersonalizationContext,
+  serializeContext,
   serializeContextForHash,
   type PersonalizationContextInput,
 } from "./context-builder";
@@ -71,6 +72,9 @@ export function createAiMessageService(db: AiMessageDatabase) {
       // `openai/prompts.ts`), so the cache key can be computed before ever
       // calling OpenAI, letting us short-circuit on a cache hit.
       const promptVersion = getPromptDefinition(input.tone).version;
+      // PR007 — unchanged: the hash is ALWAYS built from
+      // `serializeContextForHash()`. The PR007.1 audit snapshot below is
+      // never hashed (see `serializeContext()`'s cache invariant).
       const contextHash = buildContextHash(input, input.tone, promptVersion);
 
       const cached = await repo.findByContextHash(orgId, contextHash);
@@ -85,6 +89,11 @@ export function createAiMessageService(db: AiMessageDatabase) {
         temperature: input.temperature,
       });
 
+      // PR007.1 — AI Context Audit: persist the full structured context
+      // alongside the generated message. The snapshot is informational only
+      // — it does not participate in the cache key in any way.
+      const contextSnapshot = serializeContext(input);
+
       const created = await repo.create(orgId, {
         creatorUserId: input.creatorUserId ?? null,
         creatorProfileId: context.creator.id,
@@ -98,6 +107,7 @@ export function createAiMessageService(db: AiMessageDatabase) {
         inputTokens: generated.inputTokens,
         outputTokens: generated.outputTokens,
         content: generated.content as unknown as Prisma.InputJsonValue,
+        contextSnapshot: contextSnapshot as unknown as Prisma.InputJsonValue,
       });
 
       return { message: created, cached: false };

@@ -18,7 +18,24 @@ export interface CreateAiMessageInput {
   inputTokens: number;
   outputTokens: number;
   content: Prisma.InputJsonValue;
+  /**
+   * PR007.1 — AI Context Audit: stable snapshot of the full structured
+   * context (`serializeContext()` output). Required for every new row so
+   * the audit trail is complete from PR007.1 onwards; the DB column stays
+   * nullable only to accommodate pre-PR007.1 rows.
+   */
+  contextSnapshot: Prisma.InputJsonValue;
 }
+
+/**
+ * PR007.1 — an `AIGeneratedMessage` row guaranteed to carry every audit
+ * field the /dashboard/ai "Ver contexto" modal renders: the persisted
+ * `contextSnapshot` plus the related creator/product/campaign names used
+ * as a fallback for rows generated before PR007.1 (whose snapshot is null).
+ */
+export type AiMessageWithContext = Prisma.AIGeneratedMessageGetPayload<{
+  include: { creatorProfile: true; product: true; campaign: true };
+}>;
 
 export interface AiMessageListOptions {
   tone?: AiMessageTone;
@@ -66,6 +83,22 @@ export function createAiMessageRepository(db: AiMessageDatabase) {
 
     async findById(organizationId: string, id: string): Promise<AIGeneratedMessage | null> {
       return db.aIGeneratedMessage.findFirst({ where: scopedWhere(organizationId, { id }) });
+    },
+
+    /**
+     * PR007.1 — AI Context Audit: fetch a message together with its
+     * persisted `contextSnapshot` (and the creator/product/campaign
+     * relations as a legacy fallback). Tenant-scoped: a message from
+     * another organization is indistinguishable from a missing one.
+     */
+    async findWithContext(
+      organizationId: string,
+      id: string,
+    ): Promise<AiMessageWithContext | null> {
+      return db.aIGeneratedMessage.findFirst({
+        where: scopedWhere(organizationId, { id }),
+        include: { creatorProfile: true, product: true, campaign: true },
+      });
     },
 
     async list(organizationId: string, options: AiMessageListOptions = {}) {

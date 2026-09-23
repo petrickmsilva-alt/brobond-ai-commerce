@@ -1080,6 +1080,14 @@ model AIGeneratedMessage {
   /// Stored as JSON so the shape can evolve without a migration.
   content Json
 
+  /// PR007.1 — AI Context Audit: complete snapshot of the structured
+  /// (creator + product + campaign + trend) context used to generate this
+  /// message (`modules/ai/personalization/context-builder.ts#serializeContext`).
+  /// Nullable purely for backwards compatibility: rows generated before
+  /// PR007.1 have no snapshot; every row generated from PR007.1 onwards
+  /// carries one. Never feeds the cache key — `contextHash` is unchanged.
+  contextSnapshot Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

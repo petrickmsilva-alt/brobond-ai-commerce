@@ -10,7 +10,14 @@ const productFindFirst = vi.hoisted(() => vi.fn());
 const campaignFindFirst = vi.hoisted(() => vi.fn());
 const trendFindFirst = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/session", () => ({ requireManager: requireManagerMock }));
+vi.mock("@/lib/session", () => ({
+  requireManager: requireManagerMock,
+  // PR007.1 — extra guards imported by app/dashboard/ai/actions.ts for the
+  // context-audit action; stubbed here so this suite stays focused on
+  // generateAiMessageAction().
+  requireUser: vi.fn(),
+  requireOrganization: vi.fn(),
+}));
 vi.mock("next/cache", () => ({ revalidatePath: revalidatePathMock }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {

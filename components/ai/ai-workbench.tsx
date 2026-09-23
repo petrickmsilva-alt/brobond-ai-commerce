@@ -1,9 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Eye, Sparkles } from "lucide-react";
+import { Braces, Eye, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { generateAiMessageAction } from "@/app/dashboard/ai/actions";
+import {
+  generateAiMessageAction,
+  getAiMessageContextAction,
+  type AiMessageContextActionResult,
+} from "@/app/dashboard/ai/actions";
+import { ContextAuditModal } from "@/components/ai/context-audit-modal";
 import type { AiMessageTone } from "@/modules/ai/openai/prompts";
 
 interface Choice {
@@ -59,6 +64,9 @@ export function AiWorkbench(props: Props) {
   const [active, setActive] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
   const [pending, startTransition] = useTransition();
+  // PR007.1 — AI Context Audit: "Ver contexto" modal state.
+  const [contextAudit, setContextAudit] = useState<AiMessageContextActionResult | null>(null);
+  const [contextPending, startContextTransition] = useTransition();
 
   function submit(formData: FormData) {
     setFeedback("");
@@ -73,6 +81,18 @@ export function AiWorkbench(props: Props) {
         );
       } else {
         setFeedback(result.error ?? "Erro inesperado.");
+      }
+    });
+  }
+
+  function openContextAudit(id: string) {
+    setFeedback("");
+    startContextTransition(async () => {
+      const result = await getAiMessageContextAction(id);
+      if (result.ok && result.data) {
+        setContextAudit(result.data);
+      } else {
+        setFeedback(result.error ?? "Não foi possível carregar o contexto.");
       }
     });
   }
@@ -176,14 +196,25 @@ export function AiWorkbench(props: Props) {
                 </td>
                 <td className="px-4 py-3 text-white/60">{localDate(message.createdAt)}</td>
                 <td className="px-4 py-3">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setActive(active === message.id ? null : message.id)}
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                    Visualizar
-                  </Button>
+                  <div className="flex flex-wrap gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setActive(active === message.id ? null : message.id)}
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      Visualizar
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={contextPending}
+                      onClick={() => openContextAudit(message.id)}
+                    >
+                      <Braces className="h-3.5 w-3.5" />
+                      Ver contexto
+                    </Button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -221,6 +252,10 @@ export function AiWorkbench(props: Props) {
             <p className="text-white/80">{activeMessage.content.cta}</p>
           </div>
         </div>
+      )}
+
+      {contextAudit && (
+        <ContextAuditModal data={contextAudit} onClose={() => setContextAudit(null)} />
       )}
     </div>
   );
