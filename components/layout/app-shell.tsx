@@ -61,12 +61,19 @@ export function AppShell({ children, user, workspace, tiktokStatus }: AppShellPr
       />
 
       <div
+        aria-hidden={mobileOpen ? true : undefined}
+        inert={mobileOpen ? true : undefined}
         className={cn(
           "flex min-h-screen flex-col transition-[padding] duration-200 ease-out",
           collapsed ? "lg:pl-[76px]" : "lg:pl-[264px]",
         )}
       >
-        <Header onOpenMobile={toggleMobile} user={user} tiktokStatus={tiktokStatus} />
+        <Header
+          onOpenMobile={toggleMobile}
+          mobileOpen={mobileOpen}
+          user={user}
+          tiktokStatus={tiktokStatus}
+        />
 
         <main
           id="main-content"

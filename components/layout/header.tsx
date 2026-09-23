@@ -23,12 +23,14 @@ import { focusRingRaised } from "@/components/ui/design-system/theme";
 
 interface HeaderProps {
   onOpenMobile: () => void;
+  /** Mirrors the off-canvas disclosure state for assistive technology. */
+  mobileOpen: boolean;
   user: UserMenuProps;
   /** TikTok Shop connection state, resolved server-side. */
   tiktokStatus?: ConnectionState;
 }
 
-export function Header({ onOpenMobile, user, tiktokStatus = "unknown" }: HeaderProps) {
+export function Header({ onOpenMobile, mobileOpen, user, tiktokStatus = "unknown" }: HeaderProps) {
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [isMac, setIsMac] = React.useState(false);
 
@@ -66,8 +68,9 @@ export function Header({ onOpenMobile, user, tiktokStatus = "unknown" }: HeaderP
         <button
           type="button"
           onClick={onOpenMobile}
-          aria-label="Abrir menu de navegação"
+          aria-label={mobileOpen ? "Fechar menu de navegação" : "Abrir menu de navegação"}
           aria-controls="app-sidebar"
+          aria-expanded={mobileOpen}
           className={cn(
             "flex h-9 w-9 items-center justify-center rounded-xl text-white/60",
             "transition-colors hover:bg-white/[0.07] hover:text-white lg:hidden",

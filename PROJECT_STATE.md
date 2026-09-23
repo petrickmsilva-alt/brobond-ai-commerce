@@ -84,10 +84,10 @@
 > Updated per PR. Source of truth for "what exists" vs. "what is planned".
 
 **Last updated:** 2026-09-23
-**Current PR:** PR010 — Omnichannel Delivery Engine
+**Current PR:** PR010.1 — Enterprise UI/UX Redesign
 **Status:** completed (awaiting review/merge — **no merge performed**)
-**Branch:** `arena/01a0ce2e-brobond-ai-commerce`
-**Next PR:** TBD
+**Branch:** `arena/01a0cf0c-brobond-ai-commerce`
+**Next PR:** PR011 — AI CEO & Autonomous Decisions
 
 > **Workflow (instituted in PR001):** no more direct merges to `main`.
 > Feature branch → Pull Request → human audit → approval → merge → Render deploy.
@@ -1017,13 +1017,17 @@ already-tenant-scoped data for presentation.
   reinforced globally in CSS.
 - **Responsiveness** — verified at mobile, tablet, notebook and 1440+ desktop:
   off-canvas rail below `lg`, KPI grid 1→2→3→6 columns, charts stacking, and
-  the 1600px content cap so ultrawide monitors don't stretch tables.
+  the 1600px content cap so ultrawide monitors don't stretch tables. The mobile
+  drawer always opens at full labelled width, independently of the persisted
+  desktop collapse preference.
 - **Accessibility** — skip link, `<main>`/`<nav>`/`<section>` landmarks,
   `aria-current="page"`, labelled disclosures (`aria-expanded`/`-controls`),
   an ARIA combobox+listbox palette, `role="alert"` form errors,
   `aria-invalid`+`aria-describedby` fields, `<time dateTime>` and
-  screen-reader chart summaries. The focus ring moved **brand-400 → brand-300**
-  because brand-400 measured only 2.92:1 against `surface-500` (WCAG 1.4.11
+  screen-reader chart summaries. Modal focus is contained and restored for the
+  command palette and mobile navigation; the closed off-canvas rail is inert.
+  The focus ring moved **brand-400 → brand-300** because brand-400 measured only
+  2.92:1 against `surface-500` (WCAG 1.4.11
   requires 3:1) — a real contrast bug the token tests now prevent regressing.
 - **Performance** — Recharts is behind `next/dynamic` (`ssr: false`) with
   same-height skeletons (no CLS), chart series are memoised, and the KPI/chart
