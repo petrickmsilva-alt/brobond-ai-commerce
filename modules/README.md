@@ -21,12 +21,12 @@ modules/
 │   ├── validators/        Zod schemas (+ trendSourceSchema) + keyword slug helpers
 │   └── interfaces/        TrendCandidate · TrendCollector · TREND_SOURCES ·
 │                          TREND_CATEGORIES
-├── connectors/   Connector Framework (PR005 — architecture only, no real API)
+├── connectors/   Connector Framework (PR005) + TikTok Shop (PR009)
 │   ├── core/          connector.interface · connector.factory · connector.validator ·
 │   │                  connector.dto · connector.repository (server-only) ·
 │   │                  connector.sync (server-only, manual job)
-│   ├── mock/          MockConnector — the only IMPLEMENTED adapter (deterministic)
-│   ├── tiktok/        TikTokConnector — placeholder ("Not implemented")
+│   ├── mock/          MockConnector — deterministic adapter
+│   ├── tiktok/        Official Shop API: OAuth · AES-GCM tokens · API · importer · webhook
 │   ├── instagram/     InstagramConnector — placeholder ("Not implemented")
 │   └── shopee/        ShopeeConnector — placeholder ("Not implemented")
 ├── creators/     Creator roster & relationships
@@ -61,9 +61,10 @@ without a tenant scope.
   lives in `modules/connectors/<platform>/` and is resolved by
   `getConnector(platform)` (`core/connector.factory.ts`) — never by
   instantiating an adapter or switching on the platform outside the factory.
-  PR005 delivers the **architecture only**: `MockConnector` is implemented,
-  TikTok/Instagram/Shopee are placeholders that throw
-  `ConnectorNotImplementedError`. Zero network calls, zero SDKs, zero
-  credentials. An adapter may only _describe_ content
-  (`NormalizedContent`) — the import outcome (IMPORTED / DUPLICATE /
-  FAILED) is decided by the sync service, never by the connector.
+  PR009 makes TikTok Shop a **server-only official API integration** with
+  seller OAuth, AES-256-GCM encrypted credentials, signed API calls and raw
+  body-verified webhooks. It never uses scraping or browser automation.
+  Instagram/Shopee remain placeholders that throw `ConnectorNotImplementedError`.
+  An adapter may only _describe_ content (`NormalizedContent`) — the import
+  outcome (IMPORTED / DUPLICATE / FAILED) is decided by the sync service,
+  never by the connector.

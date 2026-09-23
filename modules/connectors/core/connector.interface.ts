@@ -36,15 +36,15 @@ export const CONNECTOR_PLATFORMS = ["MOCK", "TIKTOK", "INSTAGRAM", "SHOPEE"] as 
 
 export type ConnectorPlatformName = (typeof CONNECTOR_PLATFORMS)[number];
 
-/** The only platform actually implemented in PR005. */
+/** Default connector used by the legacy generic dashboard. */
 export const DEFAULT_CONNECTOR_PLATFORM: ConnectorPlatformName = "MOCK";
 
 /**
- * Platforms whose adapter is a placeholder (`fetchContent()` throws).
- * Single source of truth for the "🧩 placeholder" badge in the dashboard.
+ * Platforms whose adapter is still a placeholder. TikTok Shop became a real,
+ * server-only official API integration in PR009; Instagram and Shopee remain
+ * intentionally unimplemented.
  */
 export const PLACEHOLDER_CONNECTOR_PLATFORMS: readonly ConnectorPlatformName[] = [
-  "TIKTOK",
   "INSTAGRAM",
   "SHOPEE",
 ];
@@ -158,6 +158,8 @@ export interface NormalizedContent {
 
 /** Options accepted by `fetchContent()` — every field is optional. */
 export interface FetchContentOptions {
+  /** Server-injected tenant scope for adapters that use account credentials. */
+  organizationId?: string;
   /** Max items to return. Adapters must honour it (mock slices the dataset). */
   limit?: number;
   /** Only content published at/after this instant. */
@@ -188,8 +190,8 @@ export interface ConnectorHealth {
  * `getConnector(platform)` (`connector.factory.ts`) — never instantiated
  * ad hoc by callers and never chosen through a `switch` outside the factory.
  *
- * PR005 performs no network access: `MockConnector` returns a deterministic
- * in-memory dataset and the three platform adapters throw
+ * `MockConnector` returns a deterministic in-memory dataset. TikTok Shop is
+ * a server-only official API adapter (PR009); remaining placeholders throw
  * `ConnectorNotImplementedError`.
  */
 export interface Connector {

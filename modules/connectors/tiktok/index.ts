@@ -1,5 +1,8 @@
-/**
- * TikTok connector (PR005) — PLACEHOLDER. No real API is integrated.
- * Resolve it through `getConnector(ConnectorPlatform.TIKTOK)`.
- */
-export { TikTokConnector } from "./tiktok.connector";
+/** TikTok Shop Connector (PR009) — official API only, server-side. */
+export { TikTokConnector, TikTokConnectionRequiredError } from "./tiktok.connector";
+export {
+  connectTikTok,
+  exchangeCode,
+  refreshAccessToken,
+  revokeConnection,
+} from "./auth/oauth.service";

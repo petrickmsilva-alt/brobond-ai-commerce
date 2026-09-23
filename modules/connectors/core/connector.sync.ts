@@ -136,7 +136,7 @@ export function createConnectorSyncJob(deps: ConnectorSyncDependencies = {}): Co
 
         let items: NormalizedContent[];
         try {
-          items = await connector.fetchContent({ limit });
+          items = await connector.fetchContent({ limit, organizationId });
         } catch (error) {
           // A placeholder (or a provider outage, later) is a recorded
           // failure — never an exception escaping to the UI.

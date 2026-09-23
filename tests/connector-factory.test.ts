@@ -22,9 +22,8 @@ import {
  * PR005 — the connector factory.
  *
  * `getConnector(platform)` is the ONLY supported way to obtain a connector.
- * Only MOCK is implemented; TIKTOK/INSTAGRAM/SHOPEE resolve to placeholders
- * that throw `ConnectorNotImplementedError` on `fetchContent()` but still
- * answer `testConnection()` calmly.
+ * MOCK and the server-only TikTok Shop adapter are implemented; Instagram and
+ * Shopee remain placeholders.
  */
 
 describe("getConnector", () => {
@@ -32,7 +31,7 @@ describe("getConnector", () => {
     expect(getConnector(ConnectorPlatform.MOCK)).toBeInstanceOf(MockConnector);
   });
 
-  it("resolves TIKTOK to the TikTok placeholder", () => {
+  it("resolves TIKTOK to the official TikTok Shop adapter", () => {
     expect(getConnector(ConnectorPlatform.TIKTOK)).toBeInstanceOf(TikTokConnector);
   });
 
@@ -99,10 +98,11 @@ describe("registry helpers", () => {
     expect(connectors.map((connector) => connector.platform)).toEqual(listConnectorPlatforms());
   });
 
-  it("getImplementedConnectors returns MOCK only (PR005 integrates no API)", () => {
+  it("getImplementedConnectors includes MOCK and real TikTok Shop", () => {
     const implemented = getImplementedConnectors();
-    expect(implemented).toHaveLength(1);
+    expect(implemented).toHaveLength(2);
     expect(implemented[0]).toBeInstanceOf(MockConnector);
+    expect(implemented[1]).toBeInstanceOf(TikTokConnector);
   });
 
   it("isConnectorRegistered is true for every known platform, false otherwise", () => {
@@ -113,14 +113,20 @@ describe("registry helpers", () => {
   });
 });
 
-describe("placeholder adapters (TikTok · Instagram · Shopee)", () => {
-  const placeholders = [
-    ConnectorPlatform.TIKTOK,
-    ConnectorPlatform.INSTAGRAM,
-    ConnectorPlatform.SHOPEE,
-  ];
+describe("TikTok Shop adapter", () => {
+  it("is implemented and requires a server-injected tenant scope", async () => {
+    const connector = getConnector(ConnectorPlatform.TIKTOK);
+    expect(connector.implemented).toBe(true);
+    await expect(connector.fetchContent()).rejects.toMatchObject({
+      name: "TikTokConnectionRequiredError",
+    });
+  });
+});
 
-  it("declare themselves as not implemented", () => {
+describe("placeholder adapters (Instagram · Shopee)", () => {
+  const placeholders = [ConnectorPlatform.INSTAGRAM, ConnectorPlatform.SHOPEE];
+
+  it("declares placeholders as not implemented", () => {
     for (const platform of placeholders) {
       expect(getConnector(platform).implemented).toBe(false);
     }
