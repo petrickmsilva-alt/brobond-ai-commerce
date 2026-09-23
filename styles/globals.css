@@ -1,13 +1,20 @@
-@import "tailwindcss";
-
 /* Inter web font. Loaded via CSS so it degrades gracefully to the
    system font stack below if the network is unavailable at runtime.
-   For fully offline/self-hosted builds, swap this for next/font/local. */
+   For fully offline/self-hosted builds, swap this for next/font/local.
+
+   MUST come before `@import "tailwindcss"`: the CSS spec requires every
+   @import to precede all other rules, and Tailwind's import expands into
+   rules. (Fixes the "@import rules must precede all rules" build warning.) */
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 
+@import "tailwindcss";
+
 /* ------------------------------------------------------------------ */
-/* Brobond AI Commerce OS — Dark Premium Design System                 */
+/* Brobond AI Commerce OS — Enterprise Dark Premium Design System      */
 /* Tailwind CSS v4 theme configuration (CSS-first)                     */
+/*                                                                     */
+/* This block is the CSS mirror of components/ui/design-system/*.ts.   */
+/* Change a value here and in the matching token file together.        */
 /* ------------------------------------------------------------------ */
 
 @theme {
@@ -15,7 +22,7 @@
     "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
     sans-serif;
 
-  /* Brand palette */
+  /* Brand palette (indigo) */
   --color-brand-50: #eef2ff;
   --color-brand-100: #e0e7ff;
   --color-brand-200: #c7d2fe;
@@ -27,19 +34,40 @@
   --color-brand-800: #3730a3;
   --color-brand-900: #312e81;
 
-  /* Dark surface palette */
+  /* Accent palette (violet) — gradient partner of the brand ramp */
+  --color-accent-300: #d8b4fe;
+  --color-accent-400: #c084fc;
+  --color-accent-500: #a855f7;
+  --color-accent-600: #9333ea;
+  --color-accent-700: #7e22ce;
+
+  /* Dark surface palette (elevation ladder) */
   --color-surface-950: #0a0a0f;
   --color-surface-900: #0e0e14;
   --color-surface-850: #14141c;
   --color-surface-800: #1a1a24;
   --color-surface-700: #24242f;
   --color-surface-600: #33333f;
+  --color-surface-500: #4a4a58;
 
-  --radius-xl: 0.9rem;
+  /* Radius scale — 16px (--radius-2xl) is the signature product corner */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 14px;
+  --radius-xl: 16px;
+  --radius-2xl: 16px;
+  --radius-3xl: 24px;
+
+  /* Spacing — Tailwind's 0.25rem step keeps the 8pt grid on even numbers */
+  --spacing: 0.25rem;
 }
 
 :root {
   color-scheme: dark;
+  --brobond-header-height: 64px;
+  --brobond-sidebar-width: 264px;
+  --brobond-sidebar-collapsed-width: 76px;
 }
 
 html,
@@ -49,41 +77,171 @@ body {
 
 body {
   background-color: var(--color-surface-950);
-  color: #e6e6ec;
+  color: rgba(255, 255, 255, 0.95);
   font-family: var(--font-sans);
+  font-feature-settings:
+    "cv02" 1,
+    "cv03" 1,
+    "cv04" 1,
+    "ss01" 1;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-/* Custom scrollbar for the dark theme */
+/* ------------------------------------------------------------------ */
+/* Accessibility                                                       */
+/* ------------------------------------------------------------------ */
+
+/* Visible keyboard focus everywhere, including elements that opt out of
+   the Tailwind ring recipe. Contrast ≥ 3:1 on every surface (WCAG 2.4.7). */
+:focus-visible {
+  outline: 2px solid var(--color-brand-300);
+  outline-offset: 2px;
+}
+
+/* Users who ask for less motion get none of it. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Skip link — first tab stop of the authenticated shell. */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 100;
+  transform: translateY(-200%);
+  border-radius: var(--radius-md);
+  background-color: var(--color-brand-600);
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  transition: transform 140ms ease-out;
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+/* ------------------------------------------------------------------ */
+/* Scrollbars                                                          */
+/* ------------------------------------------------------------------ */
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-surface-900);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
   background: var(--color-surface-700);
   border-radius: 9999px;
-  border: 2px solid var(--color-surface-900);
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-surface-600);
+  background-clip: content-box;
 }
 
-/* Subtle premium radial glow utility */
+/* Thin scrollbar for dense internal panes (sidebar nav, tables). */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Surface utilities                                                   */
+/* ------------------------------------------------------------------ */
+
+/* Ambient brand glow behind hero/auth surfaces. */
 .bg-premium-glow {
   background-image:
-    radial-gradient(60% 60% at 50% 0%, rgba(99, 102, 241, 0.14) 0%, transparent 70%),
-    radial-gradient(40% 40% at 100% 100%, rgba(79, 70, 229, 0.1) 0%, transparent 70%);
+    radial-gradient(60% 60% at 50% 0%, rgba(99, 102, 241, 0.16) 0%, transparent 70%),
+    radial-gradient(45% 45% at 100% 100%, rgba(168, 85, 247, 0.12) 0%, transparent 70%);
 }
 
+/* Ambient mesh used by the app shell background. */
+.bg-app-mesh {
+  background-color: var(--color-surface-950);
+  background-image:
+    radial-gradient(70% 45% at 15% 0%, rgba(79, 70, 229, 0.1) 0%, transparent 60%),
+    radial-gradient(50% 40% at 95% 5%, rgba(168, 85, 247, 0.07) 0%, transparent 65%);
+  background-attachment: fixed;
+}
+
+/* Legacy alias retained so pre-PR010.1 markup keeps rendering correctly. */
 .card-gradient {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0) 100%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045) 0%, rgba(255, 255, 255, 0) 100%),
     var(--color-surface-850);
+}
+
+/* Frosted glass panel. */
+.glass-panel {
+  background: rgba(20, 20, 28, 0.72);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 16px 48px -12px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* 1px gradient hairline along the top edge of a glass surface. */
+.glass-edge::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.16) 50%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+/* Shimmer sweep for skeleton loaders. */
+@keyframes brobond-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.skeleton-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+  animation: brobond-shimmer 1.6s infinite;
+}
+
+/* Recharts: remove the default focus rectangle on the surface wrapper while
+   keeping keyboard focus visible on the interactive legend/tooltip items. */
+.recharts-wrapper:focus,
+.recharts-surface:focus {
+  outline: none;
 }

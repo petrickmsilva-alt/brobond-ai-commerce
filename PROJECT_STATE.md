@@ -96,25 +96,27 @@
 
 ## 1. Snapshot
 
-| Aspect       | State                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stage        | Omnichannel Delivery Engine (PR010) shipped on top of TikTok Shop Connector (PR009)                                                                                                                                                                                                                                                                                                                                 |
-| Architecture | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models) · **multi-source trends** (PR002.1)                                                                                                                                                                                                                                                                                                         |
-| Modules      | `modules/commerce/products` — services / repositories / dto / pricing / validators                                                                                                                                                                                                                                                                                                                                  |
-|              | `modules/trends` — hunter (collectors / collector factory / scorer / scheduler) / repositories / dto / …                                                                                                                                                                                                                                                                                                            |
-|              | `modules/connectors` — core + official `tiktok` OAuth/API/importer/webhook (PR009) + mock / instagram / shopee                                                                                                                                                                                                                                                                                                      |
-|              | `modules/campaigns` — Campaign Engine · deterministic AI Matching · ROI Engine · Audience Builder · repositories · dto · validators (PR006)                                                                                                                                                                                                                                                                         |
-|              | `modules/ai` — OpenAI Responses API client · versioned prompts (5 tones) · generator · personalization context-builder · cache-aware message service · repositories (PR007) · context audit: `serializeContext()` snapshot · `findWithContext()` · `compareContextSnapshots()` (PR007.1)                                                                                                                            |
-|              | `modules/analytics` — deterministic metrics pipeline (sales metrics · attribution · snapshot builder) · materialized snapshots · lazy+refresh service · repositories · validators · deterministic sales seed (PR008)                                                                                                                                                                                                |
-|              | `modules/delivery` — core connector interface + Map factory · instagram & whatsapp OAuth/Cloud-API connectors · dispatcher + retry engine · webhook handlers · repositories · dto · validators (PR010)                                                                                                                                                                                                              |
-| Currency     | **BRL** (default across Product, Campaign, Sale) · money = integer cents · margin = basis points                                                                                                                                                                                                                                                                                                                    |
-| Auth         | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**                                                                                                                                                                                                                                                                                                                                          |
-| RBAC         | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura                                                                                                                                                                                                                                                                                                               |
-| Database     | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                                                                                                                                                                                                                                                                                                                                                         |
-| Migrations   | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core` · `…_trend_hunter_ai` · `…_trend_source` · `…_creator_discovery_engine` · `…_outreach_ai_sales_pipeline` · `…_connector_framework` · `…_product_match_architecture` · `…_campaign_engine` · `…_ai_personalization_engine` · `…_ai_context_audit` · `…_analytics_attribution` · `…_tiktok_shop_connector` · `…_omnichannel_delivery` |
-| Tests        | Vitest — **1,742 unit tests** (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage, trends, creators, outreach, connectors, matches, campaigns, AI personalization + AI context audit + analytics + TikTok Shop + omnichannel delivery — OpenAI/Meta/TikTok fully mocked, zero real network calls)                                                                                       |
-| Deploy       | Render Blueprint (`render.yaml`) + GitHub Actions                                                                                                                                                                                                                                                                                                                                                                   |
-| Build/CI     | ✅ green (ci → validate → generate → lint → typecheck → test → build → format)                                                                                                                                                                                                                                                                                                                                      |
+| Aspect        | State                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stage         | **Enterprise UI/UX Redesign (PR010.1)** shipped on top of Omnichannel Delivery Engine (PR010)                                                                                                                                                                                                                                                                                                                        |
+| Architecture  | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models) · **multi-source trends** (PR002.1)                                                                                                                                                                                                                                                                                                          |
+| Modules       | `modules/commerce/products` — services / repositories / dto / pricing / validators                                                                                                                                                                                                                                                                                                                                   |
+|               | `modules/trends` — hunter (collectors / collector factory / scorer / scheduler) / repositories / dto / …                                                                                                                                                                                                                                                                                                             |
+|               | `modules/connectors` — core + official `tiktok` OAuth/API/importer/webhook (PR009) + mock / instagram / shopee                                                                                                                                                                                                                                                                                                       |
+|               | `modules/campaigns` — Campaign Engine · deterministic AI Matching · ROI Engine · Audience Builder · repositories · dto · validators (PR006)                                                                                                                                                                                                                                                                          |
+|               | `modules/ai` — OpenAI Responses API client · versioned prompts (5 tones) · generator · personalization context-builder · cache-aware message service · repositories (PR007) · context audit: `serializeContext()` snapshot · `findWithContext()` · `compareContextSnapshots()` (PR007.1)                                                                                                                             |
+|               | `modules/analytics` — deterministic metrics pipeline (sales metrics · attribution · snapshot builder) · materialized snapshots · lazy+refresh service · repositories · validators · deterministic sales seed (PR008)                                                                                                                                                                                                 |
+|               | `modules/delivery` — core connector interface + Map factory · instagram & whatsapp OAuth/Cloud-API connectors · dispatcher + retry engine · webhook handlers · repositories · dto · validators (PR010)                                                                                                                                                                                                               |
+| Design System | `components/ui/design-system` — `colors.ts` · `spacing.ts` (8pt grid) · `tokens.ts` (Inter, 16px radius, elevation, motion) · `theme.ts` (semantic roles + Tailwind recipes + chart theme) (PR010.1)                                                                                                                                                                                                                 |
+| UI            | **Enterprise dark premium** — glass AppShell · grouped collapsible Sidebar (6 módulos) + workspace switcher · Header com busca global ⌘K, notificações, status TikTok, Nova Campanha e avatar · Glass Dashboard (6 KPIs + 4 gráficos Recharts) · Premium Login (2 colunas) (PR010.1)                                                                                                                                 |
+| Currency      | **BRL** (default across Product, Campaign, Sale) · money = integer cents · margin = basis points                                                                                                                                                                                                                                                                                                                     |
+| Auth          | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**                                                                                                                                                                                                                                                                                                                                           |
+| RBAC          | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura                                                                                                                                                                                                                                                                                                                |
+| Database      | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                                                                                                                                                                                                                                                                                                                                                          |
+| Migrations    | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core` · `…_trend_hunter_ai` · `…_trend_source` · `…_creator_discovery_engine` · `…_outreach_ai_sales_pipeline` · `…_connector_framework` · `…_product_match_architecture` · `…_campaign_engine` · `…_ai_personalization_engine` · `…_ai_context_audit` · `…_analytics_attribution` · `…_tiktok_shop_connector` · `…_omnichannel_delivery`  |
+| Tests         | Vitest — **1,818 unit tests** (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage, trends, creators, outreach, connectors, matches, campaigns, AI personalization + AI context audit + analytics + TikTok Shop + omnichannel delivery + design-system tokens/contraste AA + navegação + dashboard read model + shell context — OpenAI/Meta/TikTok fully mocked, zero real network calls) |
+| Deploy        | Render Blueprint (`render.yaml`) + GitHub Actions                                                                                                                                                                                                                                                                                                                                                                    |
+| Build/CI      | ✅ green (ci → validate → generate → lint → typecheck → test → build → format)                                                                                                                                                                                                                                                                                                                                       |
 
 ---
 
@@ -122,7 +124,8 @@
 
 Next.js 15 (App Router) · React 19 · TypeScript (strict) · Tailwind CSS v4 ·
 Prisma ORM · PostgreSQL · NextAuth v5 · bcryptjs · Zod · React Hook Form ·
-Lucide · Vitest · Docker · ESLint · Prettier · Render.
+Lucide · **Recharts** (data-viz, lazy-loaded) · **Framer Motion** (micro-interações) ·
+Vitest · Docker · ESLint · Prettier · Render.
 
 ---
 
@@ -865,7 +868,7 @@ tests mock the OpenAI client entirely. `render.yaml` declares it
 
 ## 9. Tests
 
-`npm test` (Vitest, `tests/`) — **1,292 unit tests** (74 files), no database
+`npm test` (Vitest, `tests/`) — **1,818 unit tests** (111 files), no database
 required:
 
 | File                                                                                                                                                                         | Covers                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -924,6 +927,10 @@ required:
 | `tests/analytics-actions.test.ts`                                                                                                                                            | PR008 — `refreshAnalyticsAction()`: RBAC, Zod, tenant da sessão (nunca do cliente), `revalidatePath` só em sucesso                                                                                                                                                                                                                                                                                  |
 | `tests/analytics-rbac.test.ts`                                                                                                                                               | PR008 — matriz RBAC: MANAGER+ (ADMIN incluído) na página/ações, MEMBER negado, hierarquia monotônica                                                                                                                                                                                                                                                                                                |
 | `tests/analytics-seed-sales.test.ts`                                                                                                                                         | PR008 — seed determinístico: 40 vendas, distribuição 28/5/4/3, links reais, amountCents = price×qty, janela de 30 dias, referências únicas                                                                                                                                                                                                                                                          |
+| `tests/design-system-tokens.test.ts`                                                                                                                                         | PR010.1 — design system: 8pt grid integrity, 16px signature radius, Inter type scale ↔ role aliases, **computed WCAG contrast ratios** (body text AA, focus ring 3:1 on every surface step, status tones), motion duration/offset caps, z-index ordering                                                                                                                                            |
+| `tests/navigation.test.ts`                                                                                                                                                   | PR010.1 — IA: exactly six module groups in order, every legacy route preserved, no duplicate route, groups ≤ 7 items, palette descriptions present, active-route resolution (dashboard root exact, nested detail pages, prefix-sibling rejection)                                                                                                                                                   |
+| `tests/dashboard-overview.test.ts`                                                                                                                                           | PR010.1 — overview read model: tenant injected in EVERY query (incl. Sale's relational scope), blank tenant throws before any db call, analytics totals passed through verbatim, PAID-only revenue convention, gap-free zero-filled daily series, conversion without division by zero                                                                                                               |
+| `tests/shell-context.test.ts`                                                                                                                                                | PR010.1 — shell boundary: tenant-scoped org/integration lookups, name fallbacks, TikTok health mapping, count-by-status never selects a token column, **explicit no-credential-leak assertion** on the serialized client payload                                                                                                                                                                    |
 
 ---
 
@@ -954,6 +961,88 @@ required:
 ---
 
 ## 11. Changelog
+
+### PR010.1 — Enterprise UI/UX Redesign (2026-09-23) — completed
+
+**Scope guard:** UI/UX ONLY. Zero business rules, zero Prisma schema/migration
+changes, zero API or route-handler changes. Every Server Action, RBAC gate and
+tenant scope is untouched — the only server code added
+(`lib/shell-context.ts`, `lib/dashboard-overview.ts`) _reads_ existing,
+already-tenant-scoped data for presentation.
+
+- **Design System** — `components/ui/design-system/`:
+  - `colors.ts` — brand (indigo) + accent (violet) + 7-step dark surface ramp,
+    alpha text ramp, semantic status tones, 6-colour categorical chart series,
+    glass and gradient recipes. Every documented pair clears WCAG AA.
+  - `spacing.ts` — strict **8pt grid** (only `0.5`/`1.5` half-steps sanctioned),
+    canonical layout dimensions (sidebar 264/76, header 64, content 1600) and
+    breakpoints incl. an `ultra` 1920 tier.
+  - `tokens.ts` — **Inter** type scale with role aliases, **16px signature
+    radius**, elevation/blur ladders, restrained motion (≤320ms) and the
+    single z-index scale.
+  - `theme.ts` — semantic roles + static Tailwind class recipes (`focusRing`,
+    `glassSurface`, `cardSurface`, …), Framer Motion presets and the shared
+    Recharts theme. Mirrored CSS-first in `styles/globals.css#@theme`.
+- **Layout** — `AppShell` (glass chrome, 1600px content cap, skip link,
+  `<main>` landmark), grouped `Sidebar`, `Header`, `PageHeader` (eyebrow +
+  breadcrumbs). Glass cards, backdrop blur, subtle gradients and a restrained
+  hover lift throughout.
+- **Sidebar** — the flat PR000 list is regrouped into six modules
+  (**Overview · Commerce · Creators · Campaigns · Integrations · System**) with
+  animated per-group collapse, an icon-only 76px rail, per-item badges and a
+  **workspace switcher**. Routes are unchanged — pure information architecture.
+- **Header** — global search with **⌘K / Ctrl+K** command palette (searches the
+  static nav manifest only; no data fetch, so nothing privileged can leak),
+  notifications panel, **TikTok Shop status pill**, **Nova Campanha** CTA and
+  the account menu.
+- **Dashboard** — fully replaced. Six KPIs (**GMV · Pedidos · Creators · ROI ·
+  Conversão · Receita**) and four **Recharts** visualisations (área, linha,
+  barras horizontais ×2, rosca) plus quick actions and an operational summary.
+  Every figure is READ from the PR008 analytics snapshot pipeline and from
+  tenant-scoped counters — no metric is redefined.
+- **Login** — premium two-column layout: brand/headline/benefits panel with
+  gradient orbs on the left, glass authentication card on the right with
+  email, password (show/hide), "esqueci minha senha" and a **documented,
+  deliberately disabled** Google SSO button (NextAuth registers only the
+  Credentials provider today). An **MFA step is reserved** in the markup; no
+  MFA logic ships, since that is an auth-domain change.
+- **Components** — `StatCard`, `ChartCard`, `EmptyState`, `SectionCard`,
+  `QuickAction`, `ActivityTimeline`, `MetricBadge`, plus `Skeleton`, motion
+  primitives and the chart family. The PR000 `KpiCard` became a thin shim over
+  `StatCard`, so all nine existing module dashboards inherited the new visual
+  language with no edits.
+- **Micro-interactions** — Framer Motion fade / slide / stagger / pop, capped
+  at 320ms and 16px of travel. Every primitive short-circuits under
+  `prefers-reduced-motion` (rendering the final state, not a faster animation),
+  reinforced globally in CSS.
+- **Responsiveness** — verified at mobile, tablet, notebook and 1440+ desktop:
+  off-canvas rail below `lg`, KPI grid 1→2→3→6 columns, charts stacking, and
+  the 1600px content cap so ultrawide monitors don't stretch tables.
+- **Accessibility** — skip link, `<main>`/`<nav>`/`<section>` landmarks,
+  `aria-current="page"`, labelled disclosures (`aria-expanded`/`-controls`),
+  an ARIA combobox+listbox palette, `role="alert"` form errors,
+  `aria-invalid`+`aria-describedby` fields, `<time dateTime>` and
+  screen-reader chart summaries. The focus ring moved **brand-400 → brand-300**
+  because brand-400 measured only 2.92:1 against `surface-500` (WCAG 1.4.11
+  requires 3:1) — a real contrast bug the token tests now prevent regressing.
+- **Performance** — Recharts is behind `next/dynamic` (`ssr: false`) with
+  same-height skeletons (no CLS), chart series are memoised, and the KPI/chart
+  sections are wrapped in `Suspense`. First Load JS: **157 kB** on the chart-
+  heavy `/dashboard`, **143 kB** on `/login`, **103 kB** shared.
+- **Fixes found while building** — `QuickAction` was a Client Component
+  receiving Lucide icon _references_ from Server Components, which throws
+  "Functions cannot be passed directly to Client Components" at render; it is
+  now a Server Component with a `QuickActionButton` sibling for client
+  callbacks. Also fixed the long-standing CSS build warning by moving the
+  `@import` of Inter above `@import "tailwindcss"`.
+- **Tests:** suite grows from 1,742 to **1,818 tests** (+76) across four new
+  files — `design-system-tokens` (8pt grid, radius, type scale, computed WCAG
+  contrast ratios, motion caps, z-index ordering), `navigation` (six groups, no
+  route lost or duplicated in the regrouping, active-route resolution),
+  `dashboard-overview` (tenant isolation on every query, PAID-only revenue
+  convention, gap-free daily series, no division by zero) and `shell-context`
+  (tenant scoping + an explicit assertion that no credential crosses the
+  client boundary).
 
 ### PR007 — AI Personalization Engine (2026-09-22) — completed
 
