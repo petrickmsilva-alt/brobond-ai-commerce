@@ -47,7 +47,7 @@ describe("§1 — the landing Dashboard CTA never navigates blindly", () => {
     expect(source).not.toMatch(/href="\/dashboard"/);
   });
 
-  it('the unauthenticated href is exactly /login?next=%2Fdashboard', () => {
+  it("the unauthenticated href is exactly /login?next=%2Fdashboard", () => {
     expect(buildLoginUrl(DEFAULT_AUTHENTICATED_REDIRECT)).toBe("/login?next=%2Fdashboard");
   });
 

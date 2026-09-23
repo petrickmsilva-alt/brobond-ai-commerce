@@ -43,9 +43,7 @@ export default async function SettingsPage() {
   // Invitations are tenant-scoped and visible to the workspace; access
   // requests are global and ADMIN-only, so they are read conditionally.
   const [invitations, accessRequests, accessCounts] = await Promise.all([
-    current.organizationId
-      ? invitationService.list(current.organizationId)
-      : Promise.resolve([]),
+    current.organizationId ? invitationService.list(current.organizationId) : Promise.resolve([]),
     canManage ? accessRequestService.list({ take: 25 }) : Promise.resolve([]),
     canManage
       ? accessRequestService.counts()

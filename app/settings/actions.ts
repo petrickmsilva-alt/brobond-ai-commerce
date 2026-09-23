@@ -32,8 +32,7 @@ import { InvitationError, invitationService } from "@/modules/auth/invitation.se
 const SETTINGS_PATH = "/settings";
 
 export type AdminActionResult<T = undefined> =
-  | { ok: true; data?: T }
-  | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
+  { ok: true; data?: T } | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
 
 function fail(error: unknown, scope: string): AdminActionResult<never> {
   if (error instanceof AuthorizationError) {
@@ -115,12 +114,7 @@ export async function reviewAccessRequestAction(input: unknown): Promise<AdminAc
     const admin = await requireAdmin();
     const data = reviewAccessRequestSchema.parse(input);
 
-    const reviewed = await accessRequestService.review(
-      data.id,
-      data.decision,
-      admin.id,
-      data.note,
-    );
+    const reviewed = await accessRequestService.review(data.id, data.decision, admin.id, data.note);
     if (!reviewed) {
       return { ok: false, error: "Solicitação não encontrada." };
     }

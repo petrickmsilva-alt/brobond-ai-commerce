@@ -20,9 +20,8 @@ vi.mock("@/lib/password", () => ({
   hashPassword: vi.fn(async (plain: string) => `hashed:${plain}`),
 }));
 
-const { createPasswordResetService, PasswordResetError } = await import(
-  "@/modules/auth/password-reset.service"
-);
+const { createPasswordResetService, PasswordResetError } =
+  await import("@/modules/auth/password-reset.service");
 
 type Row = Record<string, unknown>;
 

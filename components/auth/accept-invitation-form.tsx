@@ -4,7 +4,16 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2, Lock, ShieldCheck, UserRound } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  Eye,
+  EyeOff,
+  Loader2,
+  Lock,
+  ShieldCheck,
+  UserRound,
+} from "lucide-react";
 import { acceptInvitationSchema, type AcceptInvitationInput } from "@/lib/validations/auth";
 import { acceptInvitationAction } from "@/app/invite/actions";
 import { Input } from "@/components/ui/input";

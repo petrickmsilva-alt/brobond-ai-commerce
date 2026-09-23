@@ -25,9 +25,8 @@ vi.mock("@/lib/password", () => ({
   hashPassword: vi.fn(async (plain: string) => `hashed:${plain}`),
 }));
 
-const { createInvitationService, InvitationError } = await import(
-  "@/modules/auth/invitation.service"
-);
+const { createInvitationService, InvitationError } =
+  await import("@/modules/auth/invitation.service");
 
 const ORG_A = "org_tenant_a";
 const ORG_B = "org_tenant_b";
@@ -384,9 +383,7 @@ describe("list() / revoke() — tenant scoping", () => {
     });
     await service.accept(token, { password: "super-secret-1" });
 
-    await expect(
-      service.revoke(ORG_A, fake.invitations[0]?.id as string),
-    ).resolves.toBe(false);
+    await expect(service.revoke(ORG_A, fake.invitations[0]?.id as string)).resolves.toBe(false);
   });
 
   it("rejects a blank tenant before querying", async () => {

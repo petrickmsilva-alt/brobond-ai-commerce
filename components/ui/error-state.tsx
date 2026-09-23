@@ -111,10 +111,7 @@ export function ErrorState({
           </Button>
         </Link>
 
-        <Button
-          variant="outline"
-          onClick={() => (reset ? reset() : window.location.reload())}
-        >
+        <Button variant="outline" onClick={() => (reset ? reset() : window.location.reload())}>
           <RotateCw aria-hidden className="h-4 w-4" />
           Recarregar
         </Button>

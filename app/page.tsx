@@ -1,13 +1,5 @@
 import Link from "next/link";
-import {
-  ArrowRight,
-  Package,
-  Users,
-  Megaphone,
-  BarChart3,
-  ShieldCheck,
-  Boxes,
-} from "lucide-react";
+import { ArrowRight, Package, Users, Megaphone, BarChart3, ShieldCheck, Boxes } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LandingHeader } from "@/components/marketing/landing-header";

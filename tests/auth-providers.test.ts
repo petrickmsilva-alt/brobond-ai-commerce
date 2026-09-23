@@ -38,16 +38,16 @@ describe("isGoogleProviderConfigured()", () => {
   });
 
   it("is false when only the client secret is present", () => {
-    expect(
-      isGoogleProviderConfigured({ AUTH_GOOGLE_SECRET: CONFIGURED.AUTH_GOOGLE_SECRET }),
-    ).toBe(false);
+    expect(isGoogleProviderConfigured({ AUTH_GOOGLE_SECRET: CONFIGURED.AUTH_GOOGLE_SECRET })).toBe(
+      false,
+    );
   });
 
   it("treats blank and whitespace-only values as absent", () => {
     expect(isGoogleProviderConfigured({ AUTH_GOOGLE_ID: "", AUTH_GOOGLE_SECRET: "" })).toBe(false);
-    expect(
-      isGoogleProviderConfigured({ AUTH_GOOGLE_ID: "   ", AUTH_GOOGLE_SECRET: "   " }),
-    ).toBe(false);
+    expect(isGoogleProviderConfigured({ AUTH_GOOGLE_ID: "   ", AUTH_GOOGLE_SECRET: "   " })).toBe(
+      false,
+    );
     expect(
       isGoogleProviderConfigured({ AUTH_GOOGLE_ID: "\n\t", AUTH_GOOGLE_SECRET: "valid" }),
     ).toBe(false);

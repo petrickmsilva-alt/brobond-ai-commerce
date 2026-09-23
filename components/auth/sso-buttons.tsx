@@ -55,11 +55,7 @@ export function SsoButtons({ google, callbackUrl = "/dashboard" }: SsoButtonsPro
           focusRingRaised,
         )}
       >
-        {pending ? (
-          <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
-        ) : (
-          <GoogleMark />
-        )}
+        {pending ? <Loader2 aria-hidden className="h-4 w-4 animate-spin" /> : <GoogleMark />}
         {pending ? "Redirecionando…" : "Continuar com Google"}
       </button>
     </div>

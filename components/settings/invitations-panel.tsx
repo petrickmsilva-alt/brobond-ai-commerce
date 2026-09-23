@@ -1,16 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  AlertCircle,
-  Check,
-  Copy,
-  Loader2,
-  Mail,
-  ShieldAlert,
-  UserPlus,
-  X,
-} from "lucide-react";
+import { AlertCircle, Check, Copy, Loader2, Mail, ShieldAlert, UserPlus, X } from "lucide-react";
 import { SectionCard } from "@/components/ui/section-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";

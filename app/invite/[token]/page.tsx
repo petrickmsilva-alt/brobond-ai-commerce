@@ -39,9 +39,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
     preview = await invitationService.preview(token);
   } catch (error) {
     rejection =
-      error instanceof InvitationError
-        ? error.message
-        : "Não foi possível validar este convite.";
+      error instanceof InvitationError ? error.message : "Não foi possível validar este convite.";
     if (!(error instanceof InvitationError)) {
       console.error("[invite.preview]", error);
     }

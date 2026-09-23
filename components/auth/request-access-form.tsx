@@ -153,7 +153,10 @@ export function RequestAccessForm() {
 
       {/* Message — textarea, so it gets its own markup. */}
       <div className="space-y-2">
-        <label htmlFor="message" className="flex items-baseline gap-2 text-xs font-medium text-white/70">
+        <label
+          htmlFor="message"
+          className="flex items-baseline gap-2 text-xs font-medium text-white/70"
+        >
           <MessageSquare aria-hidden className="h-3.5 w-3.5 text-white/30" />
           Mensagem
           <span className="text-[10px] font-normal text-white/30">opcional</span>

@@ -24,8 +24,7 @@ import { accessRequestService } from "@/modules/auth/access-request.service";
  */
 
 export type RequestAccessResult =
-  | { ok: true }
-  | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
+  { ok: true } | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
 
 const GENERIC_ERROR = "Não foi possível enviar sua solicitação. Tente novamente em instantes.";
 

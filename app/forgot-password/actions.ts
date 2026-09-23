@@ -28,8 +28,7 @@ export type RequestResetResult =
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
 
 export type ResetPasswordResult =
-  | { ok: true }
-  | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
+  { ok: true } | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
 
 /** Step 1 — request a reset link. */
 export async function requestPasswordResetAction(input: unknown): Promise<RequestResetResult> {

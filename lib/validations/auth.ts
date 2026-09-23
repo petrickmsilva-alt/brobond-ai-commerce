@@ -101,11 +101,7 @@ export type LoginWithNextInput = z.infer<typeof loginWithNextSchema>;
  * length-bounded to keep a scripted flood from writing unbounded text.
  */
 export const accessRequestSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(2, "Informe seu nome completo.")
-    .max(120, "Nome muito longo."),
+  name: z.string().trim().min(2, "Informe seu nome completo.").max(120, "Nome muito longo."),
   company: z
     .string()
     .trim()
