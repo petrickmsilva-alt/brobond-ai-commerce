@@ -3,6 +3,7 @@ import { exchangeCode } from "@/modules/delivery/instagram/auth.service";
 import { deliveryOAuthCallbackSchema } from "@/modules/delivery/validators";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 function redirectToDashboard(request: Request, result: "connected" | "error") {
   const url = new URL("/dashboard/delivery", request.url);

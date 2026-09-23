@@ -1,5 +1,23 @@
 # PROJECT STATE — Brobond AI Commerce OS
 
+### PR010.4.3 — Prisma lazy initialization (2026-09-23) — completed
+
+- **Build/runtime environment separation:** importing `lib/prisma.ts` is now
+  side-effect free. `getPrisma()` validates `DATABASE_URL` and creates the
+  process-wide Prisma/pg singleton only on first runtime database use; the
+  backwards-compatible `prisma` proxy is lazy as well.
+- **BUILD:** `next build` does **not** require `DATABASE_URL`; route collection
+  can import database-backed modules without opening a pool or reading the
+  runtime secret.
+- **RUNTIME:** database operations still require `DATABASE_URL` and fail
+  explicitly when it is absent. No fallback connection or mock data exists.
+- Instagram callback and database health routes are force-dynamic Node.js
+  handlers. Health output is sanitized, and signup maps missing runtime
+  database configuration to `PRISMA_UNAVAILABLE` with the friendly message
+  "Banco de dados temporariamente indisponível."
+- Render keeps `DATABASE_URL.fromDatabase` and `preDeployCommand: npx prisma
+migrate deploy` unchanged.
+
 ### PR010.4 — Enterprise Self Signup & Onboarding (2026-09-23) — completed
 
 PR010.3 perfected a funnel that started with a stranger asking permission.
