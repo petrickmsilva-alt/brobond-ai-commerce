@@ -225,6 +225,14 @@ describe("§8 — errors are rendered UNDER their field", () => {
     expect(signupForm).toContain("errorDetails.stack");
   });
 
+  it("renders the dedicated Prisma unavailable recovery UI", () => {
+    expect(signupForm).toContain('result.code === "PRISMA_UNAVAILABLE"');
+    expect(signupForm).toContain("Banco de dados indisponível.");
+    expect(signupForm).toContain("Tentar novamente");
+    expect(signupForm).toContain("Copiar diagnóstico");
+    expect(signupForm).toContain("navigator.clipboard.writeText");
+  });
+
   it("the action names a concrete first problem as its summary", () => {
     expect(signupAction).toContain("firstMessage");
   });

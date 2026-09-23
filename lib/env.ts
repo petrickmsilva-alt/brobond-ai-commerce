@@ -10,7 +10,7 @@ import { z } from "zod";
  * | Variable          | Required | Purpose                                        |
  * | ----------------- | -------- | ---------------------------------------------- |
  * | `AUTH_SECRET`     | yes      | NextAuth v5 JWT/session signing secret         |
- * | `NEXTAUTH_URL`    | prod     | Canonical URL for NextAuth callbacks/redirects |
+ * | `NEXTAUTH_URL`    | yes      | Canonical URL for NextAuth callbacks/redirects |
  * | `DATABASE_URL`    | yes      | PostgreSQL connection string (Prisma)          |
  * | `AUTH_TRUST_HOST` | no       | Trust the proxy `Host` header (Render/Docker)  |
  *
@@ -41,18 +41,25 @@ import { z } from "zod";
  * prefixed with `NEXT_PUBLIC_` are ever safe in the browser, and this project
  * defines none.
  *
- * Validation is lazy so the app can build without a full runtime environment
- * (e.g. during `next build` in CI). Call `getEnv()` where a validated
- * environment is actually required.
+ * Validation is lazy during compilation and mandatory at server startup.
+ * The npm `prestart` hook calls `getEnv()` before Render begins accepting
+ * traffic, so a release with any missing core variable exits immediately.
  */
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   /** PostgreSQL connection string consumed by Prisma. SERVER ONLY. */
-  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  DATABASE_URL: z
+    .string({ required_error: "DATABASE_URL is required" })
+    .min(1, "DATABASE_URL is required"),
   /** NextAuth v5 signing secret. SERVER ONLY — never expose to the client. */
-  AUTH_SECRET: z.string().min(1, "AUTH_SECRET is required"),
+  AUTH_SECRET: z
+    .string({ required_error: "AUTH_SECRET is required" })
+    .min(1, "AUTH_SECRET is required"),
   /** Canonical deployment URL used by NextAuth for callbacks/redirects. */
-  NEXTAUTH_URL: z.string().url().optional(),
+  NEXTAUTH_URL: z
+    .string({ required_error: "NEXTAUTH_URL is required" })
+    .min(1, "NEXTAUTH_URL is required")
+    .url("NEXTAUTH_URL must be a valid URL"),
   /**
    * Canonical PUBLIC base URL used to build human-facing links (PR010.3 §12)
    * — invitation URLs today. Takes precedence over `NEXTAUTH_URL` for link
@@ -92,9 +99,9 @@ export type Env = z.infer<typeof envSchema>;
 
 let cached: Env | null = null;
 
-export function getEnv(): Env {
-  if (cached) return cached;
-  const parsed = envSchema.safeParse(process.env);
+/** Validates an explicit environment object (also useful for startup tests). */
+export function validateStartupEnvironment(source: NodeJS.ProcessEnv): Env {
+  const parsed = envSchema.safeParse(source);
   if (!parsed.success) {
     throw new Error(
       `Invalid environment variables:\n${parsed.error.issues
@@ -102,7 +109,12 @@ export function getEnv(): Env {
         .join("\n")}`,
     );
   }
-  cached = parsed.data;
+  return parsed.data;
+}
+
+export function getEnv(): Env {
+  if (cached) return cached;
+  cached = validateStartupEnvironment(process.env);
   return cached;
 }
 

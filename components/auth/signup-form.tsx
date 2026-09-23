@@ -10,10 +10,12 @@ import {
   ArrowRight,
   Building2,
   CheckCircle2,
+  Copy,
   Eye,
   EyeOff,
   Loader2,
   Lock,
+  RotateCcw,
   Mail,
   Phone,
   UserRound,
@@ -75,6 +77,7 @@ export function SignupForm({ next = null }: SignupFormProps) {
   const [showPassword, setShowPassword] = React.useState(false);
   const [showConfirm, setShowConfirm] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
+  const [diagnosticCopied, setDiagnosticCopied] = React.useState(false);
   const [errorDetails, setErrorDetails] = React.useState<{
     code: string;
     requestId: string;
@@ -110,6 +113,7 @@ export function SignupForm({ next = null }: SignupFormProps) {
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
     setErrorDetails(null);
+    setDiagnosticCopied(false);
 
     const result = await signupAction({ ...values, next });
 
@@ -124,7 +128,9 @@ export function SignupForm({ next = null }: SignupFormProps) {
           setError(field as keyof FormValues, { type: "server", message });
         }
       }
-      setFormError(result.message);
+      setFormError(
+        result.code === "PRISMA_UNAVAILABLE" ? "Banco de dados indisponível." : result.message,
+      );
       setErrorDetails({
         code: result.code,
         requestId: result.details.requestId,
@@ -138,6 +144,32 @@ export function SignupForm({ next = null }: SignupFormProps) {
     router.push(result.redirectTo);
     router.refresh();
   });
+
+  const prismaUnavailable = errorDetails?.code === "PRISMA_UNAVAILABLE";
+
+  async function copyDiagnostic(): Promise<void> {
+    if (!errorDetails) return;
+
+    const diagnostic = JSON.stringify(
+      {
+        code: errorDetails.code,
+        requestId: errorDetails.requestId,
+        reason: errorDetails.reason,
+        ...(errorDetails.stack ? { stack: errorDetails.stack } : {}),
+      },
+      null,
+      2,
+    );
+
+    try {
+      await navigator.clipboard.writeText(diagnostic);
+      setDiagnosticCopied(true);
+    } catch {
+      // Clipboard may be denied outside a secure context. The disclosure
+      // remains visible, so the diagnostic can still be selected manually.
+      setDiagnosticCopied(false);
+    }
+  }
 
   /** A field that is valid AND has been filled earns a quiet green check. */
   function isValid(field: keyof FormValues): boolean {
@@ -337,11 +369,28 @@ export function SignupForm({ next = null }: SignupFormProps) {
         </details>
       )}
 
-      <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>
-        {isSubmitting && <Loader2 aria-hidden className="h-4 w-4 animate-spin" />}
-        {isSubmitting ? "Criando sua conta…" : "Criar conta"}
-        {!isSubmitting && <ArrowRight aria-hidden className="h-4 w-4" />}
-      </Button>
+      {prismaUnavailable ? (
+        <div data-testid="prisma-unavailable-actions" className="grid gap-2 sm:grid-cols-2">
+          <Button type="submit" size="lg" disabled={isSubmitting}>
+            {isSubmitting ? (
+              <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+            ) : (
+              <RotateCcw aria-hidden className="h-4 w-4" />
+            )}
+            {isSubmitting ? "Tentando novamente…" : "Tentar novamente"}
+          </Button>
+          <Button type="button" variant="outline" size="lg" onClick={copyDiagnostic}>
+            <Copy aria-hidden className="h-4 w-4" />
+            {diagnosticCopied ? "Diagnóstico copiado" : "Copiar diagnóstico"}
+          </Button>
+        </div>
+      ) : (
+        <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>
+          {isSubmitting && <Loader2 aria-hidden className="h-4 w-4 animate-spin" />}
+          {isSubmitting ? "Criando sua conta…" : "Criar conta"}
+          {!isSubmitting && <ArrowRight aria-hidden className="h-4 w-4" />}
+        </Button>
+      )}
 
       <p className="text-center text-[11px] leading-relaxed text-white/30">
         Você será o administrador do workspace e poderá convidar seu time depois.

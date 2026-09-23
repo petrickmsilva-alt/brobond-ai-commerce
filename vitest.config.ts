@@ -12,6 +12,11 @@ export default defineConfig({
     environment: "node",
     include: ["tests/**/*.test.ts"],
     globals: false,
+    env: {
+      DATABASE_URL: "postgresql://user:pass@localhost:5432/brobond_test",
+      AUTH_SECRET: "vitest-secret-not-used-outside-tests",
+      NEXTAUTH_URL: "http://localhost:3000",
+    },
   },
   // PR010.3 — page-component tests execute Server Components directly
   // (e.g. the /invite/[token] redirect contract). The automatic JSX runtime
