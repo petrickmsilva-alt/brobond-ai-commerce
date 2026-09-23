@@ -4,10 +4,10 @@
 > Updated per PR. Source of truth for "what exists" vs. "what is planned".
 
 **Last updated:** 2026-09-23
-**Current PR:** PR007.1 — AI Context Audit Hotfix
+**Current PR:** PR008 — Analytics & Attribution
 **Status:** completed (awaiting review/merge — **no merge performed**)
-**Branch:** `arena/01a0cb96-brobond-ai-commerce` (Arena session branch; requested spec branch: `feature/pr007-1-context-audit`)
-**Next PR:** PR008 — Analytics & Attribution
+**Branch:** `arena/01a0cb96-brobond-ai-commerce` (Arena session branch — same session that delivered PR007.1; PR stacked on it until PR007.1's PR merges)
+**Next PR:** PR009 — Billing & Multi-tenancy hardening
 
 > **Workflow (instituted in PR001):** no more direct merges to `main`.
 > Feature branch → Pull Request → human audit → approval → merge → Render deploy.
@@ -16,23 +16,24 @@
 
 ## 1. Snapshot
 
-| Aspect       | State                                                                                                                                                                                                                                                                                                                            |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stage        | AI Context Audit Hotfix (PR007.1) shipped on top of the AI Personalization Engine (PR007)                                                                                                                                                                                                                                        |
-| Architecture | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models) · **multi-source trends** (PR002.1)                                                                                                                                                                                                                      |
-| Modules      | `modules/commerce/products` — services / repositories / dto / pricing / validators                                                                                                                                                                                                                                               |
-|              | `modules/trends` — hunter (collectors / collector factory / scorer / scheduler) / repositories / dto / …                                                                                                                                                                                                                         |
-|              | `modules/connectors` — core (interface / factory / validator / dto / repository / sync) + mock / tiktok / instagram / shopee (PR005)                                                                                                                                                                                             |
-|              | `modules/campaigns` — Campaign Engine · deterministic AI Matching · ROI Engine · Audience Builder · repositories · dto · validators (PR006)                                                                                                                                                                                      |
-|              | `modules/ai` — OpenAI Responses API client · versioned prompts (5 tones) · generator · personalization context-builder · cache-aware message service · repositories (PR007) · context audit: `serializeContext()` snapshot · `findWithContext()` · `compareContextSnapshots()` (PR007.1)                                         |
-| Currency     | **BRL** (default across Product, Campaign, Sale) · money = integer cents · margin = basis points                                                                                                                                                                                                                                 |
-| Auth         | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**                                                                                                                                                                                                                                                       |
-| RBAC         | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura                                                                                                                                                                                                                            |
-| Database     | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                                                                                                                                                                                                                                                                      |
-| Migrations   | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core` · `…_trend_hunter_ai` · `…_trend_source` · `…_creator_discovery_engine` · `…_outreach_ai_sales_pipeline` · `…_connector_framework` · `…_product_match_architecture` · `…_campaign_engine` · `…_ai_personalization_engine` · `…_ai_context_audit` |
-| Tests        | Vitest — **1,210 unit tests** (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage, trends, creators, outreach, connectors, matches, campaigns, AI personalization + AI context audit — OpenAI fully mocked, zero real network calls)                                                                 |
-| Deploy       | Render Blueprint (`render.yaml`) + GitHub Actions                                                                                                                                                                                                                                                                                |
-| Build/CI     | ✅ green (ci → validate → generate → lint → typecheck → test → build → format)                                                                                                                                                                                                                                                   |
+| Aspect       | State                                                                                                                                                                                                                                                                                                                                                        |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Stage        | Analytics & Attribution (PR008) shipped on top of PR007.1 (AI Context Audit)                                                                                                                                                                                                                                                                                 |
+| Architecture | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models) · **multi-source trends** (PR002.1)                                                                                                                                                                                                                                                  |
+| Modules      | `modules/commerce/products` — services / repositories / dto / pricing / validators                                                                                                                                                                                                                                                                           |
+|              | `modules/trends` — hunter (collectors / collector factory / scorer / scheduler) / repositories / dto / …                                                                                                                                                                                                                                                     |
+|              | `modules/connectors` — core (interface / factory / validator / dto / repository / sync) + mock / tiktok / instagram / shopee (PR005)                                                                                                                                                                                                                         |
+|              | `modules/campaigns` — Campaign Engine · deterministic AI Matching · ROI Engine · Audience Builder · repositories · dto · validators (PR006)                                                                                                                                                                                                                  |
+|              | `modules/ai` — OpenAI Responses API client · versioned prompts (5 tones) · generator · personalization context-builder · cache-aware message service · repositories (PR007) · context audit: `serializeContext()` snapshot · `findWithContext()` · `compareContextSnapshots()` (PR007.1)                                                                     |
+|              | `modules/analytics` — deterministic metrics pipeline (sales metrics · attribution · snapshot builder) · materialized snapshots · lazy+refresh service · repositories · validators · deterministic sales seed (PR008)                                                                                                                                         |
+| Currency     | **BRL** (default across Product, Campaign, Sale) · money = integer cents · margin = basis points                                                                                                                                                                                                                                                             |
+| Auth         | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**                                                                                                                                                                                                                                                                                   |
+| RBAC         | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura                                                                                                                                                                                                                                                        |
+| Database     | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                                                                                                                                                                                                                                                                                                  |
+| Migrations   | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core` · `…_trend_hunter_ai` · `…_trend_source` · `…_creator_discovery_engine` · `…_outreach_ai_sales_pipeline` · `…_connector_framework` · `…_product_match_architecture` · `…_campaign_engine` · `…_ai_personalization_engine` · `…_ai_context_audit` · `…_analytics_attribution` |
+| Tests        | Vitest — **1,292 unit tests** (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage, trends, creators, outreach, connectors, matches, campaigns, AI personalization + AI context audit + analytics — OpenAI fully mocked, zero real network calls)                                                                                 |
+| Deploy       | Render Blueprint (`render.yaml`) + GitHub Actions                                                                                                                                                                                                                                                                                                            |
+| Build/CI     | ✅ green (ci → validate → generate → lint → typecheck → test → build → format)                                                                                                                                                                                                                                                                               |
 
 ---
 
@@ -164,6 +165,7 @@ Session guards — `lib/session.ts`:
 | CampaignRule                      | Campaign eligibility thresholds (PR006)                                                                                  | ✅ required FK    |
 | CampaignCreator                   | M:N join (campaign ⇄ creator)                                                                                            | ↳ via campaign    |
 | AIGeneratedMessage                | Versioned OpenAI-generated commercial content (PR007) + contextSnapshot audit column (PR007.1, nullable for retrocompat) | ✅ required FK    |
+| AnalyticsSnapshot                 | Materialized deterministic metrics snapshot per tenant+period (PR008) — unique (organizationId, from, to)                | ✅ required FK    |
 | Account/Session/VerificationToken | NextAuth adapter                                                                                                         | —                 |
 
 ### Product Intelligence Core (PR001)
@@ -587,6 +589,7 @@ modules/
 | `20260924200000_campaign_engine`            | PR006: `CampaignAudience`, `CampaignRule`, `CampaignCreator` join — deterministic AI Matching + ROI Engine support, all tenant-required FKs                                                                                                                                  |
 | `20260925000000_ai_personalization_engine`  | PR007: `AiMessageTone` enum + `AIGeneratedMessage` (creator/product/campaign context, token usage, versioned prompt) — purely ADDITIVE, unique `(organizationId, contextHash)` cache key, Cascade on organization/creatorProfile/product/campaign, `SET NULL` on creatorUser |
 | `20260925120000_ai_context_audit`           | PR007.1: `AIGeneratedMessage.contextSnapshot JSONB NULL` — purely ADDITIVE single-column migration; cache key unchanged; rows pre-PR007.1 keep NULL                                                                                                                          |
+| `20260925180000_analytics_attribution`      | PR008: `AnalyticsSnapshot` (tenant + period key + versioned metrics JSON + computedAt) — purely ADDITIVE, unique `(organizationId, from, to)`, Cascade on organization; purely derived data (recomputable)                                                                   |
 
 The PR000.2 migration is **safe and non-inventive**: it never fabricates an
 Organization and never guesses an owner. A `DO $$ … $$` guard counts tenant-less
@@ -613,6 +616,7 @@ correct tenant before re-running. On a fresh database the guard is a no-op.
 | `/dashboard/matches`       | ✅     | PR005.1 — KPIs (Importados/Automáticos/Pendentes/Confiança média), tabela Vídeo·Produto·Confidence·Origem·Status                                                                                 |
 | `/dashboard/campaigns`     | ✅     | PR006 — recomendações de creators/produtos, score médio, ROI projetado, tabela de audiência                                                                                                      |
 | `/dashboard/ai`            | ✅     | PR007 — KPIs (mensagens geradas/tokens/custo estimado/prompt version), geração por tom, preview de conteúdo; PR007.1 — botão "Ver contexto" + modal de auditoria (snapshot JSON somente leitura) |
+| `/dashboard/analytics`     | ✅     | PR008 — KPIs (receita PAID/margem/ticket/pipeline/ROI/uso de IA), período 7·30·90d, Recalcular (MANAGER+), tabelas de atribuição produto/creator/campanha com share%                             |
 | `/settings`                | ✅     | Profile + integrations status                                                                                                                                                                    |
 | `/api/auth/*`              | ✅     | NextAuth v5 handler (Credentials provider active)                                                                                                                                                |
 
@@ -780,7 +784,7 @@ tests mock the OpenAI client entirely. `render.yaml` declares it
 
 ## 9. Tests
 
-`npm test` (Vitest, `tests/`) — **1,210 unit tests** (65 files), no database
+`npm test` (Vitest, `tests/`) — **1,292 unit tests** (74 files), no database
 required:
 
 | File                                                                                                                                                                         | Covers                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -830,6 +834,15 @@ required:
 | `tests/ai-pricing.test.ts`                                                                                                                                                   | PR007 — dashboard-only cost estimator: linear token scaling, per-model rates, unknown-model fallback, currency formatting                                                                                                                                                                                                                                                                           |
 | `tests/ai-rbac.test.ts`                                                                                                                                                      | PR007 — AI dashboard RBAC matrix: ADMIN+MANAGER generate, MEMBER read-only, every guard maps to `requireManager()`                                                                                                                                                                                                                                                                                  |
 | `tests/ai-index.test.ts`                                                                                                                                                     | PR007 — the public `modules/ai` surface exposes prompts/context-builder/validators but **never** re-exports `callOpenAiResponses`/`generatePersonalizedMessage` (server-only boundary asserted from the test side too)                                                                                                                                                                              |
+| `tests/analytics-sales-metrics.test.ts`                                                                                                                                      | PR008 — `computeSalesTotals()`: convenção revenue=PAID, COGS × qty, margem/ROI bps, ticket médio, custo desconhecido flagged, status desconhecidos ignorados, zero-safe                                                                                                                                                                                                                             |
+| `tests/analytics-attribution.test.ts`                                                                                                                                        | PR008 — `attributeRevenue()`: buckets por dimensão, share bps soma ~100%, bucket sintético _Sem atribuição_ para SetNull, ordenação determinística (revenue desc · label · key), NaN-safe                                                                                                                                                                                                           |
+| `tests/analytics-snapshot-builder.test.ts`                                                                                                                                   | PR008 — payload versionado + byte-identical p/ mesmas linhas, custo de IA por modelo, período half-open UTC, guard de versão do leitor                                                                                                                                                                                                                                                              |
+| `tests/analytics-repository.test.ts`                                                                                                                                         | PR008 — repository c/ fake Prisma: escopo tenant relacional no Sale + período half-open, aggregate de IA por tom/modelo, unique key de snapshot, upsert sem duplicar                                                                                                                                                                                                                                |
+| `tests/analytics-service.test.ts`                                                                                                                                            | PR008 — pipeline lazy (computa+persiste no miss), fonte snapshot sem recomputar, stale via max(sale.updatedAt), refresh força recomputação, período por dias, determinismo com clock injetável                                                                                                                                                                                                      |
+| `tests/analytics-validators.test.ts`                                                                                                                                         | PR008 — `days` coerced/bounded (1–365, default 30), payloads hostis rejeitados                                                                                                                                                                                                                                                                                                                      |
+| `tests/analytics-actions.test.ts`                                                                                                                                            | PR008 — `refreshAnalyticsAction()`: RBAC, Zod, tenant da sessão (nunca do cliente), `revalidatePath` só em sucesso                                                                                                                                                                                                                                                                                  |
+| `tests/analytics-rbac.test.ts`                                                                                                                                               | PR008 — matriz RBAC: MANAGER+ (ADMIN incluído) na página/ações, MEMBER negado, hierarquia monotônica                                                                                                                                                                                                                                                                                                |
+| `tests/analytics-seed-sales.test.ts`                                                                                                                                         | PR008 — seed determinístico: 40 vendas, distribuição 28/5/4/3, links reais, amountCents = price×qty, janela de 30 dias, referências únicas                                                                                                                                                                                                                                                          |
 
 ---
 
@@ -909,6 +922,12 @@ delivery remains the Outreach AI outbox's job (PR004, untouched).
 
 **Server actions / dashboard**
 
+- `app/dashboard/analytics/actions.ts` → 1 action (PR008):
+  `refreshAnalyticsAction` (recomputa e materializa o snapshot de
+  métricas do período corrente do tenant) — `requireManager()` (receita e
+  margem são dados sensíveis: MANAGER+, MEMBER é redirecionado da página
+  para `/dashboard`), tenant sempre da sessão, dias coerced/bounded
+  (1–365, default 30) via Zod, `revalidatePath` apenas em sucesso.
 - `app/dashboard/ai/actions.ts#generateAiMessageAction` — the **only**
   entry point into the AI engine reachable from the client;
   `requireManager()`-gated, tenant-scoped context resolution, lazily
@@ -948,6 +967,100 @@ unimported anywhere) — fully superseded by the real `modules/ai/` tree.
 
 **Not performed:** no merge (PR left open for human audit, per the PR000
 workflow).
+
+**Delivery:** pushed on top of PR #12 (the session branch is fixed to
+`arena/01a0cb96-brobond-ai-commerce`, so PR008 is stacked after
+PR007.1's `4fabd2e`; the PR008-only diff is the final commit on the
+branch — see the commit map pinned in the PR body). No merge performed.
+
+### PR008 — Analytics & Attribution (2026-09-23) — completed
+
+Deterministic analytics pipeline: revenue, margin and attribution metrics
+materialized per tenant over half-open UTC periods — computed ONLY from
+the tenant's own `Sale`/`Product`/`CreatorProfile`/`Campaign`/
+`AIGeneratedMessage` rows. **No external tracking, no randomness, no
+network, no new dependencies.**
+
+**Prisma**
+
+- Model `AnalyticsSnapshot` (`organizationId` required, Cascade; `from`/
+  `to` half-open period; versioned `metrics Json`; `computedAt`), UNIQUE
+  `(organizationId, from, to)` — one snapshot per tenant+period bucket;
+  recomputation upserts, never duplicates. Migration
+  `20260925180000_analytics_attribution` — purely ADDITIVE.
+- Snapshots are purely derived data: deleting them loses nothing.
+
+**Metrics pipeline (pure, Prisma-free)**
+
+- `modules/analytics/metrics/sales-metrics.ts` — `computeSalesTotals()`
+  (revenue = **PAID only**, mirroring `modules/sales`) + `ratioBps()`
+  (division-by-zero-safe); COGS = `unitCostCents × qty`
+  (`Product.currentCostCents`), unknown cost never reduces margin and is
+  flagged via `revenueWithUnknownCostCents`.
+- `modules/analytics/metrics/attribution.ts` — `attributeRevenue()`:
+  every PAID sale in exactly one product/creator/campaign bucket;
+  `SetNull` relations fall into the synthetic _"— Sem atribuição"_ bucket
+  (share always sums to ~100%); deterministic ordering (revenue desc ·
+  label asc · key asc); shares in integer bps.
+- `modules/analytics/metrics/snapshot-builder.ts` —
+  `buildAnalyticsMetrics()` versioned payload
+  (`{version:1, period, totals, roiBps, attribution, ai}`), byte-identical
+  for the same rows; AI usage costed per model via PR007's
+  `estimateCostUsdCents`; `readAnalyticsMetrics()` version guard;
+  UTC day-normalized `resolvePeriodDays(days, now)` (injectable clock).
+
+**Data access / service**
+
+- `repositories/analytics.repository.ts` — tenant scope ALWAYS first arg;
+  `Sale` scoped via the relational filter, mirroring `modules/sales`
+  (the "Sale gains organizationId" promotion remains tracked for a later
+  PR); AI usage grouped by tone/model within tenant+period; snapshot
+  find/upsert on the unique key.
+- `services/analytics.service.ts` — lazy pipeline: snapshot-first;
+  compute+persist on miss or version mismatch; `refresh()` forces
+  recompute; stale detection via `max(Sale.updatedAt) > computedAt`.
+
+**Dashboard `/dashboard/analytics` (MANAGER+)**
+
+- KPIs: Receita (PAID) · Margem bruta (BRL + %) · Ticket médio · Pipeline
+  pendente (reembolsos/canceladas) · ROI sobre COGS estimado · Uso de IA
+  (custo USD estimado + tokens + mensagens).
+- Period selector 7/30/90d (`days` coerced/bounded 1–365 server-side),
+  **Recalcular** (`refreshAnalyticsAction`, `requireManager()`), three
+  attribution tables (produto/creator/campanha) with CSS-only share bars.
+- MEMBER is redirected to `/dashboard` (revenue/margin are
+  business-sensitive).
+- Sidebar: the pre-existing "Analytics" `planned` item is now real.
+
+**Seed**
+
+- 40 deterministic sales (28 PAID · 5 PENDING · 4 REFUNDED · 3 CANCELLED)
+  over the last 30 days, round-robin linked to the workspace's real
+  products/creators/campaigns (`modules/analytics/seed/sales-seed.ts`,
+  pure generator). Idempotent: only when the workspace has no sales.
+
+**Removed:** the orphaned PR000 stub `modules/analytics/analytics.interface.ts`
+(confirmed unimported anywhere; superseded by the real module — same
+precedent as PR007's removal of `modules/integrations/ai/`).
+
+**Tests** — 82 new tests across 9 files (**1,292 total**, all green):
+metrics (totals/attribution/snapshot builder), repository (tenant scope +
+half-open period + upsert semantics), service (lazy/refresh/stale/
+determinism), validators, action RBAC/Zod/revalidate, RBAC matrix, seed
+determinism.
+
+**Verification sequence** (all green): `npm ci` → `prisma validate` →
+`prisma generate` → `npm run lint` → `tsc --noEmit` → `vitest run`
+(1,292/1,292) → `npm run build` (17 routes, incl. `/dashboard/analytics`)
+→ `prettier --check`.
+
+**Not performed:** no merge (PR left open for human audit, per the PR000
+workflow).
+
+**Delivery:** pushed on top of PR #12 (the session branch is fixed to
+`arena/01a0cb96-brobond-ai-commerce`, so PR008 is stacked after
+PR007.1's `4fabd2e`; the PR008-only diff is the final commit on the
+branch — see the commit map pinned in the PR body). No merge performed.
 
 ### PR007.1 — AI Context Audit Hotfix (2026-09-23) — completed
 
@@ -1022,6 +1135,11 @@ snapshot persistence (7), context-audit action (9).
 **Not performed:** no merge (PR left open for human audit, per the PR000
 workflow).
 
+**Delivery:** pushed on top of PR #12 (the session branch is fixed to
+`arena/01a0cb96-brobond-ai-commerce`, so PR008 is stacked after
+PR007.1's `4fabd2e`; the PR008-only diff is the final commit on the
+branch — see the commit map pinned in the PR body). No merge performed.
+
 ### PR005.1 — Product Match Architecture (2026-09-22) — completed
 
 The layer that relates imported external content (videos/posts) to internal
@@ -1074,6 +1192,11 @@ scorer, matcher, repository (+tenant), DTO/validators, RBAC.
 
 **Not performed:** no merge (PR left open for human audit, per the PR000
 workflow).
+
+**Delivery:** pushed on top of PR #12 (the session branch is fixed to
+`arena/01a0cb96-brobond-ai-commerce`, so PR008 is stacked after
+PR007.1's `4fabd2e`; the PR008-only diff is the final commit on the
+branch — see the commit map pinned in the PR body). No merge performed.
 
 ### PR005 — Connector Framework (2026-09-22) — completed
 
@@ -1143,6 +1266,11 @@ dedupe rule the sync service uses. Idempotent.
 
 **Not performed:** no merge (PR left open for human audit, per the PR000
 workflow).
+
+**Delivery:** pushed on top of PR #12 (the session branch is fixed to
+`arena/01a0cb96-brobond-ai-commerce`, so PR008 is stacked after
+PR007.1's `4fabd2e`; the PR008-only diff is the final commit on the
+branch — see the commit map pinned in the PR body). No merge performed.
 
 ### PR003 — Creator Discovery Engine (2026-09-22) — completed
 
@@ -1398,9 +1526,9 @@ input), tenant filter builder, RBAC matrix, media-storage policy.
 | PR005.1                            | Product Match Architecture        | ✅ done |
 | PR006                              | Campaign Engine & AI Matching     | ✅ done |
 | PR007                              | AI Personalization Engine         | ✅ done |
-| PR007.1                            | AI Context Audit Hotfix           | ✅ this |
-| PR008                              | Analytics & Attribution           | ⏭ next  |
-| PR009                              | Billing & Multi-tenancy hardening | planned |
+| PR007.1                            | AI Context Audit Hotfix           | ✅ done |
+| PR008                              | Analytics & Attribution           | ✅ this |
+| PR009                              | Billing & Multi-tenancy hardening | ⏭ next  |
 | a guard that aborts on tenant-less |
 | rows instead of inventing data.    |
 
@@ -1454,9 +1582,9 @@ input), tenant filter builder, RBAC matrix, media-storage policy.
 | PR005.1 | Product Match Architecture        | ✅ done |
 | PR006   | Campaign Engine & AI Matching     | ✅ done |
 | PR007   | AI Personalization Engine         | ✅ done |
-| PR007.1 | AI Context Audit Hotfix           | ✅ this |
-| PR008   | Analytics & Attribution           | ⏭ next  |
-| PR009   | Billing & Multi-tenancy hardening | planned |
+| PR007.1 | AI Context Audit Hotfix           | ✅ done |
+| PR008   | Analytics & Attribution           | ✅ this |
+| PR009   | Billing & Multi-tenancy hardening | ⏭ next  |
 
 ## PR004 — Outreach AI & Sales Pipeline (2026-09-22)
 

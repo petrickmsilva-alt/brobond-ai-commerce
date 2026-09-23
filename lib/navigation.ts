@@ -35,6 +35,6 @@ export const sidebarNav: NavItem[] = [
   { label: "Conectores", href: "/dashboard/connectors", icon: Plug },
   { label: "Matches", href: "/dashboard/matches", icon: Link2 },
   { label: "Campanhas", href: "/dashboard/campaigns", icon: Megaphone },
-  { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3, planned: true },
+  { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { label: "Configurações", href: "/settings", icon: Settings },
 ];

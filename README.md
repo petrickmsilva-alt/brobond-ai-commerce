@@ -775,3 +775,67 @@ compareContextSnapshots(snapshotA, snapshotB);
 Use it to answer _"what changed between these two generations?"_ — e.g.
 same creator/product/campaign whose score, margin or trend moved between
 snapshots.
+
+---
+
+## Analytics & Attribution (PR008)
+
+Deterministic analytics pipeline that materializes revenue, margin and
+attribution metrics per tenant — computed **only** from the workspace's
+own rows (`Sale` · `Product` · `CreatorProfile` · `Campaign` ·
+`AIGeneratedMessage`). **No external tracking, no randomness, no network,
+no new dependencies** (the share bars are plain CSS).
+
+### Metrics pipeline
+
+- **Materialized snapshots.** `AnalyticsSnapshot` (purely additive model,
+  nullable-free, Cascade on tenant) persists a versioned `metrics` JSON
+  payload per `(organizationId, from, to)` — UNIQUE key, recomputation
+  upserts and never duplicates. Snapshots are purely derived data:
+  deleting them loses nothing, the pipeline regenerates.
+- **Lazy + explicit refresh.** The dashboard serves the snapshot for the
+  `(tenant, period)` key; when missing (or a legacy/foreign `version` is
+  found) it computes and persists on the spot. The **Recalcular** button
+  (`refreshAnalyticsAction`, MANAGER+) forces recomputation. A `stale`
+  flag (sales updated after `computedAt`) is surfaced to the reader.
+- **Revenue convention:** only `PAID` sales count as revenue (mirrors
+  `modules/sales`). PENDING are the pipeline; REFUNDED/CANCELLED never
+  count. Money = integer cents, rates = integer basis points.
+- **Attribution:** every PAID sale is assigned to exactly one product /
+  creator / campaign bucket — `SetNull` relations fall into a synthetic
+  _"— Sem atribuição"_ bucket so no cent disappears and shares always
+  sum to ~100%. Shares are integer bps (`shareBps`).
+- **Determinism contract:** same rows + same period → byte-identical JSON
+  (sorted ranking: revenue desc · label asc · key asc; dates are UTC
+  ISO strings; `now` is injectable in the service).
+
+### Dashboard `/dashboard/analytics` (MANAGER+)
+
+KPIs — **Receita (PAID) · Margem bruta BRL + % · Ticket médio · Pipeline
+pendente (reembolsos/canceladas) · ROI sobre COGS estimado · Uso de IA
+(custo USD estimado + tokens + mensagens)** — period selector 7/30/90d,
+"Recalcular" action, and three attribution tables (Produto · Creator ·
+Campanha) with revenue, sales, units and share %. Revenue/margin are
+business-sensitive: MEMBER users are redirected to `/dashboard`.
+
+### Architecture
+
+```text
+modules/analytics/
+├── metrics/          sales-metrics.ts · attribution.ts · snapshot-builder.ts
+│                     (pure: totals · margin/ROI bps · share bps · versioned payload)
+├── repositories/     analytics.repository.ts — tenant scope ALWAYS 1st arg
+│                     (sale scope mirrors modules/sales until Sale gains organizationId)
+├── services/         analytics.service.ts — lazy pipeline (snapshot-first,
+│                     compute+persist on miss, refresh() forcing recompute,
+│                     stale detection via max(sale.updatedAt))
+├── seed/             sales-seed.ts — 40 deterministic sales for the dashboard
+└── validators/       analytics.validator.ts — days coerced/bounded (1–365, default 30)
+```
+
+### Seed
+
+`npm run db:seed` ships **40 deterministic sales** (28 PAID · 5 PENDING ·
+4 REFUNDED · 3 CANCELLED) over the last 30 days, linked round-robin to the
+workspace's real products/creators/campaigns (`seed-sale-###` references).
+Idempotent: inserted only when the workspace has no sales at all.

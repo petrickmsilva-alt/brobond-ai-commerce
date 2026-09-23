@@ -38,11 +38,15 @@ import { MockConnector } from "../modules/connectors/mock/mock.connector";
 import { OUTREACH_TEMPLATES } from "../modules/outreach/prompts/templates";
 import { generateOutreachMessage } from "../modules/outreach/prompts/generator";
 import { matchProductsToContent, recommendCreators } from "../modules/campaigns/matching/matcher";
+import { buildSeedSales } from "../modules/analytics/seed/sales-seed";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
 const BCRYPT_COST = 12;
+
+/** Single reference instant for all relative-date seed rows (PR008 sales). */
+const NOW = new Date();
 
 const ADMIN_EMAIL = (process.env.SEED_ADMIN_EMAIL ?? "admin@brobond.ai").trim().toLowerCase();
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD?.trim() || null;
@@ -779,6 +783,35 @@ async function main() {
     }
   }
 
+  // PR008 — Analytics & Attribution: 40 deterministic sales (28 PAID ·
+  // 5 PENDING · 4 REFUNDED · 3 CANCELLED) over the last 30 days, linked
+  // round-robin to the workspace's real products/creators/campaigns so
+  // every attribution bucket has data. Idempotent: only inserts when the
+  // workspace has no sales yet, so real revenue is never duplicated.
+  const existingSales = await prisma.sale.count({
+    where: { reference: { startsWith: "seed-sale-" } },
+  });
+  let seededSales = 0;
+  const hasAnySale = await prisma.sale.count();
+  if (existingSales === 0 && hasAnySale === 0) {
+    const products = allSeedProducts.map((item) => ({ id: item.id, priceCents: item.priceCents }));
+    const saleCreators = await prisma.creatorProfile.findMany({
+      where: { organizationId: organization.id },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const saleCampaigns = await prisma.campaign.findMany({
+      where: { organizationId: organization.id },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const drafts = buildSeedSales(products, saleCreators, saleCampaigns, NOW);
+    await prisma.sale.createMany({
+      data: drafts.map((draft) => ({ ...draft, currency: "BRL" })),
+    });
+    seededSales = drafts.length;
+  }
+
   // eslint-disable-next-line no-console
   console.log("Seed complete:", {
     organization: organization.slug,
@@ -794,6 +827,7 @@ async function main() {
     productMatches: existingMatches > 0 ? existingMatches : seededMatches,
     campaigns: seedCampaigns.length,
     recommendations: existingAudience > 0 ? existingAudience : seededRecommendations,
+    sales: existingSales > 0 ? existingSales : seededSales,
   });
 }
 

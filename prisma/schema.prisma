@@ -224,6 +224,8 @@ model Organization {
   campaignAudiences CampaignAudience[]
   campaignRules     CampaignRule[]
 
+  analyticsSnapshots AnalyticsSnapshot[]
+
   aiGeneratedMessages AIGeneratedMessage[]
 
   createdAt DateTime @default(now())
@@ -1099,6 +1101,48 @@ model AIGeneratedMessage {
   @@index([creatorProfileId])
   @@index([productId])
   @@index([campaignId])
+}
+
+// ------------------------------------------------------------------
+// Analytics & Attribution (PR008)
+// ------------------------------------------------------------------
+
+/// A materialized, deterministic analytics snapshot for one tenant over a
+/// half-open period `[from, to)`.
+///
+/// PR008 computes every metric from the tenant's own rows (Sale, Product,
+/// CreatorProfile, Campaign, AIGeneratedMessage) — no external tracking,
+/// no randomness, no network. Snapshots are recomputed lazily on first
+/// access or explicitly via the dashboard "Recalcular" action, and the
+/// UNIQUE key guarantees one snapshot per (tenant, period bucket).
+///
+/// `metrics` is JSON (versioned shape — see
+/// `modules/analytics/metrics/snapshot-builder.ts`) so the metric catalog
+/// can evolve additive­ly without migrations.
+model AnalyticsSnapshot {
+  id String @id @default(cuid())
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// Half-open period `[from, to)` in UTC (normalized to day boundaries).
+  from DateTime
+  to   DateTime
+
+  /// Deterministic, versioned metrics payload ({version:1, period, totals,
+  /// attribution, ai}).
+  metrics Json
+
+  /// When this snapshot was (re)computed — staleness is judged against
+  /// `to` at read time by readers, never trusted from the client.
+  computedAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, from, to])
+  @@index([organizationId, computedAt])
 }
 
 // ------------------------------------------------------------------
