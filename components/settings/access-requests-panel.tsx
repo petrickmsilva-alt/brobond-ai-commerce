@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertCircle, Check, Inbox, Loader2, ShieldAlert, UserCheck, X } from "lucide-react";
+import { AlertCircle, Check, Copy, Inbox, Loader2, ShieldAlert, UserCheck, X } from "lucide-react";
 import { SectionCard } from "@/components/ui/section-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
@@ -10,16 +10,19 @@ import { reviewAccessRequestAction } from "@/app/settings/actions";
 import type { AccessRequestView } from "@/modules/auth/access-request.service";
 
 /**
- * Access-request queue (PR010.2 §5 + §11) — "ADMIN visualizar em Configurações".
+ * Access-request queue (PR010.2 §5 + §11 · PR010.3 §2) — the legacy surface
+ * inside Configurações.
  *
  * RBAC §11: only an ADMIN may approve or reject. `canManage` hides the
  * buttons; `requireAdmin()` inside the server action is what actually
  * enforces it.
  *
- * DELIBERATE TWO-STEP: approving records a decision, it does NOT create an
- * account or send anything. The ADMIN then issues an invitation from the panel
- * above. Keeping provisioning behind a second, explicit action means a stray
- * click on "Aprovar" can never hand someone access.
+ * PR010.3 §2 — "Ao aprovar: Criar Invitation": approving now reviews the
+ * request AND issues + delivers the invitation (role MEMBER) in the same
+ * action. An invitation still is not an account — the invitee must redeem
+ * the single-use link and set a password — so approving alone can never hand
+ * someone access. The dedicated ADMIN surface (with the full table) lives at
+ * `/dashboard/settings/access`.
  */
 
 export interface AccessRequestsPanelProps {
@@ -47,19 +50,39 @@ export function AccessRequestsPanel({
 }: AccessRequestsPanelProps) {
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [issued, setIssued] = React.useState<string | null>(null);
+  const [copied, setCopied] = React.useState(false);
 
   async function review(id: string, decision: "APPROVED" | "REJECTED") {
     setBusy(id);
     setError(null);
+    setIssued(null);
+    setCopied(false);
     const result = await reviewAccessRequestAction({ id, decision });
     setBusy(null);
-    if (!result.ok) setError(result.error);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    if (result.data?.inviteUrl) {
+      setIssued(result.data.inviteUrl);
+    }
+  }
+
+  async function copyIssued() {
+    if (!issued) return;
+    try {
+      await navigator.clipboard.writeText(issued);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
   }
 
   return (
     <SectionCard
       title="Solicitações de acesso"
-      description="Pedidos enviados pelo formulário público. Aprovar registra a decisão — o acesso só é concedido ao enviar um convite."
+      description="Aprovar emite e envia automaticamente um convite de uso único. Gerencie a fila completa em /dashboard/settings/access."
       icon={UserCheck}
       actions={
         pendingCount > 0 ? (
@@ -86,6 +109,31 @@ export function AccessRequestsPanel({
           <AlertCircle aria-hidden className="mt-px h-3.5 w-3.5 shrink-0" />
           {error}
         </p>
+      )}
+
+      {issued && (
+        <div
+          role="status"
+          className="mb-4 rounded-xl border border-emerald-400/25 bg-emerald-500/[0.07] px-4 py-3"
+        >
+          <p className="flex items-center gap-2 text-xs font-medium text-emerald-300">
+            <Check aria-hidden className="h-3.5 w-3.5 shrink-0" />
+            Aprovado — convite criado e enviado. Link (mostrado uma única vez):
+          </p>
+          <div className="mt-2.5 flex items-center gap-2">
+            <code className="min-w-0 flex-1 truncate rounded-lg border border-white/10 bg-surface-900/80 px-3 py-2 text-[11px] text-white/70">
+              {issued}
+            </code>
+            <Button size="sm" variant="outline" onClick={copyIssued}>
+              {copied ? (
+                <Check aria-hidden className="h-3.5 w-3.5" />
+              ) : (
+                <Copy aria-hidden className="h-3.5 w-3.5" />
+              )}
+              {copied ? "Copiado" : "Copiar"}
+            </Button>
+          </div>
+        </div>
       )}
 
       {requests.length === 0 ? (

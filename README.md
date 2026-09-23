@@ -249,18 +249,33 @@ App runs at **http://localhost:3000**.
 
 ### Environment variables
 
-The runtime reads exactly four variables:
+Core runtime variables:
 
-| Variable          | Required | Purpose                                        |
-| ----------------- | -------- | ---------------------------------------------- |
-| `AUTH_SECRET`     | yes      | NextAuth v5 JWT/session signing secret         |
-| `NEXTAUTH_URL`    | prod     | Canonical URL for NextAuth callbacks/redirects |
-| `DATABASE_URL`    | yes      | PostgreSQL connection string (Prisma)          |
-| `AUTH_TRUST_HOST` | no       | Trust the proxy `Host` header (Render/Docker)  |
+| Variable          | Required | Purpose                                                                                              |
+| ----------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| `AUTH_SECRET`     | yes      | NextAuth v5 JWT/session signing secret                                                               |
+| `NEXTAUTH_URL`    | prod     | Canonical URL for NextAuth callbacks/redirects                                                       |
+| `DATABASE_URL`    | yes      | PostgreSQL connection string (Prisma)                                                                |
+| `AUTH_TRUST_HOST` | no       | Trust the proxy `Host` header (Render/Docker)                                                        |
+| `APP_URL`         | no       | PR010.3 — public base URL for links handed to users (invitation links); falls back to `NEXTAUTH_URL` |
 
-`APP_URL` and `AUTH_URL` were removed — neither was read by the runtime.
-`AUTH_SECRET` and `DATABASE_URL` are **server-only**; this project defines no
-`NEXT_PUBLIC_` variable.
+Optional Google SSO (PR010.3 §5/§12) — set **one complete pair**, never a mix:
+
+| Variable               | Purpose                       |
+| ---------------------- | ----------------------------- |
+| `AUTH_GOOGLE_ID`       | Google OAuth client id        |
+| `AUTH_GOOGLE_SECRET`   | Google OAuth secret           |
+| `GOOGLE_CLIENT_ID`     | alias of `AUTH_GOOGLE_ID`     |
+| `GOOGLE_CLIENT_SECRET` | alias of `AUTH_GOOGLE_SECRET` |
+
+When a complete pair is present the "Continuar com Google" button appears on
+`/login` and the provider is registered; otherwise the button is hidden
+entirely (never rendered disabled).
+
+`AUTH_SECRET`, `DATABASE_URL` and the Google credentials are **server-only**;
+this project defines no `NEXT_PUBLIC_` variable. (`APP_URL` was removed in
+PR000.2 because nothing read it, and reintroduced by PR010.3 with a narrower
+mandate — human-facing links only.)
 
 ### First login
 
@@ -280,7 +295,7 @@ invents one. Then sign in at `/login` with that email and password.
 ### Tests
 
 ```bash
-npm test          # Vitest — 503 unit tests
+npm test          # Vitest — 2,276 unit tests
 ```
 
 No database or network is required; the session layer is mocked and the trend

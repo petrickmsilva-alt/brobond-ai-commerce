@@ -5,7 +5,7 @@ import { z } from "zod";
  *
  * ENVIRONMENT CONTRACT (PR000.2)
  * ------------------------------
- * The runtime recognises exactly four variables:
+ * The runtime recognises:
  *
  * | Variable          | Required | Purpose                                        |
  * | ----------------- | -------- | ---------------------------------------------- |
@@ -14,22 +14,27 @@ import { z } from "zod";
  * | `DATABASE_URL`    | yes      | PostgreSQL connection string (Prisma)          |
  * | `AUTH_TRUST_HOST` | no       | Trust the proxy `Host` header (Render/Docker)  |
  *
- * `APP_URL` and `AUTH_URL` were **removed** in PR000.2: nothing in the runtime
- * read them. `NEXTAUTH_URL` is the single canonical deployment URL.
+ * `APP_URL` was removed in PR000.2 (nothing read it) and is **reintroduced by
+ * PR010.3 §12** with a narrower mandate: it is the canonical *public* base URL
+ * used to build links handed to humans (invitation links), taking precedence
+ * over `NEXTAUTH_URL` for that purpose only — NextAuth itself keeps using
+ * `NEXTAUTH_URL` / `AUTH_URL` for callbacks. See `lib/app-url.ts`.
  *
- * FEDERATED SIGN-IN (PR010.2 §4)
- * ------------------------------
- * Two optional variables enable Google SSO:
+ * FEDERATED SIGN-IN (PR010.2 §4 · PR010.3 §5/§12)
+ * -----------------------------------------------
+ * Two optional pairs enable Google SSO — either one, complete:
  *
- * | Variable             | Required | Purpose                              |
- * | -------------------- | -------- | ------------------------------------ |
- * | `AUTH_GOOGLE_ID`     | no       | Google OAuth client id               |
- * | `AUTH_GOOGLE_SECRET` | no       | Google OAuth client secret           |
+ * | Variable                | Required | Purpose                |
+ * | ----------------------- | -------- | ---------------------- |
+ * | `AUTH_GOOGLE_ID`        | no       | Google OAuth client id   |
+ * | `AUTH_GOOGLE_SECRET`    | no       | Google OAuth secret      |
+ * | `GOOGLE_CLIENT_ID`      | no       | alias of AUTH_GOOGLE_ID  |
+ * | `GOOGLE_CLIENT_SECRET`  | no       | alias of AUTH_GOOGLE_SECRET |
  *
- * They are optional *together*: both present registers the provider and shows
- * the button; either missing hides the button entirely (§4 — a disabled SSO
- * button is never rendered). `lib/auth-providers.ts` owns that predicate and
- * is the only thing the UI consults.
+ * They are optional *as a pair*: a complete pair registers the provider and
+ * shows the button; no complete pair hides the button entirely (§5 — a
+ * disabled SSO button is never rendered). `lib/auth-providers.ts` owns that
+ * predicate and is the only thing the UI consults.
  *
  * SECURITY: this module is server-only. `AUTH_SECRET` and `DATABASE_URL` must
  * never be read from, or forwarded to, a client component. Only variables
@@ -48,6 +53,23 @@ const envSchema = z.object({
   AUTH_SECRET: z.string().min(1, "AUTH_SECRET is required"),
   /** Canonical deployment URL used by NextAuth for callbacks/redirects. */
   NEXTAUTH_URL: z.string().url().optional(),
+  /**
+   * Canonical PUBLIC base URL used to build human-facing links (PR010.3 §12)
+   * — invitation URLs today. Takes precedence over `NEXTAUTH_URL` for link
+   * building only. Optional; `lib/app-url.ts` owns the resolution order.
+   */
+  APP_URL: z.string().url().optional(),
+  /**
+   * PR010.3 §12 alias of `AUTH_GOOGLE_ID`. Optional — read together with
+   * `GOOGLE_CLIENT_SECRET` by `lib/auth-providers.ts`. SERVER ONLY.
+   */
+  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+  /**
+   * PR010.3 §12 alias of `AUTH_GOOGLE_SECRET`. Optional, but must be supplied
+   * alongside `GOOGLE_CLIENT_ID`: a half-configured provider would render a
+   * button that fails at the callback. SERVER ONLY.
+   */
+  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
   /** Trust the reverse-proxy `Host` header (required on Render/Docker). */
   AUTH_TRUST_HOST: z
     .string()

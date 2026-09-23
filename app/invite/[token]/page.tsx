@@ -1,19 +1,19 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Building2, MailX, ShieldCheck } from "lucide-react";
+import { redirect } from "next/navigation";
+import { Building2, ShieldCheck } from "lucide-react";
 import { AcceptInvitationForm } from "@/components/auth/accept-invitation-form";
 import { AuthCardShell } from "@/components/auth/auth-card-shell";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { INVITE_EXPIRED_ROUTE, INVITE_INVALID_ROUTE } from "@/lib/auth-routes";
 import { InvitationError, invitationService } from "@/modules/auth/invitation.service";
-import type { InvitationPreview } from "@/modules/auth/invitation.service";
+import type { InvitationPreview, InvitationRejection } from "@/modules/auth/invitation.service";
 
 export const metadata: Metadata = {
   title: "Ativar convite",
 };
 
 /**
- * Invitation landing page — `/invite/[token]` (PR010.2 §7).
+ * Invitation landing page — `/invite/[token]` (PR010.2 §7 · PR010.3 §10).
  *
  * FLOW: validar convite → definir senha → entrar automaticamente.
  *
@@ -22,6 +22,13 @@ export const metadata: Metadata = {
  * preview shows the invitee which workspace and which role they are joining
  * — a small anti-phishing affordance, and the reason `preview()` exists
  * separately from `accept()`.
+ *
+ * PR010.3 §10: a dead link no longer renders an inline card — it redirects
+ * to a dedicated terminal page (`/invite/expired` for a link that ran out of
+ * time, `/invite/invalid` for everything else), so each failure has a stable
+ * URL, its own wording and its own next steps. The `redirect()` call sits
+ * deliberately OUTSIDE the try/catch: it works by throwing, and a surrounding
+ * catch would swallow it.
  *
  * PUBLIC BY NECESSITY: an invitee has no session yet, so `/invite` is in
  * `PUBLIC_PREFIXES`. The token itself is the credential — 256 bits of
@@ -33,49 +40,21 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
   const token = decodeURIComponent(rawToken ?? "").trim();
 
   let preview: InvitationPreview | null = null;
-  let rejection: string | null = null;
+  let rejection: InvitationRejection | null = null;
 
   try {
     preview = await invitationService.preview(token);
   } catch (error) {
-    rejection =
-      error instanceof InvitationError ? error.message : "Não foi possível validar este convite.";
-    if (!(error instanceof InvitationError)) {
+    if (error instanceof InvitationError) {
+      rejection = error.reason;
+    } else {
       console.error("[invite.preview]", error);
+      rejection = "not_found";
     }
   }
 
   if (!preview) {
-    return (
-      <AuthCardShell
-        title="Convite indisponível"
-        description={rejection ?? "Este convite não é mais válido."}
-      >
-        <div className="flex flex-col items-center gap-5 py-2 text-center">
-          <span
-            aria-hidden
-            className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/8 bg-gradient-to-br from-brand-500/18 to-accent-500/10 text-brand-300"
-          >
-            <MailX className="h-7 w-7" />
-          </span>
-          <p className="max-w-sm text-balance text-xs leading-relaxed text-white/45">
-            Peça ao administrador do workspace para enviar um novo convite, ou entre em contato se
-            você já tiver uma conta.
-          </p>
-          <Link href="/login" className="w-full">
-            <Button size="lg" className="w-full">
-              Ir para o login
-            </Button>
-          </Link>
-          <Link
-            href="/request-access"
-            className="text-xs font-medium text-white/45 transition-colors hover:text-white"
-          >
-            Solicitar acesso
-          </Link>
-        </div>
-      </AuthCardShell>
-    );
+    redirect(rejection === "expired" ? INVITE_EXPIRED_ROUTE : INVITE_INVALID_ROUTE);
   }
 
   return (

@@ -13,6 +13,11 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
     globals: false,
   },
+  // PR010.3 — page-component tests execute Server Components directly
+  // (e.g. the /invite/[token] redirect contract). The automatic JSX runtime
+  // compiles that JSX without requiring `React` in scope, matching the
+  // transform Next.js itself applies.
+  esbuild: { jsx: "automatic" },
   resolve: {
     alias: [
       { find: /^server-only$/, replacement: path.resolve(__dirname, "tests/stubs/server-only.ts") },

@@ -6,7 +6,7 @@ import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { equalizeVerificationTiming, verifyPassword } from "@/lib/password";
 import { credentialsSchema } from "@/lib/validations/auth";
-import { isGoogleProviderConfigured } from "@/lib/auth-providers";
+import { isGoogleProviderConfigured, resolveGoogleCredentials } from "@/lib/auth-providers";
 
 /**
  * NextAuth v5 configuration.
@@ -38,25 +38,34 @@ interface AuthenticatedUser {
 }
 
 /**
- * Federated providers, registered ONLY when fully provisioned (PR010.2 §4).
+ * Federated providers, registered ONLY when fully provisioned (PR010.2 §4 ·
+ * PR010.3 §5/§12).
  *
  * An unconfigured Google provider is absent from this array, so
  * `/api/auth/signin/google` legitimately 404s and the UI — reading the same
  * `isGoogleProviderConfigured()` predicate — hides the button instead of
  * rendering a dead, disabled control. The two can never disagree.
  *
+ * PR010.3 §12 accepts two env conventions for the same credentials:
+ * `AUTH_GOOGLE_ID`/`AUTH_GOOGLE_SECRET` (NextAuth native) and
+ * `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`. `resolveGoogleCredentials()`
+ * owns the resolution, so the provider is registered with whichever complete
+ * pair the deployment provides.
+ *
  * NOTE: registering Google does NOT open public sign-up. The `signIn`
  * callback below still requires a pre-provisioned account.
  */
-const federatedProviders = isGoogleProviderConfigured()
-  ? [
-      Google({
-        clientId: process.env.AUTH_GOOGLE_ID,
-        clientSecret: process.env.AUTH_GOOGLE_SECRET,
-        allowDangerousEmailAccountLinking: false,
-      }),
-    ]
-  : [];
+const googleCredentials = resolveGoogleCredentials();
+const federatedProviders =
+  isGoogleProviderConfigured() && googleCredentials
+    ? [
+        Google({
+          clientId: googleCredentials.clientId,
+          clientSecret: googleCredentials.clientSecret,
+          allowDangerousEmailAccountLinking: false,
+        }),
+      ]
+    : [];
 
 export const authConfig = {
   adapter: PrismaAdapter(prisma),
@@ -232,5 +241,6 @@ export {
 export {
   getAvailableProviders,
   isGoogleProviderConfigured,
+  resolveGoogleCredentials,
   showGoogleProvider,
 } from "@/lib/auth-providers";

@@ -119,3 +119,41 @@ describe("navigation — active route resolution", () => {
     expect(findActiveGroup("/login")).toBeNull();
   });
 });
+
+// ------------------------------------------------------------------
+// PR010.3 — the access-approval route joins the System module
+// ------------------------------------------------------------------
+
+describe("navigation — PR010.3 access route", () => {
+  it("lists the access-approval route in the System group", () => {
+    const system = navigationGroups.find((group) => group.id === "system");
+    expect(system).toBeTruthy();
+    const item = system?.items.find((entry) => entry.href === "/dashboard/settings/access");
+    expect(item).toBeTruthy();
+    expect(item?.label).toBe("Acesso");
+  });
+
+  it("keeps the route unique across the whole nav", () => {
+    const hrefs = sidebarNav.map((entry) => entry.href);
+    expect(hrefs.filter((href) => href === "/dashboard/settings/access")).toHaveLength(1);
+  });
+
+  it("resolves the active group for the nested access route", () => {
+    expect(findActiveGroup("/dashboard/settings/access")?.label).toBe("System");
+  });
+
+  it("resolves the active item for the access route itself", () => {
+    const item = sidebarNav.find((entry) => entry.href === "/dashboard/settings/access");
+    expect(item).toBeTruthy();
+    expect(isNavItemActive("/dashboard/settings/access", "/dashboard/settings/access")).toBe(true);
+  });
+
+  it("does not shadow the Dashboard root item", () => {
+    expect(isNavItemActive("/dashboard/settings/access", "/dashboard")).toBe(false);
+  });
+
+  it("describes the route for the command palette (ADMIN surface)", () => {
+    const item = sidebarNav.find((entry) => entry.href === "/dashboard/settings/access");
+    expect(item?.description).toMatch(/ADMIN|acesso/i);
+  });
+});

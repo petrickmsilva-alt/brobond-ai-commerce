@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   AlertCircle,
   ArrowRight,
   Building2,
-  CheckCircle2,
   Loader2,
   Mail,
   MessageSquare,
@@ -17,25 +16,27 @@ import {
 } from "lucide-react";
 import { accessRequestSchema } from "@/lib/validations/auth";
 import { requestAccessAction } from "@/app/request-access/actions";
+import { REQUEST_ACCESS_SUCCESS_ROUTE } from "@/lib/auth-routes";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { FadeIn } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 import { focusRing } from "@/components/ui/design-system/theme";
 
 /**
- * Public access-request form (PR010.2 §5).
+ * Public access-request form (PR010.2 §5 · PR010.3 §1).
  *
- * Fields: Nome · Empresa · Email · WhatsApp · Mensagem.
+ * Fields: Nome · Empresa · Email · Telefone · Mensagem.
  *
- * On success the form is REPLACED by a confirmation state rather than merely
- * showing a toast: the request is a one-shot action, so leaving a populated
- * form on screen invites a duplicate submit and leaves the user unsure whether
- * anything happened.
+ * ON SUCCESS THE FORM IS LEFT BEHIND (PR010.3 §1): the browser is navigated to
+ * `/request-access/success` with `router.replace`, so the confirmation is a
+ * real page — shareable, refreshable — and the populated form is dropped from
+ * the history stack ("nunca retornar para o formulário": the back button
+ * cannot resurrect it either). An inline success card would still live at
+ * `/request-access`, one refresh away from a duplicate submit.
  *
- * SECURITY: this posts to a server action that writes one inert `AccessRequest`
- * row — no password, no role, no tenant, no session. Submitting it grants
- * nothing; an ADMIN must still send an invitation.
+ * SECURITY: this posts to a server action that writes one inert
+ * `AccessRequest` row — no password, no role, no tenant, no session.
+ * Submitting it grants nothing; an ADMIN must still send an invitation.
  */
 
 type FormValues = {
@@ -47,7 +48,7 @@ type FormValues = {
 };
 
 export function RequestAccessForm() {
-  const [submitted, setSubmitted] = useState(false);
+  const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
 
   const {
@@ -69,33 +70,11 @@ export function RequestAccessForm() {
       setFormError(result.error);
       return;
     }
-    setSubmitted(true);
-  }
 
-  if (submitted) {
-    return (
-      <FadeIn>
-        <div
-          role="status"
-          className="flex flex-col items-center rounded-2xl border border-emerald-400/20 bg-emerald-500/[0.07] px-6 py-10 text-center"
-        >
-          <span
-            aria-hidden
-            className="flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-400/25 bg-emerald-500/15 text-emerald-300"
-          >
-            <CheckCircle2 className="h-7 w-7" />
-          </span>
-          <h2 className="mt-5 text-lg font-semibold text-white">Solicitação enviada</h2>
-          <p className="mt-2 max-w-sm text-balance text-sm leading-relaxed text-white/55">
-            Nossa equipe vai analisar seu pedido e, se aprovado, você receberá um convite por email
-            para criar sua senha e acessar o workspace.
-          </p>
-          <Link href="/" className="mt-7">
-            <Button variant="outline">Voltar para a home</Button>
-          </Link>
-        </div>
-      </FadeIn>
-    );
+    // PR010.3 §1 — replace (not push): the confirmation page replaces the
+    // form in the history stack, so "back" can never land on a populated
+    // form again.
+    router.replace(REQUEST_ACCESS_SUCCESS_ROUTE);
   }
 
   return (
@@ -139,7 +118,7 @@ export function RequestAccessForm() {
 
       <Field
         id="whatsapp"
-        label="WhatsApp"
+        label="Telefone"
         optional
         icon={Phone}
         error={errors.whatsapp?.message}
