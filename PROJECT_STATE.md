@@ -4,10 +4,10 @@
 > Updated per PR. Source of truth for "what exists" vs. "what is planned".
 
 **Last updated:** 2026-09-22
-**Current PR:** PR006 — Campaign Engine & AI Matching
+**Current PR:** PR007 — AI Personalization Engine
 **Status:** completed (awaiting review/merge — **no merge performed**)
-**Branch:** `arena/01a0cb31-brobond-ai-commerce` (Arena session branch; requested spec branch: `feature/pr006-campaign-engine`)
-**Next PR:** PR007 — Analytics & Attribution
+**Branch:** `arena/01a0cb45-brobond-ai-commerce` (Arena session branch; requested spec branch: `feature/pr007-ai-personalization`)
+**Next PR:** PR008 — Analytics & Attribution
 
 > **Workflow (instituted in PR001):** no more direct merges to `main`.
 > Feature branch → Pull Request → human audit → approval → merge → Render deploy.
@@ -16,22 +16,23 @@
 
 ## 1. Snapshot
 
-| Aspect       | State                                                                                                                                                                                                                                                                     |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stage        | Campaign Engine & AI Matching (PR006) shipped                                                                                                                                                                                                                             |
-| Architecture | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models) · **multi-source trends** (PR002.1)                                                                                                                                                               |
-| Modules      | `modules/commerce/products` — services / repositories / dto / pricing / validators                                                                                                                                                                                        |
-|              | `modules/trends` — hunter (collectors / collector factory / scorer / scheduler) / repositories / dto / …                                                                                                                                                                  |
-|              | `modules/connectors` — core (interface / factory / validator / dto / repository / sync) + mock / tiktok / instagram / shopee (PR005)                                                                                                                                      |
-|              | `modules/campaigns` — Campaign Engine · deterministic AI Matching · ROI Engine · Audience Builder · repositories · dto · validators (PR006)                                                                                                                               |
-| Currency     | **BRL** (default across Product, Campaign, Sale) · money = integer cents · margin = basis points                                                                                                                                                                          |
-| Auth         | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**                                                                                                                                                                                                |
-| RBAC         | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura                                                                                                                                                                     |
-| Database     | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                                                                                                                                                                                                               |
-| Migrations   | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core` · `…_trend_hunter_ai` · `…_trend_source` · `…_creator_discovery_engine` · `…_outreach_ai_sales_pipeline` · `…_connector_framework` · `…_product_match_architecture` · `…_campaign_engine` |
-| Tests        | Vitest — 1,017 unit tests (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage, trends, creators, outreach, connectors, matches)                                                                                                               |
-| Deploy       | Render Blueprint (`render.yaml`) + GitHub Actions                                                                                                                                                                                                                         |
-| Build/CI     | ✅ green (ci → validate → generate → lint → typecheck → test → build → format)                                                                                                                                                                                            |
+| Aspect       | State                                                                                                                                                                                                                                                                                                     |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stage        | AI Personalization Engine (PR007) shipped                                                                                                                                                                                                                                                                 |
+| Architecture | **Multi-tenant, enforced** (`organizationId` NOT NULL on domain models) · **multi-source trends** (PR002.1)                                                                                                                                                                                               |
+| Modules      | `modules/commerce/products` — services / repositories / dto / pricing / validators                                                                                                                                                                                                                        |
+|              | `modules/trends` — hunter (collectors / collector factory / scorer / scheduler) / repositories / dto / …                                                                                                                                                                                                  |
+|              | `modules/connectors` — core (interface / factory / validator / dto / repository / sync) + mock / tiktok / instagram / shopee (PR005)                                                                                                                                                                      |
+|              | `modules/campaigns` — Campaign Engine · deterministic AI Matching · ROI Engine · Audience Builder · repositories · dto · validators (PR006)                                                                                                                                                               |
+|              | `modules/ai` — OpenAI Responses API client · versioned prompts (5 tones) · generator · personalization context-builder · cache-aware message service · repositories (PR007)                                                                                                                               |
+| Currency     | **BRL** (default across Product, Campaign, Sale) · money = integer cents · margin = basis points                                                                                                                                                                                                          |
+| Auth         | NextAuth v5 (Prisma adapter, JWT) + **Credentials provider (email/senha)**                                                                                                                                                                                                                                |
+| RBAC         | ADMIN > MANAGER > MEMBER — products: ADMIN cria/edita/exclui · MANAGER edita · MEMBER somente leitura                                                                                                                                                                                                     |
+| Database     | PostgreSQL via Prisma (pg driver adapter, Rust-free client)                                                                                                                                                                                                                                               |
+| Migrations   | `…_init_multitenant` · `…_require_organization` · `…_product_intelligence_core` · `…_trend_hunter_ai` · `…_trend_source` · `…_creator_discovery_engine` · `…_outreach_ai_sales_pipeline` · `…_connector_framework` · `…_product_match_architecture` · `…_campaign_engine` · `…_ai_personalization_engine` |
+| Tests        | Vitest — **1,150 unit tests** (RBAC, session, tenancy, passwords, pricing, slug, validators, filters, storage, trends, creators, outreach, connectors, matches, campaigns, AI personalization — OpenAI fully mocked, zero real network calls)                                                             |
+| Deploy       | Render Blueprint (`render.yaml`) + GitHub Actions                                                                                                                                                                                                                                                         |
+| Build/CI     | ✅ green (ci → validate → generate → lint → typecheck → test → build → format)                                                                                                                                                                                                                            |
 
 ---
 
@@ -162,6 +163,7 @@ Session guards — `lib/session.ts`:
 | CampaignAudience                  | Ranked creator/product recommendations (PR006)          | ✅ required FK    |
 | CampaignRule                      | Campaign eligibility thresholds (PR006)                 | ✅ required FK    |
 | CampaignCreator                   | M:N join (campaign ⇄ creator)                           | ↳ via campaign    |
+| AIGeneratedMessage                | Versioned OpenAI-generated commercial content (PR007)   | ✅ required FK    |
 | Account/Session/VerificationToken | NextAuth adapter                                        | —                 |
 
 ### Product Intelligence Core (PR001)
@@ -187,6 +189,85 @@ Session guards — `lib/session.ts`:
 - `estimateROI()` projects revenue, gross margin, commission, freight, profit and ROI%.
 - Dashboard `/dashboard/campaigns`: recommended creators, products, average score, projected ROI and audience table.
 - Seed: 5 campaigns and 200 recommendations produced by the real matcher. No OpenAI, TikTok integration, message sending, randomness or external call.
+
+### AI Personalization Engine (PR007)
+
+`modules/ai` — integrates OpenAI to generate personalized commercial
+content (title, message, hashtags, cta) per creator/product/campaign/trend
+context. **Generation and versioning ONLY — this module never sends a
+message anywhere.** Delivery remains the Outreach AI outbox's job (PR004),
+which is untouched.
+
+- **OpenAI Responses API — no SDK.** `openai/client.ts` speaks
+  `POST https://api.openai.com/v1/responses` directly over `fetch` (no
+  provider SDK, matching the codebase's "no SDK" policy for external
+  integrations). It is the single call site for the OpenAI endpoint —
+  reads `OPENAI_API_KEY` from `process.env` and is marked `import
+"server-only"`, so pulling it into a Client Component's module graph
+  fails the Next.js **build**, not just a runtime check. A structured JSON
+  Schema (`AI_MESSAGE_OUTPUT_SCHEMA`) is attached to every call so the
+  model's response is constrained to `{ title, message, hashtags, cta }`.
+- **5 versioned prompts — one per tone.** `openai/prompts.ts` defines
+  exactly `FRIENDLY · PREMIUM · LUXURY · STREET · FITNESS` (mirrors the
+  `AiMessageTone` Prisma enum). Each carries an explicit semantic version
+  (`friendly@1.0.0`, …) that is persisted and is part of the cache key —
+  bumping a template's copy requires bumping its version, or stale cached
+  content would silently keep serving the old wording. Every instruction
+  explicitly states "nunca envie a mensagem — apenas gere o conteúdo."
+- **Context builder** (`personalization/context-builder.ts`, pure): takes
+  plain Creator/Product/Campaign/Trend inputs (no Prisma type coupling)
+  and returns a structured `PersonalizationContext`, plus a deterministic
+  `serializeContextForHash()` used by the cache-key hash.
+- **Generator** (`openai/generator.ts`): `generatePersonalizedMessage()`
+  calls the OpenAI client with the tone's instructions + the serialized
+  context, validates/parses the model's JSON reply
+  (`parseGeneratedContent`, throws `GeneratedContentValidationError` on a
+  malformed shape), and returns `{ content: { title, message, hashtags,
+cta }, promptVersion, model, temperature, inputTokens, outputTokens }`.
+- **Cache contract (never regenerate for an identical context):**
+  `message.service.ts#buildContextHash()` computes a SHA-256 digest over
+  `tone + creator + product + campaign + promptVersion`.
+  `AIGeneratedMessage` has a UNIQUE `(organizationId, contextHash)` index —
+  a cache hit returns the previously persisted row and OpenAI is never
+  called again for it (`cached: true` in the service/action result).
+- **Repository** (`repositories/ai-message.repository.ts`):
+  `findByContextHash` · `create` · `findById` · `list` · `kpis`.
+  `organizationId` is ALWAYS the first argument, built through
+  `tenantWhere`/`scopedWhere`. Factory (`createAiMessageRepository(db)`)
+  keeps it unit-testable without a database.
+- **Server actions only.** `app/dashboard/ai/actions.ts#generateAiMessageAction`
+  is the **only** entry point into the AI Personalization Engine reachable
+  from the client — `requireManager()`-gated, resolves creator/product/
+  campaign/trend from the tenant, lazily imports `message.service.ts` (so
+  the OpenAI-touching module graph is only ever loaded server-side), and
+  returns a uniform `AiActionResult`. The API key never reaches the
+  browser; no message is ever dispatched.
+- **Build-time enforcement.** Beyond `server-only`, `eslint.config.mjs`
+  adds a `no-restricted-imports` rule scoped to `components/**/*.{ts,tsx}`
+  that forbids importing `modules/ai/openai/client` or
+  `modules/ai/openai/generator` — even transitively — from a Client
+  Component. `modules/ai/openai/prompts.ts` (pure data/types, no secret,
+  no network call) is exempt and safely shared with the UI.
+- **Dashboard** `/dashboard/ai`: KPIs (mensagens geradas · tokens
+  consumidos · custo estimado · prompt version), a generation form
+  (creator/produto/campanha/tom), and a full content preview (title,
+  message, hashtags, cta) per generated row.
+- **Tests mock OpenAI entirely** — `fetch` is stubbed in
+  `tests/ai-openai-client.test.ts`; `callOpenAiResponses` is mocked in
+  `tests/ai-generator.test.ts`; the generator itself is mocked in
+  `tests/ai-message-service.test.ts`. **Zero real network calls** anywhere
+  in the suite.
+
+```
+modules/
+└── ai/
+    ├── openai/           client.ts (Responses API, server-only) ·
+    │                     prompts.ts (5 versioned tones, pure) ·
+    │                     generator.ts (server-only) · pricing.ts (dashboard estimate)
+    ├── personalization/  context-builder.ts (pure) · message.service.ts (cache + orchestration)
+    ├── repositories/     ai-message.repository.ts — organizationId is ALWAYS the 1st arg
+    └── validators/       generate-message.validator.ts (Zod)
+```
 
 ### Module architecture (mandated from PR001 on)
 
@@ -447,17 +528,19 @@ modules/
 
 ## 6. Migrations
 
-| Migration                                   | Purpose                                                                                                                                                                                                                                           |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `20260922000000_init_multitenant`           | Initial schema (nullable `organizationId`)                                                                                                                                                                                                        |
-| `20260922120000_require_organization`       | Promotes `organizationId` to `NOT NULL` on 4 models                                                                                                                                                                                               |
-| `20260922180000_product_intelligence_core`  | PR001: 4 new product tables, stock/cost/margin columns, tenant-scoped slug/SKU uniqueness, dashboard indexes                                                                                                                                      |
-| `20260922230000_trend_hunter_ai`            | PR002: TrendSnapshot, TrendKeyword, TrendCategory — all tenant-required FKs, tenant-scoped uniqueness on keyword/category, dashboard indexes                                                                                                      |
-| `20260923050000_trend_source`               | PR002.1: `TrendSource` enum + `TrendSnapshot.source` (`NOT NULL DEFAULT 'MOCK'`, purely additive — no existing row touched) + `(organizationId, source)` index                                                                                    |
-| `20260923120000_creator_discovery_engine`   | PR003: `Creator` → `CreatorProfile` (data preserved), `CreatorSource`, CRM columns, `CreatorMetric`, `CreatorTag`, tenant-scoped uniques                                                                                                          |
-| `20260922194600_outreach_ai_sales_pipeline` | PR004: `OutreachStatus`, `TemplateType`, `OutreachMessage`, `MessageTemplate`, `FollowUpSequence` — all tenant-required FKs                                                                                                                       |
-| `20260923180000_connector_framework`        | PR005: `ConnectorPlatform`/`ConnectorState`/`ExternalContentType`/`ExternalContentStatus` enums + `ConnectorStatus` + `ExternalContent` — purely ADDITIVE, dedupe unique `(organizationId, platform, externalId)`, no credential column by design |
-| `20260923220000_product_match_architecture` | PR005.1: `MatchSource` enum + `ProductMatch` (content ⇄ product link, 0–1 confidence) — purely ADDITIVE, unique `(externalContentId, productId)`, Cascade on organization/content/product                                                         |
+| Migration                                   | Purpose                                                                                                                                                                                                                                                                      |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `20260922000000_init_multitenant`           | Initial schema (nullable `organizationId`)                                                                                                                                                                                                                                   |
+| `20260922120000_require_organization`       | Promotes `organizationId` to `NOT NULL` on 4 models                                                                                                                                                                                                                          |
+| `20260922180000_product_intelligence_core`  | PR001: 4 new product tables, stock/cost/margin columns, tenant-scoped slug/SKU uniqueness, dashboard indexes                                                                                                                                                                 |
+| `20260922230000_trend_hunter_ai`            | PR002: TrendSnapshot, TrendKeyword, TrendCategory — all tenant-required FKs, tenant-scoped uniqueness on keyword/category, dashboard indexes                                                                                                                                 |
+| `20260923050000_trend_source`               | PR002.1: `TrendSource` enum + `TrendSnapshot.source` (`NOT NULL DEFAULT 'MOCK'`, purely additive — no existing row touched) + `(organizationId, source)` index                                                                                                               |
+| `20260923120000_creator_discovery_engine`   | PR003: `Creator` → `CreatorProfile` (data preserved), `CreatorSource`, CRM columns, `CreatorMetric`, `CreatorTag`, tenant-scoped uniques                                                                                                                                     |
+| `20260922194600_outreach_ai_sales_pipeline` | PR004: `OutreachStatus`, `TemplateType`, `OutreachMessage`, `MessageTemplate`, `FollowUpSequence` — all tenant-required FKs                                                                                                                                                  |
+| `20260923180000_connector_framework`        | PR005: `ConnectorPlatform`/`ConnectorState`/`ExternalContentType`/`ExternalContentStatus` enums + `ConnectorStatus` + `ExternalContent` — purely ADDITIVE, dedupe unique `(organizationId, platform, externalId)`, no credential column by design                            |
+| `20260923220000_product_match_architecture` | PR005.1: `MatchSource` enum + `ProductMatch` (content ⇄ product link, 0–1 confidence) — purely ADDITIVE, unique `(externalContentId, productId)`, Cascade on organization/content/product                                                                                    |
+| `20260924200000_campaign_engine`            | PR006: `CampaignAudience`, `CampaignRule`, `CampaignCreator` join — deterministic AI Matching + ROI Engine support, all tenant-required FKs                                                                                                                                  |
+| `20260925000000_ai_personalization_engine`  | PR007: `AiMessageTone` enum + `AIGeneratedMessage` (creator/product/campaign context, token usage, versioned prompt) — purely ADDITIVE, unique `(organizationId, contextHash)` cache key, Cascade on organization/creatorProfile/product/campaign, `SET NULL` on creatorUser |
 
 The PR000.2 migration is **safe and non-inventive**: it never fabricates an
 Organization and never guesses an owner. A `DO $$ … $$` guard counts tenant-less
@@ -482,6 +565,8 @@ correct tenant before re-running. On a fresh database the guard is a no-op.
 | `/dashboard/outreach`      | ✅     | PR004 — KPIs do outbox, workbench de geração/agendamento                                                         |
 | `/dashboard/connectors`    | ✅     | PR005 — KPIs (Importados/Duplicados/Falhas/Ativos), cards por conector, tabela de conteúdo externo               |
 | `/dashboard/matches`       | ✅     | PR005.1 — KPIs (Importados/Automáticos/Pendentes/Confiança média), tabela Vídeo·Produto·Confidence·Origem·Status |
+| `/dashboard/campaigns`     | ✅     | PR006 — recomendações de creators/produtos, score médio, ROI projetado, tabela de audiência                      |
+| `/dashboard/ai`            | ✅     | PR007 — KPIs (mensagens geradas/tokens/custo estimado/prompt version), geração por tom, preview de conteúdo      |
 | `/settings`                | ✅     | Profile + integrations status                                                                                    |
 | `/api/auth/*`              | ✅     | NextAuth v5 handler (Credentials provider active)                                                                |
 
@@ -515,6 +600,13 @@ Server actions:
   `removeMatch` (remove o match). All `requireManager()` (ADMIN+MANAGER;
   MEMBER é somente leitura) + tenant-scoped repository; the repository
   refuses content/product ids that do not belong to the caller's tenant.
+- `app/dashboard/ai/actions.ts` → 1 action (PR007):
+  `generateAiMessageAction` (gera ou reutiliza do cache uma mensagem
+  personalizada para creator/produto/campanha/tom) — `requireManager()`
+  (ADMIN+MANAGER; MEMBER é somente leitura), resolve o contexto sempre
+  dentro do tenant do chamador, e é o **único** ponto de entrada para o
+  motor de IA acessível a partir do cliente. Nunca envia nada — apenas
+  gera e persiste conteúdo versionado.
 
 ### Products RBAC (PR001)
 
@@ -570,6 +662,17 @@ Server actions:
 > read-only — every write action is `requireManager()` (pinned by
 > `tests/matches-rbac.test.ts`).
 
+### AI Personalization RBAC (PR007)
+
+| Ação                 | ADMIN | MANAGER | MEMBER               |
+| -------------------- | ----- | ------- | -------------------- |
+| Gerar mensagem (IA)  | ✅    | ✅      | ❌                   |
+| Visualizar dashboard | ✅    | ✅      | ✅ (somente leitura) |
+
+> Same asymmetric boundary as Matches/Outreach: content generation is
+> `requireManager()` (ADMIN+MANAGER), MEMBER is read-only — pinned by
+> `tests/ai-rbac.test.ts`.
+
 Enforced twice: UI affordances hidden per role **and** re-asserted in every
 server action (`requireAdmin`/`requireManager`).
 
@@ -595,59 +698,85 @@ Optional: `NODE_ENV`. Local-only seed bootstrap: `SEED_ADMIN_EMAIL`,
 > canonical deployment URL. Cleaned from `.env.example`, `lib/env.ts` and
 > `docker-compose.yml`.
 
-Reserved (NOT implemented): TikTok, OpenAI, Analytics keys.
+Reserved (NOT implemented): TikTok, Analytics keys.
+
+**PR007 adds one env var**, read only by `modules/ai/openai/client.ts`:
+
+| Variable         | Required                     | Purpose                                                      |
+| ---------------- | ---------------------------- | ------------------------------------------------------------ |
+| `OPENAI_API_KEY` | only to actually call OpenAI | OpenAI Responses API key — server-only, never `NEXT_PUBLIC_` |
+
+The dashboard, cache lookups, and the entire test suite work without it —
+tests mock the OpenAI client entirely. `render.yaml` declares it
+`sync: false` (set manually in the Render dashboard, never committed).
 
 ### Security boundary
 
-`AUTH_SECRET`, `DATABASE_URL` and `passwordHash` are **server-only** and are
-never passed to a client component:
+`AUTH_SECRET`, `DATABASE_URL`, `OPENAI_API_KEY` and `passwordHash` are
+**server-only** and are never passed to a client component:
 
 - `lib/env.ts` is only imported server-side; no `NEXT_PUBLIC_` variable exists.
 - `authorize()` strips `passwordHash` before returning; it never reaches the
   JWT or the session.
 - `CurrentUser` (`lib/session.ts`) exposes only
   `id · email · name · image · role · organizationId` — asserted by a test.
+- `modules/ai/openai/client.ts` reads `OPENAI_API_KEY` and is marked
+  `import "server-only"`; `eslint.config.mjs` additionally forbids any
+  `components/**` file from importing it or `openai/generator.ts` (even
+  transitively) — enforced at both lint time and Next.js build time.
 
 ---
 
 ## 9. Tests
 
-`npm test` (Vitest, `tests/`) — **893 unit tests** (47 files), no database
+`npm test` (Vitest, `tests/`) — **1,150 unit tests** (63 files), no database
 required:
 
-| File                                     | Covers                                                                                                                                                                                                                                           |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `tests/rbac.test.ts`                     | `hasRole`, `isAdmin`, `isManager`, `assertRole`, full hierarchy matrix                                                                                                                                                                           |
-| `tests/session.test.ts`                  | `getCurrentUser`, `getCurrentOrganization`, `requireUser`, `requireOrganization`, `requireRole`, `requireAdmin`, `requireManager`, no-secret-leak assertion                                                                                      |
-| `tests/tenant.test.ts`                   | `tenantWhere`, `scopedWhere`, `assertSameTenant`, cross-tenant isolation (a caller-supplied `organizationId` cannot override the scope)                                                                                                          |
-| `tests/password.test.ts`                 | bcrypt digest shape, salting, verification, no plaintext                                                                                                                                                                                         |
-| `tests/pricing.test.ts`                  | PR001 — `totalCostCents`, `profitCents`, `marginBps` (rounding, zero price, negative margin), display helpers                                                                                                                                    |
-| `tests/slug.test.ts`                     | PR001 — `baseSlug` (accents, fallback, length cap), `resolveUniqueSlug` (`-2`/`-3` collision handling, max length)                                                                                                                               |
-| `tests/product-validators.test.ts`       | PR001 — every Zod schema incl. hostile inputs (client-supplied `organizationId` is stripped; hostile sort fields fall back)                                                                                                                      |
-| `tests/product-list-where.test.ts`       | PR001 — dashboard filter builder always injects the tenant scope; throws without one                                                                                                                                                             |
-| `tests/products-rbac.test.ts`            | PR001 — products RBAC matrix (ADMIN cria/edita/exclui · MANAGER edita · MEMBER leitura)                                                                                                                                                          |
-| `tests/media-storage.test.ts`            | PR001 — upload policy (mime allowlist, 10 MB cap) + placeholder provider contract                                                                                                                                                                |
-| `tests/trend-scorer.test.ts`             | PR002 — score engine: weights (30/20/15/20/15), normalization to 0–100, clamping, rounding, guard errors                                                                                                                                         |
-| `tests/trend-collector.test.ts`          | PR002 — mock collector: exactly 30 valid unique signals, 5 categories, scores 60–98, deterministic + defensive copies (+ PR002.1 `collect()` alias)                                                                                              |
-| `tests/trend-validators.test.ts`         | PR002 — Zod schemas (signal/snapshot/list query) incl. hostile inputs + `keywordSlug`/`normalizeKeyword` (accents, fallback, length cap)                                                                                                         |
-| `tests/trend-repository.test.ts`         | PR002 — repository against an in-memory fake Prisma: tenant always injected, blank tenant throws before ANY db call, cross-tenant invisibility, filters                                                                                          |
-| `tests/trend-scheduler.test.ts`          | PR002 — `collect-daily-trends` job (collect → score → validate → persist → aggregate), failure handling, manual-only contract (+ PR002.1 multi-source)                                                                                           |
-| `tests/trend-source.test.ts`             | PR002.1 — `TrendSource` enum ↔ `TREND_SOURCES` sync, labels, MOCK default, Zod source schemas (accept/reject/defaults), URL-state `?source=`                                                                                                     |
-| `tests/collector-factory.test.ts`        | PR002.1 — `getCollector()` mapping per source, placeholder collectors throw "Not implemented", MANUAL/unknown throw, singleton cache, no-switch architecture                                                                                     |
-| `tests/trends-rbac.test.ts`              | PR002 — trends RBAC matrix (ADMIN coleta/cria · MANAGER visualiza · MEMBER leitura)                                                                                                                                                              |
-| `tests/trend-dto.test.ts`                | PR002 — DTO mappers: ISO serialization across the RSC boundary, score computed engine-side                                                                                                                                                       |
-| `tests/connector-platform.test.ts`       | PR005 — the four connector enums ↔ their client-safe mirrors ↔ the Zod schemas (23 tests): labels, MOCK default, placeholder list, `isConnectorActive` KPI predicate, type guards                                                                |
-| `tests/connector-factory.test.ts`        | PR005 — `getConnector()` mapping per platform, singleton cache, registry helpers, unregistered platform throws `ConnectorNotRegisteredError`, placeholders throw on `fetchContent()` but answer `testConnection()` calmly (18 tests)             |
-| `tests/connector-mock.test.ts`           | PR005 — the mock adapter: 36 unique + 4 deliberate duplicates, type distribution, determinism (identical across runs), defensive copies, `limit`/`since`/`type` options, zero network access (17 tests)                                          |
-| `tests/connector-repository.test.ts`     | PR005 — repository against an in-memory fake Prisma: tenant always injected, blank tenant throws before ANY db call, cross-tenant invisibility, tenant-scoped dedupe, status lifecycle, counter accumulation, the four KPIs (20 tests)           |
-| `tests/connector-sync.test.ts`           | PR005 — the `sync-connector` job: import/dedupe/failure paths, counters, state transitions, placeholder handling (recorded ERROR, never a crash), `AuthorizationError` re-thrown, manual-only contract (22 tests)                                |
-| `tests/connector-dto.test.ts`            | PR005 — DTO mappers (ISO serialization, no tenant/raw leak, never-synced platform renders IDLE) + every validator incl. hostile inputs and malformed URL state (28 tests)                                                                        |
-| `tests/connectors-rbac.test.ts`          | PR005 — connectors RBAC matrix: every write is ADMIN-only; MANAGER's powers elsewhere do not leak into connector infrastructure (6 tests)                                                                                                        |
-| `tests/match-scorer.test.ts`             | PR005.1 — rule weights (40/25/20/15 = 100) + `calculateMatchConfidence`: spec examples (0.98/0.76/0.52), clamping (never above 1, never below 0), 2-decimal rounding, hostile input collapses to 0 (17 tests)                                    |
-| `tests/match-matcher.test.ts`            | PR005.1 — matcher engine: each rule fires alone and combined (full 1.00), normalization (accents/case/hyphens), whole-word strictness, derived categories, determinism, unique pairs, confidence-desc order, Prisma-row compatibility (29 tests) |
-| `tests/product-match-repository.test.ts` | PR005.1 — repository against an in-memory fake Prisma: tenant always injected, blank tenant throws before ANY db call, cross-tenant invisibility, FK ownership on create, approve→MANUAL+1.00, KPIs (22 tests)                                   |
-| `tests/product-match-dto.test.ts`        | PR005.1 — enum↔mirror sync, Zod schemas (confidence 0–1 bounds, rounding, hostile inputs), list-query safe defaults, DTO mappers (ISO dates, status derivation, pending backlog) (32 tests)                                                      |
-| `tests/matches-rbac.test.ts`             | PR005.1 — matches RBAC matrix: ADMIN+MANAGER write, MEMBER read-only, every guard maps to `requireManager()`, asymmetric boundary vs connectors pinned (8 tests)                                                                                 |
+| File                                                                                                                                                                         | Covers                                                                                                                                                                                                                                                        |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/rbac.test.ts`                                                                                                                                                         | `hasRole`, `isAdmin`, `isManager`, `assertRole`, full hierarchy matrix                                                                                                                                                                                        |
+| `tests/session.test.ts`                                                                                                                                                      | `getCurrentUser`, `getCurrentOrganization`, `requireUser`, `requireOrganization`, `requireRole`, `requireAdmin`, `requireManager`, no-secret-leak assertion                                                                                                   |
+| `tests/tenant.test.ts`                                                                                                                                                       | `tenantWhere`, `scopedWhere`, `assertSameTenant`, cross-tenant isolation (a caller-supplied `organizationId` cannot override the scope)                                                                                                                       |
+| `tests/password.test.ts`                                                                                                                                                     | bcrypt digest shape, salting, verification, no plaintext                                                                                                                                                                                                      |
+| `tests/pricing.test.ts`                                                                                                                                                      | PR001 — `totalCostCents`, `profitCents`, `marginBps` (rounding, zero price, negative margin), display helpers                                                                                                                                                 |
+| `tests/slug.test.ts`                                                                                                                                                         | PR001 — `baseSlug` (accents, fallback, length cap), `resolveUniqueSlug` (`-2`/`-3` collision handling, max length)                                                                                                                                            |
+| `tests/product-validators.test.ts`                                                                                                                                           | PR001 — every Zod schema incl. hostile inputs (client-supplied `organizationId` is stripped; hostile sort fields fall back)                                                                                                                                   |
+| `tests/product-list-where.test.ts`                                                                                                                                           | PR001 — dashboard filter builder always injects the tenant scope; throws without one                                                                                                                                                                          |
+| `tests/products-rbac.test.ts`                                                                                                                                                | PR001 — products RBAC matrix (ADMIN cria/edita/exclui · MANAGER edita · MEMBER leitura)                                                                                                                                                                       |
+| `tests/media-storage.test.ts`                                                                                                                                                | PR001 — upload policy (mime allowlist, 10 MB cap) + placeholder provider contract                                                                                                                                                                             |
+| `tests/trend-scorer.test.ts`                                                                                                                                                 | PR002 — score engine: weights (30/20/15/20/15), normalization to 0–100, clamping, rounding, guard errors                                                                                                                                                      |
+| `tests/trend-collector.test.ts`                                                                                                                                              | PR002 — mock collector: exactly 30 valid unique signals, 5 categories, scores 60–98, deterministic + defensive copies (+ PR002.1 `collect()` alias)                                                                                                           |
+| `tests/trend-validators.test.ts`                                                                                                                                             | PR002 — Zod schemas (signal/snapshot/list query) incl. hostile inputs + `keywordSlug`/`normalizeKeyword` (accents, fallback, length cap)                                                                                                                      |
+| `tests/trend-repository.test.ts`                                                                                                                                             | PR002 — repository against an in-memory fake Prisma: tenant always injected, blank tenant throws before ANY db call, cross-tenant invisibility, filters                                                                                                       |
+| `tests/trend-scheduler.test.ts`                                                                                                                                              | PR002 — `collect-daily-trends` job (collect → score → validate → persist → aggregate), failure handling, manual-only contract (+ PR002.1 multi-source)                                                                                                        |
+| `tests/trend-source.test.ts`                                                                                                                                                 | PR002.1 — `TrendSource` enum ↔ `TREND_SOURCES` sync, labels, MOCK default, Zod source schemas (accept/reject/defaults), URL-state `?source=`                                                                                                                  |
+| `tests/collector-factory.test.ts`                                                                                                                                            | PR002.1 — `getCollector()` mapping per source, placeholder collectors throw "Not implemented", MANUAL/unknown throw, singleton cache, no-switch architecture                                                                                                  |
+| `tests/trends-rbac.test.ts`                                                                                                                                                  | PR002 — trends RBAC matrix (ADMIN coleta/cria · MANAGER visualiza · MEMBER leitura)                                                                                                                                                                           |
+| `tests/trend-dto.test.ts`                                                                                                                                                    | PR002 — DTO mappers: ISO serialization across the RSC boundary, score computed engine-side                                                                                                                                                                    |
+| `tests/connector-platform.test.ts`                                                                                                                                           | PR005 — the four connector enums ↔ their client-safe mirrors ↔ the Zod schemas (23 tests): labels, MOCK default, placeholder list, `isConnectorActive` KPI predicate, type guards                                                                             |
+| `tests/connector-factory.test.ts`                                                                                                                                            | PR005 — `getConnector()` mapping per platform, singleton cache, registry helpers, unregistered platform throws `ConnectorNotRegisteredError`, placeholders throw on `fetchContent()` but answer `testConnection()` calmly (18 tests)                          |
+| `tests/connector-mock.test.ts`                                                                                                                                               | PR005 — the mock adapter: 36 unique + 4 deliberate duplicates, type distribution, determinism (identical across runs), defensive copies, `limit`/`since`/`type` options, zero network access (17 tests)                                                       |
+| `tests/connector-repository.test.ts`                                                                                                                                         | PR005 — repository against an in-memory fake Prisma: tenant always injected, blank tenant throws before ANY db call, cross-tenant invisibility, tenant-scoped dedupe, status lifecycle, counter accumulation, the four KPIs (20 tests)                        |
+| `tests/connector-sync.test.ts`                                                                                                                                               | PR005 — the `sync-connector` job: import/dedupe/failure paths, counters, state transitions, placeholder handling (recorded ERROR, never a crash), `AuthorizationError` re-thrown, manual-only contract (22 tests)                                             |
+| `tests/connector-dto.test.ts`                                                                                                                                                | PR005 — DTO mappers (ISO serialization, no tenant/raw leak, never-synced platform renders IDLE) + every validator incl. hostile inputs and malformed URL state (28 tests)                                                                                     |
+| `tests/connectors-rbac.test.ts`                                                                                                                                              | PR005 — connectors RBAC matrix: every write is ADMIN-only; MANAGER's powers elsewhere do not leak into connector infrastructure (6 tests)                                                                                                                     |
+| `tests/match-scorer.test.ts`                                                                                                                                                 | PR005.1 — rule weights (40/25/20/15 = 100) + `calculateMatchConfidence`: spec examples (0.98/0.76/0.52), clamping (never above 1, never below 0), 2-decimal rounding, hostile input collapses to 0 (17 tests)                                                 |
+| `tests/match-matcher.test.ts`                                                                                                                                                | PR005.1 — matcher engine: each rule fires alone and combined (full 1.00), normalization (accents/case/hyphens), whole-word strictness, derived categories, determinism, unique pairs, confidence-desc order, Prisma-row compatibility (29 tests)              |
+| `tests/product-match-repository.test.ts`                                                                                                                                     | PR005.1 — repository against an in-memory fake Prisma: tenant always injected, blank tenant throws before ANY db call, cross-tenant invisibility, FK ownership on create, approve→MANUAL+1.00, KPIs (22 tests)                                                |
+| `tests/product-match-dto.test.ts`                                                                                                                                            | PR005.1 — enum↔mirror sync, Zod schemas (confidence 0–1 bounds, rounding, hostile inputs), list-query safe defaults, DTO mappers (ISO dates, status derivation, pending backlog) (32 tests)                                                                   |
+| `tests/matches-rbac.test.ts`                                                                                                                                                 | PR005.1 — matches RBAC matrix: ADMIN+MANAGER write, MEMBER read-only, every guard maps to `requireManager()`, asymmetric boundary vs connectors pinned (8 tests)                                                                                              |
+| `tests/campaign-matcher.test.ts`, `tests/campaign-scorer.test.ts`, `tests/campaign-roi.test.ts`, `tests/campaign-audience-repository.test.ts`, `tests/campaign-rbac.test.ts` | PR006 — deterministic AI Matching (score weights, recommendation ranking), ROI Engine (revenue/margin/commission/freight/profit projections), audience repository (tenant-scoped), RBAC matrix                                                                |
+| `tests/ai-prompts.test.ts`                                                                                                                                                   | PR007 — the 5-tone prompt catalog: `AI_MESSAGE_TONES`, versioned `getPromptDefinition`/`listPromptDefinitions`, the required JSON output schema, `buildPromptInput()` content assembly, "never send" contract asserted in every instruction                   |
+| `tests/ai-context-builder.test.ts`                                                                                                                                           | PR007 — `buildPersonalizationContext()` field mapping + defaults, `serializeContextForHash()` determinism, sensitivity to every context field, stable across key ordering                                                                                     |
+| `tests/ai-openai-client.test.ts`                                                                                                                                             | PR007 — `callOpenAiResponses()` against a **fully mocked `fetch`**: endpoint/auth header/body shape, `json_schema` structured output, `OpenAiConfigurationError`/`OpenAiRequestError`, `extractOutputText()` payload-shape fallback. Zero real network calls. |
+| `tests/ai-generator.test.ts`                                                                                                                                                 | PR007 — `generatePersonalizedMessage()` with the OpenAI client mocked: per-tone prompt version resolution, `parseGeneratedContent()` strict shape validation (rejects malformed/partial JSON), `GeneratedContentValidationError`                              |
+| `tests/ai-message-repository.test.ts`                                                                                                                                        | PR007 — repository against an in-memory fake Prisma: tenant always injected, cache lookup by `(organizationId, contextHash)` never leaks across tenants, list/filter by tone, aggregate KPIs                                                                  |
+| `tests/ai-message-service.test.ts`                                                                                                                                           | PR007 — **cache contract**: identical (creator+product+campaign+tone) context never calls OpenAI twice; tone/product changes force regeneration; tenant isolation; `buildContextHash()` determinism (sha256, tone-sensitive)                                  |
+| `tests/ai-dashboard-actions.test.ts`                                                                                                                                         | PR007 — `generateAiMessageAction()` with session/prisma/service mocked: RBAC rejection, Zod validation, tenant-scoped lookups, trend pass-through, `revalidatePath` only on success, cached-result passthrough                                                |
+| `tests/ai-validators.test.ts`                                                                                                                                                | PR007 — `generateAiMessageSchema`/`aiMessageListSchema` Zod schemas: required fields, the 5 allowed tones, pagination coercion/bounds                                                                                                                         |
+| `tests/ai-pricing.test.ts`                                                                                                                                                   | PR007 — dashboard-only cost estimator: linear token scaling, per-model rates, unknown-model fallback, currency formatting                                                                                                                                     |
+| `tests/ai-rbac.test.ts`                                                                                                                                                      | PR007 — AI dashboard RBAC matrix: ADMIN+MANAGER generate, MEMBER read-only, every guard maps to `requireManager()`                                                                                                                                            |
+| `tests/ai-index.test.ts`                                                                                                                                                     | PR007 — the public `modules/ai` surface exposes prompts/context-builder/validators but **never** re-exports `callOpenAiResponses`/`generatePersonalizedMessage` (server-only boundary asserted from the test side too)                                        |
 
 ---
 
@@ -656,8 +785,10 @@ required:
 - TikTok API / scraping — `modules/integrations/tiktok`. The Trend
   Hunter's and the Creator Discovery's real sources both land here
   (behind their collectors).
-- AI provider (OpenAI) — `modules/integrations/ai` (PR004)
-- Automated outreach (messages) — PR006; the CRM pipeline stops at ACTIVE
+- Automated **sending** of AI-generated or outreach messages — PR004's
+  outbox never auto-sends, and PR007's AI Personalization Engine
+  deliberately generates/versions content ONLY and never dispatches it;
+  the CRM pipeline stops at ACTIVE.
 - Trend Hunter real sources — collectors are placeholders behind
   `getCollector()` since PR002.1; MOCK is the only implemented source
 - Creator Discovery real sources (TikTok · Instagram · Shopee) —
@@ -671,11 +802,99 @@ required:
   a server-only secret _reference_, never a raw secret.
 - Cron/scheduler wiring for `collect-daily-trends` / `discover-creators` /
   `sync-connector` — manual trigger only
-- Analytics pipeline — `modules/analytics` (PR007)
+- Analytics pipeline / cross-channel attribution — `modules/analytics` (PR008)
 
 ---
 
 ## 11. Changelog
+
+### PR007 — AI Personalization Engine (2026-09-22) — completed
+
+Integrates OpenAI to generate personalized commercial content (title,
+message, hashtags, cta) per creator/product/campaign/trend context.
+**Generation and versioning ONLY — no message is ever sent** by this PR;
+delivery remains the Outreach AI outbox's job (PR004, untouched).
+
+**Prisma**
+
+- Enum `AiMessageTone` (FRIENDLY · PREMIUM · LUXURY · STREET · FITNESS) and
+  model `AIGeneratedMessage` (`organizationId`/`creatorProfileId`/
+  `productId`/`campaignId` required FKs with Cascade, `creatorUserId`
+  optional with `SET NULL`, `tone`, `promptVersion`, `contextHash`,
+  `model`, `temperature`, `inputTokens`/`outputTokens`, `content Json`).
+  Unique `(organizationId, contextHash)` implements the "never regenerate
+  an identical context" cache contract.
+- Migration `20260925000000_ai_personalization_engine` — purely ADDITIVE,
+  no existing table touched.
+
+**OpenAI integration — no SDK, Responses API only**
+
+- `modules/ai/openai/client.ts` — single call site for
+  `POST https://api.openai.com/v1/responses` over `fetch`; reads
+  `OPENAI_API_KEY` server-side; `import "server-only"` fails the build if
+  ever imported by a Client Component. A JSON Schema constrains every
+  response to `{ title, message, hashtags, cta }`.
+- `modules/ai/openai/prompts.ts` — exactly 5 versioned prompts (one per
+  tone), every instruction explicit that the message is never sent.
+- `modules/ai/openai/generator.ts` — `generatePersonalizedMessage()`
+  returns `{ title, message, hashtags, cta }` + token usage + prompt
+  version; validates the model's JSON reply and throws
+  `GeneratedContentValidationError` on a malformed shape.
+
+**Personalization + cache**
+
+- `modules/ai/personalization/context-builder.ts` — pure Creator/Product/
+  Campaign/Trend → `PersonalizationContext` mapper, plus deterministic
+  serialization for the cache-key hash.
+- `modules/ai/personalization/message.service.ts` — `buildContextHash()`
+  (sha256 of tone+creator+product+campaign+promptVersion) short-circuits
+  on a cache hit **before** ever calling OpenAI; persists a new
+  `AIGeneratedMessage` row only on a cache miss.
+- `modules/ai/repositories/ai-message.repository.ts` —
+  `findByContextHash` · `create` · `findById` · `list` · `kpis`;
+  `organizationId` always first.
+
+**Server actions / dashboard**
+
+- `app/dashboard/ai/actions.ts#generateAiMessageAction` — the **only**
+  entry point into the AI engine reachable from the client;
+  `requireManager()`-gated, tenant-scoped context resolution, lazily
+  imports the OpenAI-touching service so it's never bundled client-side.
+- `/dashboard/ai` — KPIs (mensagens geradas · tokens consumidos · custo
+  estimado · prompt version), generation form (creator/produto/campanha/
+  tom), full content preview table.
+
+**Build-time security enforcement**
+
+- `server-only` on `client.ts`/`generator.ts` (Next.js build fails if
+  imported client-side).
+- `eslint.config.mjs` adds a `no-restricted-imports` rule scoped to
+  `components/**/*.{ts,tsx}` forbidding `modules/ai/openai/client` and
+  `modules/ai/openai/generator` imports — verified by manually inducing
+  the violation (`no-restricted-imports` error fires as expected).
+- `render.yaml` / `.env.example` document `OPENAI_API_KEY` as
+  server-only, `sync: false`, never committed.
+
+**Tests** — 133 new tests across 9 files (**1,150 total**, all green).
+OpenAI is **fully mocked** (`fetch` stubbed, `callOpenAiResponses` and
+`generatePersonalizedMessage` mocked at different layers) — zero real
+network calls anywhere in the suite. Coverage: prompt catalog, context
+builder, OpenAI client contract, generator validation, repository
+(tenant isolation + cache lookup), service (cache-hit/miss, tenant
+isolation, tone/product sensitivity), dashboard action (RBAC, Zod,
+tenant scoping), validators, pricing estimator, RBAC matrix, and the
+public module surface (asserts the OpenAI client/generator are NOT
+re-exported).
+
+**Verification sequence** (all green): `npm ci` → `prisma validate` →
+`prisma generate` → `npm run lint` → `tsc --noEmit` → `vitest run`
+(1,150/1,150) → `npm run build` (16 routes, including `/dashboard/ai`).
+
+**Removed:** the orphaned PR000 stub `modules/integrations/ai/` (confirmed
+unimported anywhere) — fully superseded by the real `modules/ai/` tree.
+
+**Not performed:** no merge (PR left open for human audit, per the PR000
+workflow).
 
 ### PR005.1 — Product Match Architecture (2026-09-22) — completed
 
@@ -1050,10 +1269,10 @@ input), tenant filter builder, RBAC matrix, media-storage policy.
 | PR003                              | Creator Discovery Engine          | ✅ done |
 | PR004                              | Outreach AI & Sales Pipeline      | ✅ done |
 | PR005                              | Connector Framework               | ✅ done |
-| PR005.1                            | Product Match Architecture        | ✅ this |
-| PR006                              | Campaign Engine                   | ⏭ next  |
-| PR007                              | Messaging & Inbox                 | planned |
-| PR008                              | Analytics & Reporting             | planned |
+| PR005.1                            | Product Match Architecture        | ✅ done |
+| PR006                              | Campaign Engine & AI Matching     | ✅ done |
+| PR007                              | AI Personalization Engine         | ✅ this |
+| PR008                              | Analytics & Attribution           | ⏭ next  |
 | PR009                              | Billing & Multi-tenancy hardening | planned |
 | a guard that aborts on tenant-less |
 | rows instead of inventing data.    |
@@ -1105,10 +1324,10 @@ input), tenant filter builder, RBAC matrix, media-storage policy.
 | PR003   | Creator Discovery Engine          | ✅ done |
 | PR004   | Outreach AI & Sales Pipeline      | ✅ done |
 | PR005   | Connector Framework               | ✅ done |
-| PR005.1 | Product Match Architecture        | ✅ this |
-| PR006   | Campaign Engine                   | ⏭ next  |
-| PR007   | Messaging & Inbox                 | planned |
-| PR008   | Analytics & Reporting             | planned |
+| PR005.1 | Product Match Architecture        | ✅ done |
+| PR006   | Campaign Engine & AI Matching     | ✅ done |
+| PR007   | AI Personalization Engine         | ✅ this |
+| PR008   | Analytics & Attribution           | ⏭ next  |
 | PR009   | Billing & Multi-tenancy hardening | planned |
 
 ## PR004 — Outreach AI & Sales Pipeline (2026-09-22)

@@ -40,3 +40,8 @@ services:
           property: connectionString
       - key: NEXTAUTH_URL
         sync: false
+      # PR007 — AI Personalization Engine. Never committed; set manually in
+      # the Render dashboard. Read only server-side (see
+      # modules/ai/openai/client.ts) — never exposed to the client bundle.
+      - key: OPENAI_API_KEY
+        sync: false

@@ -10,6 +10,7 @@ import {
   Plug,
   Link2,
   Settings,
+  Sparkles,
 } from "lucide-react";
 
 export interface NavItem {
@@ -30,6 +31,7 @@ export const sidebarNav: NavItem[] = [
   { label: "Trends", href: "/dashboard/trends", icon: TrendingUp },
   { label: "Creators", href: "/dashboard/creators", icon: Users },
   { label: "Outreach AI", href: "/dashboard/outreach", icon: MessagesSquare },
+  { label: "IA — Personalização", href: "/dashboard/ai", icon: Sparkles },
   { label: "Conectores", href: "/dashboard/connectors", icon: Plug },
   { label: "Matches", href: "/dashboard/matches", icon: Link2 },
   { label: "Campanhas", href: "/dashboard/campaigns", icon: Megaphone },
