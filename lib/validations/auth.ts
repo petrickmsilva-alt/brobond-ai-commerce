@@ -6,8 +6,10 @@ export const PASSWORD_MIN_LENGTH = 8;
 /**
  * Login form schema (client + server).
  *
- * There is no public sign-up schema on purpose: accounts are provisioned
- * out-of-band in PR000.2 (see `prisma/seed.ts`).
+ * Its sign-up counterpart lives at the bottom of this file (PR010.4 §3). The
+ * two are deliberately separate: login asks for the least it can get away
+ * with, while `signupSchema` provisions a tenant and therefore validates far
+ * more.
  */
 export const loginSchema = z.object({
   email: z.string().email("Informe um email válido."),
@@ -92,56 +94,11 @@ export const loginWithNextSchema = loginSchema.extend({
 
 export type LoginWithNextInput = z.infer<typeof loginWithNextSchema>;
 
-// --- §5 Solicitar acesso -------------------------------------------
-
-/**
- * Public access-request form.
- *
- * This is the only unauthenticated write in the product, so every field is
- * length-bounded to keep a scripted flood from writing unbounded text.
- */
-export const accessRequestSchema = z.object({
-  name: z.string().trim().min(2, "Informe seu nome completo.").max(120, "Nome muito longo."),
-  company: z
-    .string()
-    .trim()
-    .min(2, "Informe o nome da empresa.")
-    .max(160, "Nome da empresa muito longo."),
-  email: emailSchema,
-  whatsapp: z
-    .string()
-    .trim()
-    .max(32, "WhatsApp muito longo.")
-    .regex(/^[0-9+()\-\s]*$/, "Use apenas números, espaços e os símbolos + ( ) -.")
-    .optional()
-    .or(z.literal(""))
-    .transform((value) => (value && value.trim() ? value.trim() : null)),
-  message: z
-    .string()
-    .trim()
-    .max(2000, "Mensagem muito longa (máx. 2000 caracteres).")
-    .optional()
-    .or(z.literal(""))
-    .transform((value) => (value && value.trim() ? value.trim() : null)),
-});
-
-export type AccessRequestInput = z.input<typeof accessRequestSchema>;
-export type AccessRequestData = z.output<typeof accessRequestSchema>;
-
-/** ADMIN review decision on a pending access request (§5 / §11). */
-export const reviewAccessRequestSchema = z.object({
-  id: z.string().trim().min(1, "Solicitação inválida."),
-  decision: z.enum(["APPROVED", "REJECTED"]),
-  note: z
-    .string()
-    .trim()
-    .max(1000)
-    .optional()
-    .or(z.literal(""))
-    .transform((value) => (value && value.trim() ? value.trim() : null)),
-});
-
-export type ReviewAccessRequestInput = z.infer<typeof reviewAccessRequestSchema>;
+// --- PR010.4 §1 — "Solicitar acesso" removed -----------------------
+//
+// `accessRequestSchema` / `reviewAccessRequestSchema` are gone with the flow
+// they described. The public door is now `/signup` (below), which provisions
+// a real tenant instead of queueing a lead for an ADMIN to review.
 
 // --- §6 Esqueci minha senha ----------------------------------------
 
@@ -215,3 +172,138 @@ export const revokeInvitationSchema = z.object({
 });
 
 export type RevokeInvitationInput = z.infer<typeof revokeInvitationSchema>;
+
+// ------------------------------------------------------------------
+// PR010.4 — Self Signup & First Tenant Setup
+// ------------------------------------------------------------------
+
+/**
+ * WHY THIS BLOCK EXISTS
+ * ---------------------
+ * PR010.2/PR010.3 had exactly one public write: an inert `AccessRequest`.
+ * PR010.4 replaces it with a real cadastro — `/signup` creates an
+ * `Organization`, an ADMIN `User` and the workspace defaults in one
+ * transaction. That makes this the most sensitive validator in the codebase,
+ * so every field is bounded and every message is written to be shown BELOW
+ * THE FIELD IT DESCRIBES (§8): "Revise os campos destacados" is never the
+ * whole story a user gets.
+ */
+
+/** Maximum accepted length of a person's name. */
+export const NAME_MAX_LENGTH = 120;
+
+/** Maximum accepted length of a company / workspace name. */
+export const COMPANY_MAX_LENGTH = 160;
+
+/** Full name of the person creating the workspace (§3, obrigatório). */
+export const fullNameSchema = z
+  .string({ required_error: "Informe seu nome completo." })
+  .trim()
+  .min(1, "Informe seu nome completo.")
+  .min(3, "Seu nome deve ter ao menos 3 caracteres.")
+  .max(NAME_MAX_LENGTH, `O nome deve ter no máximo ${NAME_MAX_LENGTH} caracteres.`)
+  .refine((value) => /[\p{L}]/u.test(value), {
+    message: "Informe um nome válido (apenas números não é um nome).",
+  });
+
+/** Company name — becomes the Organization and the workspace (§3, §4). */
+export const companySchema = z
+  .string({ required_error: "Informe o nome da empresa." })
+  .trim()
+  .min(1, "Informe o nome da empresa.")
+  .min(2, "O nome da empresa deve ter ao menos 2 caracteres.")
+  .max(COMPANY_MAX_LENGTH, `O nome da empresa deve ter no máximo ${COMPANY_MAX_LENGTH} caracteres.`)
+  .refine((value) => /[\p{L}\p{N}]/u.test(value), {
+    message: "Informe um nome de empresa válido.",
+  });
+
+/** Digits of a WhatsApp number, with formatting stripped. */
+export function normalizeWhatsapp(value: string): string {
+  return value.replace(/[^\d]/g, "");
+}
+
+/**
+ * WhatsApp — REQUIRED in PR010.4 §3 (it was optional on the old access
+ * request). Accepts the way Brazilians actually type a number
+ * (`+55 (11) 98888-7777`) and validates the DIGITS, not the punctuation, so
+ * a correct number is never rejected for its formatting.
+ *
+ * 10 digits = landline with DDD, 11 = mobile with DDD, up to 15 = the E.164
+ * maximum for an international number.
+ */
+export const whatsappSchema = z
+  .string({ required_error: "Informe seu WhatsApp." })
+  .trim()
+  .min(1, "Informe seu WhatsApp.")
+  .max(32, "WhatsApp muito longo.")
+  .regex(/^[0-9+()\-\s.]+$/, "Use apenas números e os símbolos + ( ) - . e espaço.")
+  .refine((value) => normalizeWhatsapp(value).length >= 10, {
+    message: "WhatsApp inválido — informe DDD e número (ex.: 11 98888-7777).",
+  })
+  .refine((value) => normalizeWhatsapp(value).length <= 15, {
+    message: "WhatsApp inválido — número longo demais.",
+  })
+  .transform((value) => normalizeWhatsapp(value));
+
+/** The terms checkbox (§3). A missing accept is a field error, not a banner. */
+export const termsSchema = z.literal(true, {
+  errorMap: () => ({ message: "É necessário aceitar os termos para continuar." }),
+});
+
+/**
+ * The full signup payload.
+ *
+ * NOTE ON `role`: it is absent on purpose. The first user of a brand-new
+ * tenant is ADMIN because `signupService` says so, server-side. A client can
+ * never send a role — there is no field to send it in.
+ */
+export const signupSchema = z
+  .object({
+    name: fullNameSchema,
+    company: companySchema,
+    whatsapp: whatsappSchema,
+    // `emailSchema` / `passwordSchema` are shared with the login, reset and
+    // invite flows, where a missing key is a malformed request rather than an
+    // empty form field. Here it IS an empty form field, so the "required"
+    // case is given its own Portuguese message before delegating to the
+    // shared rules — §8 does not tolerate a bare "Required".
+    email: z.string({ required_error: "Informe seu email." }).pipe(emailSchema),
+    password: z.string({ required_error: "Crie uma senha." }).pipe(passwordSchema),
+    confirmPassword: z
+      .string({ required_error: "Confirme sua senha." })
+      .min(1, "Confirme sua senha."),
+    acceptTerms: termsSchema,
+    next: nextPathSchema,
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "As senhas não coincidem.",
+    path: ["confirmPassword"],
+  });
+
+/** What the form sends (pre-transform). */
+export type SignupInput = z.input<typeof signupSchema>;
+/** What the service receives (post-transform: trimmed, lowercased, digits). */
+export type SignupData = z.output<typeof signupSchema>;
+
+/**
+ * Client-side mirror used by the form's resolver.
+ *
+ * Identical rules, minus `next` (which the page injects server-side). Keeping
+ * it a separate export means the browser validates exactly what the server
+ * validates — the real-time feedback of §3 can never promise something the
+ * server will then reject.
+ */
+export const signupFormSchema = signupSchema;
+
+/** Field names of the signup form, in the order they are rendered. */
+export const SIGNUP_FIELDS = [
+  "name",
+  "company",
+  "whatsapp",
+  "email",
+  "password",
+  "confirmPassword",
+  "acceptTerms",
+] as const;
+
+export type SignupField = (typeof SIGNUP_FIELDS)[number];

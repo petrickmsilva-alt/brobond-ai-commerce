@@ -223,16 +223,6 @@ enum DeliveryAccountStatus {
   ERROR
 }
 
-/// Lifecycle of a public "solicitar acesso" request (PR010.2).
-/// A request is NOT an account: approving one only unlocks an ADMIN to send
-/// an `Invitation` — it never provisions a `User` by itself, so the
-/// "no public sign-up" contract from PR000.2 is preserved.
-enum AccessRequestStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
 /// Lifecycle of a workspace invitation (PR010.2).
 /// `EXPIRED` is a derived terminal state persisted lazily when a stale
 /// invitation is read — the token itself is validated against `expiresAt`,
@@ -255,6 +245,38 @@ model Organization {
   id   String @id @default(cuid())
   name String
   slug String @unique
+
+  // ------------------------------------------------------------------
+  // First tenant setup (PR010.4 — Self Signup)
+  // ------------------------------------------------------------------
+  // Written once by `signupService.register()` when the very first ADMIN of
+  // this tenant creates it through `/signup`. They are presentation/defaults
+  // only — no credential, no token, nothing secret ever lands here.
+
+  /// Display name of the workspace shown in the sidebar switcher. Defaults to
+  /// the company name typed at signup; kept separate so renaming the legal
+  /// entity never has to rename the workspace.
+  workspaceName String?
+
+  /// Contact WhatsApp captured at signup, stored exactly as normalized by the
+  /// validator. Never used for authentication.
+  whatsapp String?
+
+  /// Default currency / locale / timezone applied to every new record of this
+  /// tenant. Seeded at signup so a brand-new workspace is never "unconfigured".
+  currency String @default("BRL")
+  locale   String @default("pt-BR")
+  timezone String @default("America/Sao_Paulo")
+
+  /// Onboarding checklist state (PR010.4 §9). `onboardingCompletedAt` is set
+  /// when every step has been done; until then `/dashboard` shows the
+  /// first-run checklist.
+  onboardingCompletedAt DateTime?
+
+  /// Whether this tenant was created by the public self-signup flow (as
+  /// opposed to the seed or an internal migration). Useful for analytics and
+  /// for deciding whether the first-run experience has ever been relevant.
+  selfServe Boolean @default(false)
 
   // Tenant-scoped relations
   users     User[]
@@ -1491,43 +1513,10 @@ model VerificationToken {
 // Enterprise Authentication & UX (PR010.2)
 // ------------------------------------------------------------------
 
-/// A public request for access to the platform (PR010.2).
-///
-/// SECURITY CONTRACT
-/// -----------------
-/// This is the ONLY model in the schema written by an unauthenticated
-/// visitor, and it is deliberately inert: it carries no password, no role
-/// and no tenant. It cannot authenticate anybody. An ADMIN reviews the
-/// queue in Configurações and, if approved, sends an `Invitation` — which
-/// is the only path that ever creates a `User`. "No public sign-up" (the
-/// PR000.2 contract) therefore still holds.
-model AccessRequest {
-  id String @id @default(cuid())
-
-  name    String
-  company String
-  email   String
-  /// Optional WhatsApp/phone, stored exactly as typed (digits normalized in
-  /// the validator) — never used for authentication.
-  whatsapp String?
-  message  String? @db.Text
-
-  status AccessRequestStatus @default(PENDING)
-
-  /// Free-form note left by the reviewing ADMIN. Never shown to the requester.
-  reviewNote String? @db.Text
-  reviewedAt DateTime?
-  /// `User.id` of the reviewing ADMIN. Intentionally NOT a relation: the
-  /// request lives outside any tenant, so it must survive the reviewer's
-  /// deletion without cascading.
-  reviewedBy String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([status, createdAt])
-  @@index([email])
-}
+/// PR010.4 — the `AccessRequest` model was removed together with the
+/// "Solicitar acesso" flow. Self-signup (`/signup`) now provisions the
+/// Organization + ADMIN User + workspace defaults directly, so there is no
+/// queue of inert leads to review any more.
 
 /// A single-use invitation that provisions one `User` inside one tenant
 /// (PR010.2).
@@ -1558,8 +1547,9 @@ model Invitation {
 
   status     InvitationStatus @default(PENDING)
   acceptedAt DateTime?
-  /// `User.id` of the ADMIN who issued the invitation (no relation on
-  /// purpose — see `AccessRequest.reviewedBy`).
+  /// `User.id` of the ADMIN who issued the invitation. Intentionally NOT a
+  /// relation: the invitation must survive the inviter's deletion without
+  /// cascading away the invited member's provenance.
   invitedBy String?
 
   createdAt DateTime @default(now())

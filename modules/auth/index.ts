@@ -1,39 +1,79 @@
 /**
- * Auth domain barrel (PR010.2 · PR010.3).
+ * Auth domain barrel (PR010.2 · PR010.3 · PR010.4).
  *
- * Groups the flows introduced by "Enterprise Authentication & UX" and
- * "Complete Auth Flow": access requests (§5), password reset (§6) and
- * invitations (§7), plus the PR010.3 additions — the approval orchestration
- * that turns an approved request into a delivered invitation (§2) and the
- * `InvitationMailer` seam with its `ConsoleMailer` implementation (§9). Each
- * service is created through a `create*Service(db)` factory so tests can
+ * PR010.4 reshapes this domain. The access-request queue and the approval
+ * orchestration that fed it are GONE — `/signup` now provisions a whole
+ * tenant, so there are no leads to review. What remains, plus what replaces
+ * them:
+ *
+ *   - `signup.service`              — Organization + ADMIN User + Workspace
+ *                                     + seed, in one transaction (§4/§5)
+ *   - `onboarding.service`          — the derived first-run checklist (§9)
+ *   - `tenant-provisioning`         — the pure rules behind both (slugs,
+ *                                     defaults, checklist derivation)
+ *   - `invitation.service`          — adding teammates to an EXISTING
+ *                                     workspace (no longer mandatory)
+ *   - `invitation-delivery.service` — mailing an invite link
+ *   - `password-reset.service`      — §6, unchanged
+ *
+ * Each service is created through a `create*Service(db)` factory so tests can
  * inject an in-memory database, exactly like the connectors and delivery
  * modules do.
  *
- * Everything here is `server-only`: these modules touch Prisma and bcrypt and
- * must never be pulled into a client bundle.
+ * Everything server-side here is `server-only`: these modules touch Prisma and
+ * bcrypt and must never be pulled into a client bundle. The one exception is
+ * `tenant-provisioning`, which is pure and safe anywhere.
  */
 
 export {
-  createAccessRequestService,
-  accessRequestService,
-  type AccessRequestCounts,
-  type AccessRequestDatabase,
-  type AccessRequestService,
-  type AccessRequestView,
-} from "./access-request.service";
+  createSignupService,
+  signupService,
+  SignupError,
+  type ProvisionTenantInput,
+  type SignupDatabase,
+  type SignupErrorCode,
+  type SignupResult,
+  type SignupService,
+} from "./signup.service";
 
 export {
-  createApprovalService,
-  approvalService,
-  type ApprovalDatabase,
-  type ApprovalErrorCode,
-  type ApprovalResult,
-  type ApprovalService,
+  createOnboardingService,
+  onboardingService,
+  type OnboardingDatabase,
+  type OnboardingService,
+  type OnboardingState,
+  type OnboardingStepView,
+} from "./onboarding.service";
+
+export {
+  DEFAULT_TENANT_SETTINGS,
+  FREEMAIL_DOMAINS,
+  ONBOARDING_STEPS,
+  RESERVED_SLUGS,
+  TENANT_SLUG_FALLBACK,
+  TENANT_SLUG_MAX_LENGTH,
+  countCompletedSteps,
+  defaultCompanyFromEmail,
+  defaultWorkspaceName,
+  deriveOnboardingProgress,
+  displayNameFromEmail,
+  isOnboardingComplete,
+  resolveTenantSlug,
+  tenantSlugBase,
+  type OnboardingCounters,
+  type OnboardingProgress,
+  type OnboardingStepId,
+  type TenantSettings,
+} from "./tenant-provisioning";
+
+export {
+  createInvitationDeliveryService,
+  invitationDeliveryService,
   type DeliverInvitationInput,
   type DeliveryResult,
-  type RejectionResult,
-} from "./approval.service";
+  type InvitationDeliveryDatabase,
+  type InvitationDeliveryService,
+} from "./invitation-delivery.service";
 
 export {
   createInvitationService,

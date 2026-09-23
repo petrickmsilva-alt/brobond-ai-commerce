@@ -48,11 +48,14 @@ export default function InviteExpiredPage() {
             Ir para o login
           </Button>
         </Link>
+        {/* PR010.4 §1/§2 — "Solicitar acesso" is gone. Someone holding a
+            dead invite link is not stuck any more: they can create their own
+            workspace right now instead of waiting on an administrator. */}
         <Link
-          href="/request-access"
+          href="/signup"
           className="text-xs font-medium text-white/45 transition-colors hover:text-white"
         >
-          Solicitar acesso
+          Criar minha própria conta
         </Link>
       </div>
     </AuthCardShell>

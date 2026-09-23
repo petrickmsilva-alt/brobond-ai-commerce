@@ -5,7 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { LandingHeader } from "@/components/marketing/landing-header";
 import { APP_NAME, APP_SHORT_NAME } from "@/lib/constants";
 import { getCurrentUser } from "@/lib/session";
-import { DEFAULT_AUTHENTICATED_REDIRECT, buildLoginUrl } from "@/lib/auth-routes";
+import {
+  DEFAULT_AUTHENTICATED_REDIRECT,
+  LOGIN_ROUTE,
+  SIGNUP_ROUTE,
+  buildLoginUrl,
+} from "@/lib/auth-routes";
 
 const features = [
   {
@@ -86,14 +91,19 @@ export default async function LandingPage() {
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
-          <Link href="/login">
+          {/* PR010.4 §7 — the secondary CTA is now "Criar Conta".
+              "Fazer Login" moves down to a ghost button: a first-time visitor
+              on a marketing page is far more likely to need an account than a
+              login form, and "Solicitar acesso" no longer exists at all. */}
+          <Link href={SIGNUP_ROUTE} data-testid="landing-signup-cta">
             <Button size="lg" variant="outline">
-              Fazer Login
+              Criar Conta
+              <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
-          <Link href="/request-access">
+          <Link href={LOGIN_ROUTE} data-testid="landing-login-cta">
             <Button size="lg" variant="ghost">
-              Solicitar acesso
+              Fazer Login
             </Button>
           </Link>
         </div>

@@ -6,14 +6,18 @@ import { AuthorizationError } from "@/lib/rbac";
 import { requireAdmin } from "@/lib/session";
 import { createInvitationSchema, revokeInvitationSchema } from "@/lib/validations/auth";
 import { InvitationError, invitationService } from "@/modules/auth/invitation.service";
-import { approvalService } from "@/modules/auth/approval.service";
-import { reviewAccessRequestAction as reviewAccessRequest } from "@/app/dashboard/settings/access/actions";
+import { invitationDeliveryService } from "@/modules/auth/invitation-delivery.service";
 
 /**
- * Administration server actions for Configurações (PR010.2 §5, §7, §11).
+ * Administration server actions for Configurações (PR010.2 §7, §11 ·
+ * PR010.4 §1).
+ *
+ * PR010.4 removed the access-request queue: `/signup` provisions tenants
+ * directly, so the only administration left here is inviting teammates into
+ * an existing workspace.
  *
  * RBAC §11 — enforced here, server-side, on every single action:
- *   ADMIN   → gerencia convites · aprova acesso
+ *   ADMIN   → gerencia convites
  *   MANAGER → sem convites (blocked by `requireAdmin`)
  *   MEMBER  → leitura (blocked by `requireAdmin`)
  *
@@ -72,10 +76,10 @@ export async function createInvitationAction(
       invitedBy: admin.id,
     });
 
-    // Shared with the approve flow: resolves the org name, builds the URL
-    // from APP_URL/NEXTAUTH_URL and hands it to the mailer. A mailer failure
-    // is non-fatal — the invitation exists and the URL is still returned.
-    const delivery = await approvalService.deliverInvitation({
+    // Resolves the org name, builds the URL from APP_URL/NEXTAUTH_URL and
+    // hands it to the mailer. A mailer failure is non-fatal — the invitation
+    // exists and the URL is still returned for the ADMIN to copy.
+    const delivery = await invitationDeliveryService.deliverInvitation({
       organizationId: admin.organizationId,
       email: invitation.email,
       name: invitation.name,
@@ -110,25 +114,9 @@ export async function revokeInvitationAction(input: unknown): Promise<AdminActio
 }
 
 // ------------------------------------------------------------------
-// §5 — Solicitações de acesso (ADMIN only)
+// PR010.4 §1 — "Solicitações de acesso" removed
 // ------------------------------------------------------------------
-
-/**
- * Approve or reject a pending access request.
- *
- * PR010.3 §2 — "Ao aprovar: Criar Invitation": this now delegates to the
- * canonical action behind `/dashboard/settings/access`, which reviews the
- * request AND issues + delivers the invitation (role MEMBER) in one step.
- * The delegate (not a copy) is what keeps the two surfaces from ever
- * disagreeing. Reject still records the decision only — nothing is created,
- * nothing is sent.
- */
-export async function reviewAccessRequestAction(
-  input: unknown,
-): Promise<AdminActionResult<{ inviteUrl?: string; delivered?: boolean }>> {
-  try {
-    return await reviewAccessRequest(input);
-  } catch (error) {
-    return fail(error, "reviewAccessRequest");
-  }
-}
+// `reviewAccessRequestAction` is gone with the queue it reviewed. There are
+// no leads to approve any more: a visitor creates their own Organization and
+// ADMIN user at `/signup`. Invitations above remain, but only for what they
+// were always actually good at — adding a teammate to an EXISTING workspace.

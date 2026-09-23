@@ -97,7 +97,7 @@ describe("isProtectedRoute()", () => {
     expect(isProtectedRoute(path.split("?")[0] as string)).toBe(true);
   });
 
-  it.each(["/", "/login", "/request-access", "/forgot-password", "/invite/abc", "/about"])(
+  it.each(["/", "/login", "/signup", "/forgot-password", "/invite/abc", "/about"])(
     "does not protect %s",
     (path) => {
       expect(isProtectedRoute(path)).toBe(false);
@@ -137,7 +137,14 @@ describe("isAuthRoute() / isPublicRoute()", () => {
 
   it("bypasses the public auth entry points", () => {
     expect(isPublicRoute("/invite/sometoken")).toBe(true);
-    expect(isPublicRoute("/request-access")).toBe(true);
+  });
+
+  it("does NOT bypass /signup — it is an auth route, so the middleware must see it", () => {
+    // PR010.4 §2: a signed-in visitor hitting /signup is redirected to their
+    // dashboard. Bypassing the middleware (as /request-access used to) would
+    // hand them a form that tries to mint a second organization.
+    expect(isPublicRoute("/signup")).toBe(false);
+    expect(isAuthRoute("/signup")).toBe(true);
   });
 
   it("does not bypass a protected route", () => {

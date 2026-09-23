@@ -48,7 +48,9 @@ export async function getShellContext(): Promise<ShellContext> {
     organizationId
       ? prisma.organization.findUnique({
           where: { id: organizationId },
-          select: { name: true },
+          // PR010.4 — `workspaceName` is what a self-signup tenant named its
+          // workspace; `name` is the legal/company name it falls back to.
+          select: { name: true, workspaceName: true },
         })
       : Promise.resolve(null),
     organizationId
@@ -69,7 +71,7 @@ export async function getShellContext(): Promise<ShellContext> {
     },
     workspace: {
       id: organizationId ?? "unknown",
-      name: organization?.name ?? APP_SHORT_NAME,
+      name: organization?.workspaceName ?? organization?.name ?? APP_SHORT_NAME,
       caption: "Workspace",
     },
     tiktokStatus,

@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { BarChart3, ShieldCheck, Sparkles, Users, Zap } from "lucide-react";
+import { ArrowRight, BarChart3, ShieldCheck, Sparkles, Users, Zap } from "lucide-react";
 import { LoginForm } from "@/components/auth/login-form";
 import { SsoButtons } from "@/components/auth/sso-buttons";
 import { PlatformStatus } from "@/components/auth/platform-status";
+import { Button } from "@/components/ui/button";
 import { FadeIn, SlideIn } from "@/components/ui/motion";
 import { APP_NAME, APP_SHORT_NAME } from "@/lib/constants";
 import { showGoogleProvider } from "@/lib/auth-providers";
 import { getCurrentUser } from "@/lib/session";
-import { resolveNext, sanitizeNext } from "@/lib/auth-routes";
+import { buildSignupUrl, resolveNext, sanitizeNext } from "@/lib/auth-routes";
 
 export const metadata: Metadata = {
   title: "Login",
@@ -41,10 +42,10 @@ const benefits = [
 /**
  * Enterprise login (PR010.2 §3 — full refactor).
  *
- * LAYOUT (§3)
+ * LAYOUT (§3 · updated by PR010.4 §6)
  *   Esquerda: brand · headline · benefícios · status da plataforma
  *   Direita:  card glass · email · senha · entrar · Google (condicional) ·
- *             esqueci senha · solicitar acesso
+ *             esqueci senha · CRIAR CONTA
  *
  * BEHAVIOUR
  * ---------
@@ -200,19 +201,34 @@ export default async function LoginPage({
             )}
           </div>
 
-          {/* §3 — solicitar acesso */}
-          <p className="mt-6 text-center text-xs leading-relaxed text-white/40">
-            Ainda não tem acesso?{" "}
-            <Link
-              href="/request-access"
-              className="font-medium text-brand-300 underline-offset-4 transition-colors hover:text-brand-200 hover:underline"
-            >
-              Solicitar acesso
+          {/* ------------------------------------------------------------ */}
+          {/* PR010.4 §6 — "Criar conta"                                    */}
+          {/* ------------------------------------------------------------ */}
+          {/* This block replaces the old access-request link AND the line   */}
+          {/* under it that told visitors there was no public cadastro.      */}
+          {/* Both statements are now false: /signup creates a real tenant,  */}
+          {/* so the affordance is a BUTTON, not a footnote — it is the      */}
+          {/* second most important action on this screen.                   */}
+          <div className="mt-6">
+            <div className="flex items-center gap-3" aria-hidden>
+              <span className="h-px flex-1 bg-white/8" />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/30">
+                novo por aqui?
+              </span>
+              <span className="h-px flex-1 bg-white/8" />
+            </div>
+
+            <Link href={buildSignupUrl(next)} data-testid="login-signup-cta" className="mt-4 block">
+              <Button variant="outline" size="lg" className="w-full">
+                Criar conta
+                <ArrowRight aria-hidden className="h-4 w-4" />
+              </Button>
             </Link>
-          </p>
-          <p className="mt-2 text-center text-[11px] leading-relaxed text-white/25">
-            O acesso é provisionado pela sua organização — não há cadastro público.
-          </p>
+
+            <p className="mt-3 text-center text-[11px] leading-relaxed text-white/30">
+              Crie sua organização em menos de um minuto. Você entra como administrador.
+            </p>
+          </div>
         </FadeIn>
       </main>
     </div>

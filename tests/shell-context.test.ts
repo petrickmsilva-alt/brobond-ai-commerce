@@ -91,18 +91,29 @@ describe("shell context — tenant isolation", () => {
 
     expect(prismaMock.organization.findUnique).toHaveBeenCalledWith({
       where: { id: "org_acme" },
-      select: { name: true },
+      // PR010.4 — `workspaceName` joins the projection: a self-signup tenant
+      // named its workspace, and the sidebar must show that name.
+      select: { name: true, workspaceName: true },
     });
     for (const call of prismaMock.tikTokAccount.count.mock.calls) {
       expect(call[0].where.organizationId).toBe("org_acme");
     }
   });
 
-  it("selects only the organization's name — never a relation or a secret", async () => {
+  it("selects only display names — never a relation or a secret", async () => {
     await getShellContext();
 
     const select = prismaMock.organization.findUnique.mock.calls[0]![0].select;
-    expect(Object.keys(select)).toEqual(["name"]);
+    expect(Object.keys(select).sort()).toEqual(["name", "workspaceName"]);
+  });
+
+  it("never projects the tenant's contact or configuration columns", async () => {
+    await getShellContext();
+
+    const select = prismaMock.organization.findUnique.mock.calls[0]![0].select;
+    for (const forbidden of ["whatsapp", "users", "invitations", "tikTokAccounts"]) {
+      expect(select).not.toHaveProperty(forbidden);
+    }
   });
 });
 
