@@ -8,6 +8,7 @@ import { ChevronDown, PanelLeft, PanelLeftClose, X } from "lucide-react";
 import { navigationGroups, isNavItemActive, findActiveGroup } from "@/lib/navigation";
 import { WorkspaceSwitcher, type WorkspaceOption } from "@/components/layout/workspace-switcher";
 import { Badge } from "@/components/ui/badge";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 import { focusRingRaised } from "@/components/ui/design-system/theme";
 import { duration, easing } from "@/components/ui/design-system/tokens";
@@ -35,6 +36,15 @@ interface SidebarProps {
 }
 
 const EASE = [...easing.standard] as [number, number, number, number];
+const DESKTOP_QUERY = "(min-width: 1024px)";
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
 
 export function Sidebar({
   collapsed,
@@ -45,7 +55,62 @@ export function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const reducedMotion = useReducedMotion();
+  const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const activeGroup = findActiveGroup(pathname);
+  const sidebarRef = React.useRef<HTMLElement>(null);
+  const closeButtonRef = React.useRef<HTMLButtonElement>(null);
+
+  // A persisted desktop collapse preference must never turn the mobile drawer
+  // into a 76px icon strip. On small screens the open drawer is always full
+  // width and labelled; the preference resumes when the viewport reaches lg.
+  const railCollapsed = isDesktop && collapsed;
+  const sidebarAvailable = isDesktop || mobileOpen;
+
+  // Treat the mobile rail as a modal disclosure: lock page scroll, move focus
+  // inside, contain Tab navigation and restore focus to the trigger on close.
+  React.useEffect(() => {
+    if (isDesktop || !mobileOpen) return undefined;
+
+    const trigger = document.querySelector<HTMLElement>('[aria-controls="app-sidebar"]');
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const animationFrame = window.requestAnimationFrame(() => closeButtonRef.current?.focus());
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseMobile();
+        return;
+      }
+
+      if (event.key !== "Tab" || !sidebarRef.current) return;
+      const focusable = Array.from(
+        sidebarRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+      ).filter((element) => !element.hasAttribute("disabled") && element.offsetParent !== null);
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      // A mobile→desktop resize hides the trigger; do not move focus to an
+      // element that has just become display:none.
+      if (!window.matchMedia(DESKTOP_QUERY).matches) trigger?.focus();
+    };
+  }, [isDesktop, mobileOpen, onCloseMobile]);
 
   // Groups start expanded; the group owning the active route is force-opened
   // so the current page is always reachable without an extra click.
@@ -82,14 +147,21 @@ export function Sidebar({
       </AnimatePresence>
 
       <aside
+        ref={sidebarRef}
         id="app-sidebar"
+        role={!isDesktop && mobileOpen ? "dialog" : undefined}
+        aria-modal={!isDesktop && mobileOpen ? true : undefined}
         aria-label="Navegação principal"
+        aria-hidden={!sidebarAvailable ? true : undefined}
+        inert={!sidebarAvailable ? true : undefined}
         className={cn(
           "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-white/8",
           "bg-surface-900/85 backdrop-blur-xl",
           "transition-[width,transform] duration-200 ease-out",
-          collapsed ? "w-[76px]" : "w-[264px]",
-          mobileOpen ? "translate-x-0" : "-translate-x-full",
+          railCollapsed ? "w-[76px]" : "w-[min(320px,calc(100vw-24px))] lg:w-[264px]",
+          mobileOpen
+            ? "translate-x-0"
+            : "pointer-events-none -translate-x-full lg:pointer-events-auto",
           "lg:translate-x-0",
         )}
       >
@@ -103,14 +175,15 @@ export function Sidebar({
         <div
           className={cn(
             "relative flex h-16 shrink-0 items-center gap-2 border-b border-white/8 px-3",
-            collapsed && "justify-center px-0",
+            railCollapsed && "justify-center px-0",
           )}
         >
-          <div className={cn("min-w-0 flex-1", collapsed && "flex-none")}>
-            <WorkspaceSwitcher workspace={workspace} collapsed={collapsed} />
+          <div className={cn("min-w-0 flex-1", railCollapsed && "flex-none")}>
+            <WorkspaceSwitcher workspace={workspace} collapsed={railCollapsed} />
           </div>
 
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onCloseMobile}
             className={cn(
@@ -134,7 +207,7 @@ export function Sidebar({
 
             return (
               <div key={group.id} className="pb-1">
-                {!collapsed ? (
+                {!railCollapsed ? (
                   <button
                     type="button"
                     onClick={() => toggleGroup(group.id)}
@@ -165,16 +238,16 @@ export function Sidebar({
                 )}
 
                 <AnimatePresence initial={false}>
-                  {(expanded || collapsed) && (
+                  {(expanded || railCollapsed) && (
                     <motion.ul
                       id={`nav-group-${group.id}`}
-                      initial={reducedMotion || collapsed ? false : { height: 0, opacity: 0 }}
+                      initial={reducedMotion || railCollapsed ? false : { height: 0, opacity: 0 }}
                       animate={{ height: "auto", opacity: 1 }}
                       exit={reducedMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
                       transition={{ duration: duration.normal, ease: EASE }}
                       className="overflow-hidden"
                     >
-                      <li className={cn("space-y-0.5", !collapsed && "pt-1")}>
+                      <li className={cn("space-y-0.5", !railCollapsed && "pt-1")}>
                         {group.items.map((item) => {
                           const active = isNavItemActive(pathname, item.href);
                           const Icon = item.icon;
@@ -185,14 +258,14 @@ export function Sidebar({
                               href={item.href}
                               onClick={onCloseMobile}
                               aria-current={active ? "page" : undefined}
-                              title={collapsed ? item.label : undefined}
+                              title={railCollapsed ? item.label : undefined}
                               className={cn(
                                 "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
                                 "transition-[background-color,color] duration-150",
                                 active
                                   ? "bg-brand-500/14 text-white"
                                   : "text-white/60 hover:bg-white/[0.06] hover:text-white",
-                                collapsed && "justify-center px-0",
+                                railCollapsed && "justify-center px-0",
                                 focusRingRaised,
                               )}
                             >
@@ -214,7 +287,7 @@ export function Sidebar({
                                 )}
                               />
 
-                              {!collapsed && (
+                              {!railCollapsed && (
                                 <>
                                   <span className="truncate">{item.label}</span>
                                   {item.badge && (
@@ -230,7 +303,7 @@ export function Sidebar({
                                 </>
                               )}
 
-                              {collapsed && (item.badge || item.planned) && (
+                              {railCollapsed && (item.badge || item.planned) && (
                                 <span
                                   aria-hidden
                                   className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-brand-400"
@@ -253,16 +326,16 @@ export function Sidebar({
           <button
             type="button"
             onClick={onToggleCollapsed}
-            aria-expanded={!collapsed}
+            aria-expanded={!railCollapsed}
             aria-controls="app-sidebar"
             className={cn(
               "hidden w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/45",
               "transition-colors duration-150 hover:bg-white/[0.06] hover:text-white lg:flex",
-              collapsed && "justify-center px-0",
+              railCollapsed && "justify-center px-0",
               focusRingRaised,
             )}
           >
-            {collapsed ? (
+            {railCollapsed ? (
               <>
                 <PanelLeft aria-hidden className="h-[18px] w-[18px]" />
                 <span className="sr-only">Expandir navegação</span>

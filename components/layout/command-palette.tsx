@@ -49,6 +49,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const [query, setQuery] = React.useState("");
   const [activeIndex, setActiveIndex] = React.useState(0);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const returnFocusRef = React.useRef<HTMLElement | null>(null);
   const listId = React.useId();
 
   const results = React.useMemo(() => {
@@ -61,21 +62,35 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     );
   }, [query]);
 
-  // Reset transient state on every open so the palette is always predictable.
+  // Reset transient state on every open, move focus into the modal and restore
+  // it to the invoking control after close (WAI-ARIA dialog focus contract).
   React.useEffect(() => {
-    if (open) {
-      setQuery("");
-      setActiveIndex(0);
-      // Focus after the enter animation's first frame.
-      const id = window.requestAnimationFrame(() => inputRef.current?.focus());
-      return () => window.cancelAnimationFrame(id);
-    }
-    return undefined;
+    if (!open) return undefined;
+
+    returnFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setQuery("");
+    setActiveIndex(0);
+
+    // Focus after the enter animation's first frame.
+    const id = window.requestAnimationFrame(() => inputRef.current?.focus());
+    return () => {
+      window.cancelAnimationFrame(id);
+      returnFocusRef.current?.focus();
+      returnFocusRef.current = null;
+    };
   }, [open]);
 
   React.useEffect(() => {
     setActiveIndex(0);
   }, [query]);
+
+  // Keep keyboard selection visible in a long result set without moving DOM
+  // focus away from the combobox.
+  React.useEffect(() => {
+    if (!open || !results[activeIndex]) return;
+    document.getElementById(`${listId}-${activeIndex}`)?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, listId, open, results]);
 
   // Lock background scroll while the modal is open.
   React.useEffect(() => {
@@ -96,6 +111,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   );
 
   function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    // The combobox owns virtual focus through aria-activedescendant. Keeping
+    // physical focus there also traps keyboard navigation inside this modal.
+    if (event.key === "Tab") {
+      event.preventDefault();
+      inputRef.current?.focus();
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       onOpenChange(false);
@@ -153,7 +175,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                 ref={inputRef}
                 type="text"
                 role="combobox"
-                aria-expanded
+                aria-label="Buscar módulos, páginas e ações"
+                aria-expanded={true}
                 aria-controls={listId}
                 aria-autocomplete="list"
                 aria-activedescendant={
@@ -193,6 +216,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                   >
                     <button
                       type="button"
+                      tabIndex={-1}
+                      onMouseDown={(event) => event.preventDefault()}
                       onMouseEnter={() => setActiveIndex(index)}
                       onClick={() => go(entry.href)}
                       className={cn(
