@@ -5,6 +5,7 @@ import { AuthError } from "next-auth";
 import { Prisma } from "@prisma/client";
 import { signIn } from "@/lib/auth";
 import { resolveNext } from "@/lib/auth-routes";
+import { getPrisma } from "@/lib/prisma";
 import { signupSchema } from "@/lib/validations/auth";
 import { SignupReadinessError, assertSignupReady } from "@/modules/auth/signup-health.service";
 import { asError, logSignupEvent, logSignupFailure } from "@/modules/auth/signup-logging";
@@ -78,9 +79,23 @@ export async function signupAction(input: unknown): Promise<SignupActionResult> 
   try {
     logSignupEvent("SIGNUP_START", { requestId, stage });
 
+    // Resolve Prisma only inside the server action. A missing runtime database
+    // is reported with the stable public contract rather than a build failure.
+    let database;
+    try {
+      database = getPrisma();
+    } catch (error) {
+      throw new SignupReadinessError(
+        "PRISMA_UNAVAILABLE",
+        "Banco de dados temporariamente indisponível.",
+        "Prisma não pôde ser inicializado no runtime.",
+        error,
+      );
+    }
+
     // Verifies Prisma connectivity, migration metadata and both required
     // tables before any Organization/User write is attempted.
-    await assertSignupReady();
+    await assertSignupReady(database);
 
     stage = "PROVISIONING";
     await signupService.register(data, { requestId });

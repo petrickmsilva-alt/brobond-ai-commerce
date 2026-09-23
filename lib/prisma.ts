@@ -2,13 +2,12 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 /**
- * Process-wide Prisma singleton.
+ * Process-wide, lazy Prisma singleton.
  *
- * Next.js can evaluate the module through more than one server bundle and its
- * development hot reloader evaluates it repeatedly. The instance therefore
- * lives on `globalThis` in every environment, including production. That is a
- * stronger guarantee than relying on the ESM cache and prevents duplicate pg
- * pools from exhausting Render PostgreSQL connections.
+ * Importing this module is deliberately side-effect free. Next.js imports
+ * server modules while collecting build-time route data, where runtime secrets
+ * are not available. The client and its pg pool are therefore created only
+ * when application code first uses the database.
  */
 const globalForPrisma = globalThis as typeof globalThis & {
   __brobondPrisma?: PrismaClient;
@@ -17,8 +16,6 @@ const globalForPrisma = globalThis as typeof globalThis & {
 function createPrismaClient(): PrismaClient {
   const connectionString = process.env.DATABASE_URL?.trim();
   if (!connectionString) {
-    // The prestart check validates the complete runtime environment first;
-    // this guard keeps every direct/standalone import fail-safe as well.
     throw new Error("DATABASE_URL is required to initialize Prisma.");
   }
 
@@ -41,7 +38,27 @@ function positiveInteger(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-export const prisma = globalForPrisma.__brobondPrisma ?? createPrismaClient();
+/** Return the shared client, creating it only at the first database operation. */
+export function getPrisma(): PrismaClient {
+  if (!globalForPrisma.__brobondPrisma) {
+    globalForPrisma.__brobondPrisma = createPrismaClient();
+  }
+  return globalForPrisma.__brobondPrisma;
+}
 
-// Cache in production too: server chunks must share exactly one client/pool.
-globalForPrisma.__brobondPrisma = prisma;
+/**
+ * Backwards-compatible lazy facade for existing `import { prisma }` callers.
+ * Merely importing (or re-exporting) it never reads DATABASE_URL. Accessing a
+ * Prisma property is a runtime database use and resolves the lazy singleton.
+ */
+export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, property) {
+    const client = getPrisma();
+    const value = Reflect.get(client, property, client);
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+  set(_target, property, value) {
+    const client = getPrisma();
+    return Reflect.set(client, property, value, client);
+  },
+});

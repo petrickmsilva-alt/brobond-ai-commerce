@@ -57,6 +57,7 @@ class FakePrismaKnownError extends Error {
 }
 
 vi.mock("@/lib/auth", () => ({ signIn: signInMock }));
+vi.mock("@/lib/prisma", () => ({ getPrisma: () => ({}) }));
 vi.mock("@/modules/auth/signup-health.service", () => ({
   assertSignupReady: healthCheckMock,
   SignupReadinessError: FakeSignupReadinessError,
