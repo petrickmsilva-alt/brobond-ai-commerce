@@ -223,6 +223,24 @@ enum DeliveryAccountStatus {
   ERROR
 }
 
+/// Human-governed lifecycle of an AI CEO recommendation (PR011).
+/// The AI can only create PENDING decisions. APPROVED, REJECTED and EXECUTED
+/// are explicit human transitions enforced by the AI CEO repository.
+enum DecisionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXECUTED
+}
+
+/// Executive ordering produced from ROI, potential revenue, urgency and trend.
+enum DecisionPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
 // ------------------------------------------------------------------
 // Tenancy
 // ------------------------------------------------------------------
@@ -272,12 +290,17 @@ model Organization {
   tikTokAccounts    TikTokAccount[]
   tikTokOAuthStates TikTokOAuthState[]
 
-  auditLogs         AuditLog[]
+  auditLogs AuditLog[]
 
   // Omnichannel Delivery Engine (PR010) — Meta credentials never leave the server.
-  deliveryAccounts     DeliveryAccount[]
-  deliveryMessages     DeliveryMessage[]
+  deliveryAccounts    DeliveryAccount[]
+  deliveryMessages    DeliveryMessage[]
   deliveryOAuthStates DeliveryOAuthState[]
+
+  // AI CEO (PR011) — advisory only; execution always requires a human transition.
+  aiDecisionRuns   AIDecisionRun[]
+  aiDecisions      AIDecision[]
+  executiveReports ExecutiveReport[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -321,15 +344,15 @@ model User {
 }
 
 model Product {
-  id          String        @id @default(cuid())
-  name        String
-  slug        String
-  description String?
-  sku         String?
-  priceCents  Int           @default(0)
-  currency    String        @default("BRL")
-  imageUrl    String?
-  status      ProductStatus @default(DRAFT)
+  id              String        @id @default(cuid())
+  name            String
+  slug            String
+  description     String?
+  sku             String?
+  priceCents      Int           @default(0)
+  currency        String        @default("BRL")
+  imageUrl        String?
+  status          ProductStatus @default(DRAFT)
   /// Stable product identifier from the official TikTok Shop API. It is the
   /// idempotency key used by PR009 imports; null for products created locally.
   tiktokProductId String?
@@ -1005,13 +1028,13 @@ model TikTokAccount {
 
   /// Globally unique provider shop identity. A shop may belong to one tenant
   /// only, preventing an inbound webhook from ever resolving ambiguously.
-  shopId     String @unique
+  shopId     String  @unique
   shopCipher String
   shopName   String?
   sellerId   String?
 
-  accessToken  String? @db.Text
-  refreshToken String? @db.Text
+  accessToken  String?                @db.Text
+  refreshToken String?                @db.Text
   expiresAt    DateTime?
   status       TikTokConnectionStatus @default(DISCONNECTED)
   lastSync     DateTime?
@@ -1031,7 +1054,7 @@ model TikTokOAuthState {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  stateHash String @unique
+  stateHash String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
 
@@ -1046,12 +1069,12 @@ model AuditLog {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  action         String
-  entityType     String
-  entityId       String?
+  action          String
+  entityType      String
+  entityId        String?
   externalEventId String?
-  metadata       Json?
-  createdAt      DateTime @default(now())
+  metadata        Json?
+  createdAt       DateTime @default(now())
 
   @@unique([organizationId, externalEventId])
   @@index([organizationId, createdAt])
@@ -1379,11 +1402,128 @@ model DeliveryOAuthState {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   channel   DeliveryChannel
-  stateHash String   @unique
+  stateHash String          @unique
   expiresAt DateTime
-  createdAt DateTime @default(now())
+  createdAt DateTime        @default(now())
 
   @@index([organizationId, channel, expiresAt])
+}
+
+// ------------------------------------------------------------------
+// AI CEO & Autonomous Decisions (PR011)
+// ------------------------------------------------------------------
+
+/// Immutable audit envelope for one OpenAI-backed executive analysis.
+/// The complete, tenant-scoped input and raw structured response are retained
+/// even when the response produces zero decisions.
+model AIDecisionRun {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  promptVersion String
+  model         String
+  temperature   Float  @default(0.3)
+  inputTokens   Int    @default(0)
+  outputTokens  Int    @default(0)
+  inputSnapshot Json
+  rawResponse   Json
+
+  decisions AIDecision[]
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, promptVersion])
+}
+
+/// An advisory executive decision. This record never dispatches a message,
+/// changes a campaign or mutates commerce data. EXECUTED only records that a
+/// human confirmed completion outside the AI CEO.
+model AIDecision {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  runId String
+  run   AIDecisionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String           @db.Text
+  reason      String           @db.Text
+  priority    DecisionPriority
+  status      DecisionStatus   @default(PENDING)
+  confidence  Float
+  category    String
+
+  /// Deterministic opportunity key and financial upside used by the dashboard.
+  sourceKey             String
+  potentialRevenueCents Int    @default(0)
+
+  createdAt  DateTime  @default(now())
+  approvedAt DateTime?
+  rejectedAt DateTime?
+  executedAt DateTime?
+  updatedAt  DateTime  @updatedAt
+
+  evidence DecisionEvidence[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, priority])
+  @@index([organizationId, createdAt])
+  @@index([runId])
+}
+
+/// Verifiable source behind one executive decision. Weights are normalized to
+/// 0..1 by the decision engine and never accepted from the browser.
+model DecisionEvidence {
+  id String @id @default(cuid())
+
+  decisionId String
+  decision   AIDecision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  sourceType String
+  sourceId   String
+  weight     Float
+  createdAt  DateTime @default(now())
+
+  @@index([decisionId])
+  @@index([sourceType, sourceId])
+}
+
+/// Daily executive narrative. Numeric KPIs always come from the deterministic
+/// analytics/context snapshot; OpenAI supplies only summary, risks and wording.
+/// Every regeneration is retained as a revision, preserving all responses.
+model ExecutiveReport {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  reportDate    DateTime @db.Date
+  summary       String   @db.Text
+  gmvCents      Int
+  roiBps        Int
+  creators      Int
+  products      Int
+  campaigns     Int
+  risks         Json
+  opportunities Json
+
+  promptVersion String
+  model         String
+  temperature   Float  @default(0.3)
+  inputTokens   Int    @default(0)
+  outputTokens  Int    @default(0)
+  inputSnapshot Json
+  rawResponse   Json
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, reportDate])
+  @@index([organizationId, createdAt])
 }
 
 // ------------------------------------------------------------------

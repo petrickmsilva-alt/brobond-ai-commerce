@@ -13,6 +13,7 @@ import {
   Send,
   Settings,
   Sparkles,
+  Crown,
 } from "lucide-react";
 
 export interface NavItem {
@@ -40,5 +41,6 @@ export const sidebarNav: NavItem[] = [
   { label: "Campanhas", href: "/dashboard/campaigns", icon: Megaphone },
   { label: "Delivery", href: "/dashboard/delivery", icon: Send },
   { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
+  { label: "AI CEO", href: "/dashboard/ceo", icon: Crown },
   { label: "Configurações", href: "/settings", icon: Settings },
 ];
