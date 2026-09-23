@@ -40,13 +40,16 @@ export const INVITE_INVALID_ROUTE = "/invite/invalid";
 export const INVITE_EXPIRED_ROUTE = "/invite/expired";
 
 /**
- * The confirmation screen shown after a successful access request (PR010.3 §1).
+ * Public self-signup (PR010.4 §2).
  *
- * A dedicated route — not an inline state — is what guarantees "nunca
- * retornar para o formulário": the form navigates away with `router.replace`,
- * so the populated form is gone from the history stack entirely.
+ * This route REPLACES `/request-access`, which is gone along with the whole
+ * "queue a lead for an ADMIN" flow. `/signup` is the official onboarding: it
+ * creates an Organization, an ADMIN User and a Workspace, then signs the user
+ * straight in. It is an auth route (see `AUTH_ROUTES`), so an already
+ * authenticated visitor is bounced to their dashboard rather than shown a
+ * form that would try to mint them a second tenant.
  */
-export const REQUEST_ACCESS_SUCCESS_ROUTE = "/request-access/success";
+export const SIGNUP_ROUTE = "/signup";
 
 /**
  * Route prefixes that require an authenticated session.
@@ -77,6 +80,9 @@ export const PROTECTED_ROUTES: readonly string[] = [
  */
 export const AUTH_ROUTES: readonly string[] = [
   "/login",
+  // PR010.4 §2 — signup joins the unauthenticated-only screens: a signed-in
+  // user has no business creating a second organization from this form.
+  SIGNUP_ROUTE,
   "/forgot-password",
   "/reset-password",
 ] as const;
@@ -96,7 +102,6 @@ export const PUBLIC_PREFIXES: readonly string[] = [
   "/_next",
   "/favicon",
   "/invite",
-  "/request-access",
 ] as const;
 
 /** Whether `pathname` is exactly `prefix` or nested below it. */
@@ -183,4 +188,21 @@ export function buildLoginUrl(next?: string | null): string {
   const safe = sanitizeNext(next);
   if (!safe) return LOGIN_ROUTE;
   return `${LOGIN_ROUTE}?${NEXT_PARAM}=${encodeURIComponent(safe)}`;
+}
+
+/**
+ * Build the signup URL that preserves where the user was heading (PR010.4 §6).
+ *
+ * The mirror image of `buildLoginUrl()`: a visitor who was bounced from
+ * `/dashboard/products` to `/login?next=/dashboard/products` and then clicks
+ * "Criar conta" should still land on `/dashboard/products` once their tenant
+ * exists — not on a generic dashboard that forgets what they came for.
+ *
+ * The `next` value goes through the same `sanitizeNext()` gate, so it cannot
+ * carry an off-origin destination into the signup flow either.
+ */
+export function buildSignupUrl(next?: string | null): string {
+  const safe = sanitizeNext(next);
+  if (!safe) return SIGNUP_ROUTE;
+  return `${SIGNUP_ROUTE}?${NEXT_PARAM}=${encodeURIComponent(safe)}`;
 }

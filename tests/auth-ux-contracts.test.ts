@@ -122,9 +122,18 @@ describe("§3 — the login screen", () => {
     expect(form + page).toMatch(/Esqueci|Esqueceu/);
   });
 
-  it('links to "Solicitar acesso"', () => {
-    expect(form + page).toContain("/request-access");
-    expect(form + page).toMatch(/Solicitar acesso/);
+  it('links to "Criar conta" — PR010.4 §6 replaced "Solicitar acesso"', () => {
+    expect(form + page).toMatch(/buildSignupUrl|\/signup/);
+    expect(form + page).toMatch(/Criar conta/);
+  });
+
+  it("no longer offers the deleted request-access flow", () => {
+    expect(form + page).not.toContain("/request-access");
+    expect(form + page).not.toMatch(/Solicitar acesso/);
+  });
+
+  it("no longer claims that public cadastro does not exist", () => {
+    expect(page).not.toMatch(/não há cadastro público/);
   });
 
   it("renders the brand column with benefits and platform status", () => {
@@ -230,10 +239,11 @@ describe("§11 — RBAC on the settings surfaces", () => {
     expect(panel).toContain("canManage");
   });
 
-  it("the access-request queue is ADMIN-only on the page", () => {
+  it("the access-request queue is GONE from the settings page (PR010.4 §1)", () => {
     const page = read("app/settings/page.tsx");
     expect(page).toContain("isAdmin");
-    expect(page).toContain("AccessRequestsPanel");
+    expect(page).not.toContain("AccessRequestsPanel");
+    expect(page).not.toContain("accessRequestService");
   });
 
   it("the settings page states the role matrix for the user", () => {
@@ -269,14 +279,14 @@ describe("§13 — design system", () => {
 
   it("every new auth route has a page", () => {
     for (const file of [
-      "app/request-access/page.tsx",
+      // PR010.4 §2 — /signup replaced /request-access.
+      "app/signup/page.tsx",
       "app/forgot-password/page.tsx",
       "app/reset-password/page.tsx",
       "app/invite/[token]/page.tsx",
       // PR010.3 §10 — dedicated terminal/confirmation pages.
       "app/invite/invalid/page.tsx",
       "app/invite/expired/page.tsx",
-      "app/request-access/success/page.tsx",
     ]) {
       expect(exists(file), file).toBe(true);
     }
@@ -291,11 +301,10 @@ describe("no secret reaches the browser", () => {
       "components/auth/forgot-password-form.tsx",
       "components/auth/reset-password-form.tsx",
       "components/auth/accept-invitation-form.tsx",
-      "components/auth/request-access-form.tsx",
+      // PR010.4 §3 — the signup form is the new public client component, and
+      // it handles a password, so it is the one most worth checking.
+      "components/auth/signup-form.tsx",
       "components/settings/invitations-panel.tsx",
-      "components/settings/access-requests-panel.tsx",
-      // PR010.3 §2 — the ADMIN approval table.
-      "components/settings/access-requests-table.tsx",
     ];
 
     for (const file of clientFiles) {
@@ -310,8 +319,8 @@ describe("no secret reaches the browser", () => {
   it("no client component imports prisma", () => {
     for (const file of [
       "components/auth/login-form.tsx",
+      "components/auth/signup-form.tsx",
       "components/settings/invitations-panel.tsx",
-      "components/settings/access-requests-panel.tsx",
     ]) {
       expect(read(file), file).not.toContain('from "@/lib/prisma"');
     }

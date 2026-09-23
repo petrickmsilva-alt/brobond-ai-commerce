@@ -9,12 +9,14 @@ import { generateToken, hashToken, invitationExpiry, isExpired } from "@/lib/tok
 /**
  * Invitation domain (PR010.2 §7).
  *
- * THE ONLY PATH THAT CREATES A USER
- * ---------------------------------
- * There is still no public sign-up. An ADMIN issues an invitation bound to a
- * tenant and a role; the invitee redeems it once, sets a password, and only
- * then does a `User` row exist. Both halves of that sentence are enforced
- * here rather than in the UI.
+ * HOW A USER JOINS AN EXISTING TENANT
+ * -----------------------------------
+ * Since PR010.4 there are two ways a `User` row comes into being: `/signup`,
+ * which creates a BRAND-NEW tenant with its first ADMIN, and this module,
+ * which adds a member to an EXISTING one. An ADMIN issues an invitation bound
+ * to a tenant and a role; the invitee redeems it once, sets a password, and
+ * only then does the row exist. Invitations remain the only way to be placed
+ * into someone else's workspace — self-signup can never target one.
  *
  * SECURITY CONTRACT
  * -----------------

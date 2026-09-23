@@ -14,8 +14,9 @@ import { resolveNext } from "@/lib/auth-routes";
  *   `DATABASE_URL` or any `passwordHash`.
  * - Returns a single generic error message so that an attacker cannot tell
  *   "unknown email" from "wrong password".
- * - There is no public sign-up counterpart — accounts are provisioned
- *   out-of-band or through an `Invitation` (PR010.2 §7).
+ * - The sign-up counterpart is `signupAction` (PR010.4 §4), which provisions
+ *   a tenant and then calls this same credentials provider. Accounts can also
+ *   still arrive through an `Invitation` (PR010.2 §7).
  * - OPEN REDIRECT (PR010.2): the action returns the post-login destination
  *   instead of letting the client decide. The untrusted `next` value is run
  *   through `resolveNext()`, which accepts only same-origin absolute paths,

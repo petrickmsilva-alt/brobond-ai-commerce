@@ -279,8 +279,16 @@ mandate — human-facing links only.)
 
 ### First login
 
-There is **no public sign-up**. The seed is the bootstrap path for the first
-`ADMIN` of the `brobond` Organization:
+Since PR010.4 the primary path is **self sign-up**: open `/signup`, fill in
+nome, empresa, WhatsApp, email and a password, and the app provisions an
+`Organization`, its first `ADMIN` `User`, the workspace defaults
+(BRL · pt-BR · America/Sao_Paulo) and an initial set of message templates in a
+single transaction — then signs you in and drops you on `/dashboard` with the
+onboarding checklist. Signing in with Google for the first time does the same
+thing, so no invitation is required to get started.
+
+The seed remains available as a scripted bootstrap for the demo `brobond`
+Organization:
 
 ```bash
 SEED_ADMIN_EMAIL=admin@brobond.ai \
@@ -295,7 +303,7 @@ invents one. Then sign in at `/login` with that email and password.
 ### Tests
 
 ```bash
-npm test          # Vitest — 2,276 unit tests
+npm test          # Vitest — 2,632 unit tests
 ```
 
 No database or network is required; the session layer is mocked and the trend

@@ -1,11 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-  INVITE_EXPIRED_ROUTE,
-  INVITE_INVALID_ROUTE,
-  REQUEST_ACCESS_SUCCESS_ROUTE,
-} from "@/lib/auth-routes";
+import { INVITE_EXPIRED_ROUTE, INVITE_INVALID_ROUTE, SIGNUP_ROUTE } from "@/lib/auth-routes";
 
 /**
  * PR010.3 §10 — invite error pages and the redirect contract.
@@ -51,7 +47,6 @@ vi.mock("@/app/invite/actions", () => ({ acceptInvitationAction: vi.fn() }));
 const InvitePage = (await import("@/app/invite/[token]/page")).default;
 const InviteInvalidPage = (await import("@/app/invite/invalid/page")).default;
 const InviteExpiredPage = (await import("@/app/invite/expired/page")).default;
-const RequestAccessSuccessPage = (await import("@/app/request-access/success/page")).default;
 
 const ROOT = process.cwd();
 const read = (relative: string) => readFileSync(join(ROOT, relative), "utf8");
@@ -78,14 +73,19 @@ describe("the reserved routes exist as pages (§10)", () => {
     expect(exists("app/invite/expired/page.tsx")).toBe(true);
   });
 
-  it("/request-access/success has a page", () => {
-    expect(exists("app/request-access/success/page.tsx")).toBe(true);
+  it("/request-access/success is GONE (PR010.4 §1)", () => {
+    expect(exists("app/request-access/success/page.tsx")).toBe(false);
+    expect(exists("app/request-access/page.tsx")).toBe(false);
+  });
+
+  it("/signup replaced it", () => {
+    expect(exists("app/signup/page.tsx")).toBe(true);
   });
 
   it("the route constants point at those pages", () => {
     expect(INVITE_INVALID_ROUTE).toBe("/invite/invalid");
     expect(INVITE_EXPIRED_ROUTE).toBe("/invite/expired");
-    expect(REQUEST_ACCESS_SUCCESS_ROUTE).toBe("/request-access/success");
+    expect(SIGNUP_ROUTE).toBe("/signup");
   });
 });
 
@@ -168,10 +168,11 @@ describe("/invite/invalid", () => {
     expect(source).toContain("não existe, já foi utilizado ou foi revogado");
   });
 
-  it("offers the login and request-access next steps", () => {
+  it("offers the login and signup next steps (PR010.4 §1)", () => {
     const source = read("app/invite/invalid/page.tsx");
     expect(source).toContain('href="/login"');
-    expect(source).toContain('href="/request-access"');
+    expect(source).toContain('href="/signup"');
+    expect(source).not.toContain("/request-access");
   });
 
   it("is a Server Component (no client state on a dead end)", () => {
@@ -196,38 +197,34 @@ describe("/invite/expired", () => {
     expect(source).toContain("INVITATION_TTL_DAYS");
   });
 
-  it("offers the login and request-access next steps", () => {
+  it("offers the login and signup next steps (PR010.4 §1)", () => {
     const source = read("app/invite/expired/page.tsx");
     expect(source).toContain('href="/login"');
-    expect(source).toContain('href="/request-access"');
+    expect(source).toContain('href="/signup"');
+    expect(source).not.toContain("/request-access");
   });
 });
 
-describe("/request-access/success", () => {
-  it("renders without redirecting", () => {
-    expect(() => RequestAccessSuccessPage()).not.toThrow();
+describe("PR010.4 §1 — the request-access flow left no residue", () => {
+  it("neither invite error page still points at /request-access", () => {
+    expect(read("app/invite/invalid/page.tsx")).not.toContain("/request-access");
+    expect(read("app/invite/expired/page.tsx")).not.toContain("/request-access");
   });
 
-  it("confirms the request was registered", () => {
-    const source = read("app/request-access/success/page.tsx");
-    expect(source).toContain("Solicitação enviada");
+  it("both invite error pages point at /signup instead", () => {
+    expect(read("app/invite/invalid/page.tsx")).toContain('href="/signup"');
+    expect(read("app/invite/expired/page.tsx")).toContain('href="/signup"');
   });
 
-  it("explains the next step (an invitation by email)", () => {
-    const source = read("app/request-access/success/page.tsx");
-    expect(source).toMatch(/convite/i);
-    expect(source).toMatch(/email/i);
+  it("the access-request service and its approval orchestrator are deleted", () => {
+    expect(exists("modules/auth/access-request.service.ts")).toBe(false);
+    expect(exists("modules/auth/approval.service.ts")).toBe(false);
   });
 
-  it("contains NO form — the request is one-shot (§1)", () => {
-    const source = read("app/request-access/success/page.tsx");
-    expect(source).not.toMatch(/<form/);
-    expect(source).not.toContain("RequestAccessForm");
-  });
-
-  it("offers a way out (login / home)", () => {
-    const source = read("app/request-access/success/page.tsx");
-    expect(source).toContain('href="/login"');
-    expect(source).toContain('href="/"');
+  it("the access-request UI is deleted", () => {
+    expect(exists("components/auth/request-access-form.tsx")).toBe(false);
+    expect(exists("components/settings/access-requests-panel.tsx")).toBe(false);
+    expect(exists("components/settings/access-requests-table.tsx")).toBe(false);
+    expect(exists("app/dashboard/settings/access/page.tsx")).toBe(false);
   });
 });

@@ -6,49 +6,44 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { InvitationsPanel } from "@/components/settings/invitations-panel";
-import { AccessRequestsPanel } from "@/components/settings/access-requests-panel";
 import { getShellContext } from "@/lib/shell-context";
 import { requireUser } from "@/lib/session";
 import { isAdmin } from "@/lib/rbac";
 import { invitationService } from "@/modules/auth/invitation.service";
-import { accessRequestService } from "@/modules/auth/access-request.service";
 
 export const metadata: Metadata = {
   title: "Configurações",
 };
 
 /**
- * Settings (PR010.1 UI refresh · PR010.2 §5/§7/§11 administration).
+ * Settings (PR010.1 UI refresh · PR010.2 §7/§11 · PR010.4 §1).
  *
- * PR010.2 adds the two ADMIN surfaces the auth flows need a home for:
- * the invitation manager (§7) and the access-request queue (§5).
+ * PR010.4 removed the access-request queue that used to live here: there are
+ * no leads to approve now that `/signup` provisions tenants directly. The
+ * invitation manager (§7) remains — it is how an existing workspace adds a
+ * teammate.
  *
  * RBAC §11 — resolved once here and passed down as `canManage`:
- *   ADMIN   → gerencia convites · aprova acesso
- *   MANAGER → sem convites (panels render read-only)
+ *   ADMIN   → gerencia convites
+ *   MANAGER → sem convites (panel renders read-only)
  *   MEMBER  → leitura
  *
  * The flag only governs affordances. Every mutation re-checks with
  * `requireAdmin()` server-side (`app/settings/actions.ts`), so hiding a button
  * is never the thing standing between a MANAGER and an invitation.
  *
- * The ADMIN-only data is fetched only for an ADMIN — a MANAGER's render never
- * even reads the access-request queue.
+ * The flag only governs affordances; `requireAdmin()` in the server actions
+ * is what actually enforces them.
  */
 export default async function SettingsPage() {
   const { user, workspace, tiktokStatus } = await getShellContext();
   const current = await requireUser();
   const canManage = isAdmin(current.role);
 
-  // Invitations are tenant-scoped and visible to the workspace; access
-  // requests are global and ADMIN-only, so they are read conditionally.
-  const [invitations, accessRequests, accessCounts] = await Promise.all([
-    current.organizationId ? invitationService.list(current.organizationId) : Promise.resolve([]),
-    canManage ? accessRequestService.list({ take: 25 }) : Promise.resolve([]),
-    canManage
-      ? accessRequestService.counts()
-      : Promise.resolve({ pending: 0, approved: 0, rejected: 0, total: 0 }),
-  ]);
+  // Invitations are tenant-scoped and visible to the whole workspace.
+  const invitations = current.organizationId
+    ? await invitationService.list(current.organizationId)
+    : [];
 
   const integrations = [
     {
@@ -132,8 +127,7 @@ export default async function SettingsPage() {
 
           {/* RBAC §11, stated plainly where the role is shown. */}
           <p className="mt-5 rounded-xl border border-white/8 bg-white/[0.02] px-4 py-3 text-[11px] leading-relaxed text-white/45">
-            <strong className="font-semibold text-white/65">ADMIN</strong> gerencia convites e
-            aprova solicitações de acesso ·{" "}
+            <strong className="font-semibold text-white/65">ADMIN</strong> gerencia convites ·{" "}
             <strong className="font-semibold text-white/65">MANAGER</strong> opera o workspace, sem
             convites · <strong className="font-semibold text-white/65">MEMBER</strong> tem acesso de
             leitura.
@@ -142,15 +136,6 @@ export default async function SettingsPage() {
 
         {/* §7 — Convites (ADMIN gerencia; demais papéis apenas visualizam). */}
         <InvitationsPanel invitations={invitations} canManage={canManage} />
-
-        {/* §5 — Fila de solicitações de acesso, exclusiva do ADMIN. */}
-        {canManage && (
-          <AccessRequestsPanel
-            requests={accessRequests}
-            pendingCount={accessCounts.pending}
-            canManage={canManage}
-          />
-        )}
 
         <SectionCard
           title="Integrações"

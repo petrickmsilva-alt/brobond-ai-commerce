@@ -1,7 +1,7 @@
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
-import { PrismaAdapter } from "@auth/prisma-adapter";
+import { createTenantAwareAdapter } from "@/lib/auth-adapter";
 import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { equalizeVerificationTiming, verifyPassword } from "@/lib/password";
@@ -11,14 +11,29 @@ import { isGoogleProviderConfigured, resolveGoogleCredentials } from "@/lib/auth
 /**
  * NextAuth v5 configuration.
  *
- * PR000.2 wires a **Credentials provider** (email + password) on top of the
- * Prisma adapter and JWT sessions.
+ * PR000.2 wired a **Credentials provider** (email + password) on top of the
+ * Prisma adapter and JWT sessions. PR010.4 keeps every one of those mechanics
+ * and changes exactly one policy.
+ *
+ * WHAT PR010.4 CHANGES
+ * --------------------
+ * The "no public sign-up" rule is retired. `/signup` provisions a tenant and
+ * signs the user in, and a first-time Google user is provisioned by the
+ * tenant-aware adapter (`lib/auth-adapter.ts`) at the moment NextAuth asks for
+ * a user. The `signIn` callback therefore no longer refuses unknown federated
+ * emails — refusing them is what made "primeiro acesso com Google"
+ * impossible.
+ *
+ * NOTHING ELSE MOVED: same providers, same JWT strategy, same callbacks, same
+ * cookie names. NextAuth is configured, never bypassed.
  *
  * SECURITY CONTRACT
  * -----------------
- * - There is **no public sign-up**. `authorize()` only authenticates users that
- *   already exist AND already have a `passwordHash`. Accounts are provisioned
- *   out-of-band (seed / admin tooling) — see `prisma/seed.ts`.
+ * - A new account, by either route, gets a BRAND-NEW EMPTY organization of
+ *   which it is the sole member. Signing up can never grant any authority
+ *   inside an existing workspace; joining one still requires an invitation.
+ * - `authorize()` only authenticates users that exist AND have a
+ *   `passwordHash`, so a Google-only account cannot be password-guessed.
  * - Passwords are compared against a bcrypt digest; plaintext is never stored.
  * - `passwordHash`, `AUTH_SECRET` and `DATABASE_URL` are never returned from
  *   `authorize()`, never placed on the JWT, and never exposed on the session,
@@ -39,7 +54,7 @@ interface AuthenticatedUser {
 
 /**
  * Federated providers, registered ONLY when fully provisioned (PR010.2 §4 ·
- * PR010.3 §5/§12).
+ * PR010.3 §5/§12 · PR010.4 §5).
  *
  * An unconfigured Google provider is absent from this array, so
  * `/api/auth/signin/google` legitimately 404s and the UI — reading the same
@@ -52,8 +67,10 @@ interface AuthenticatedUser {
  * owns the resolution, so the provider is registered with whichever complete
  * pair the deployment provides.
  *
- * NOTE: registering Google does NOT open public sign-up. The `signIn`
- * callback below still requires a pre-provisioned account.
+ * PR010.4 §5: a Google sign-in from an unknown email now CREATES the account
+ * (Organization + ADMIN User + Workspace) through the tenant-aware adapter,
+ * instead of being refused. A known email signs in normally, into the tenant
+ * and with the role it already has.
  */
 const googleCredentials = resolveGoogleCredentials();
 const federatedProviders =
@@ -68,7 +85,9 @@ const federatedProviders =
     : [];
 
 export const authConfig = {
-  adapter: PrismaAdapter(prisma),
+  // PR010.4 §5 — wraps `createUser` so a first-time federated user is
+  // provisioned with a tenant. Every other method is the stock Prisma adapter.
+  adapter: createTenantAwareAdapter(),
   session: { strategy: "jwt" },
   pages: {
     signIn: "/login",
@@ -135,31 +154,34 @@ export const authConfig = {
       return !!auth?.user;
     },
     /**
-     * Gate for federated sign-in (PR010.2 §4).
+     * Gate for federated sign-in (PR010.2 §4 · rewritten in PR010.4 §5).
      *
-     * SECURITY: Google authenticates an identity; it does NOT create one.
-     * A Google login is accepted only when a `User` with that email already
-     * exists — provisioned by the seed, by an ADMIN, or by accepting an
-     * `Invitation`. This keeps the PR000.2 "no public sign-up" contract
-     * intact now that an OAuth provider can be registered: without it,
-     * anyone with a Google account could mint a tenant-less user.
+     * WHAT THIS USED TO DO
+     * --------------------
+     * It looked the email up and returned `false` when no `User` existed, so
+     * that Google could authenticate an identity but never create one. That
+     * was the right call while there was no public sign-up — and it is exactly
+     * what §5 of this PR asks us to remove: "Se usuário não existir: criar
+     * automaticamente".
      *
-     * Credentials sign-in is unchanged — `authorize()` already proved the
-     * account exists and the password matched.
+     * WHAT IT DOES NOW
+     * ----------------
+     * It allows the sign-in and lets the flow continue. NextAuth resolves an
+     * existing account through the adapter (`getUserByEmail`) and signs them
+     * into their own tenant with their own role; an unknown email reaches
+     * `createUser`, where `lib/auth-adapter.ts` provisions Organization +
+     * ADMIN User + Workspace atomically. Either way the user that comes out
+     * the other side is tenant-bound, which is the invariant that actually
+     * matters.
+     *
+     * An identity with no email is still refused: it could never be bound to
+     * a tenant, recovered, or invited to anything.
      */
     async signIn({ user, account }) {
       if (!account || account.provider === "credentials") return true;
 
       const email = user?.email?.trim().toLowerCase();
-      if (!email) return false;
-
-      const existing = await prisma.user.findUnique({
-        where: { email },
-        select: { id: true, organizationId: true },
-      });
-
-      // Unknown email, or an account not bound to a tenant → refuse.
-      return Boolean(existing?.organizationId);
+      return Boolean(email);
     },
     // Persist role + organization on the JWT so RBAC/tenant checks avoid a DB hit.
     async jwt({ token, user, trigger }) {

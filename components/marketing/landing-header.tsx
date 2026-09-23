@@ -2,7 +2,12 @@ import Link from "next/link";
 import { ArrowRight, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { APP_SHORT_NAME } from "@/lib/constants";
-import { DEFAULT_AUTHENTICATED_REDIRECT, LOGIN_ROUTE, buildLoginUrl } from "@/lib/auth-routes";
+import {
+  DEFAULT_AUTHENTICATED_REDIRECT,
+  LOGIN_ROUTE,
+  SIGNUP_ROUTE,
+  buildLoginUrl,
+} from "@/lib/auth-routes";
 
 /**
  * Landing header (PR010.2 §1).
@@ -65,6 +70,17 @@ export function LandingHeader({ authenticated }: LandingHeaderProps) {
             Entrar
           </Button>
         </Link>
+
+        {/* PR010.4 §7 — an unauthenticated visitor gets a door of their own.
+            It is hidden for a signed-in user, for whom creating a second
+            organization from the marketing header would be nonsense. */}
+        {!authenticated && (
+          <Link href={SIGNUP_ROUTE} data-testid="landing-header-signup-cta">
+            <Button variant="outline" size="sm">
+              Criar conta
+            </Button>
+          </Link>
+        )}
 
         <Link href={dashboardHref} data-testid="landing-dashboard-cta">
           <Button size="sm">

@@ -23,9 +23,11 @@ import { Badge } from "@/components/ui/badge";
 import { StatCardSkeleton, ChartSkeleton } from "@/components/ui/skeleton";
 import { FadeIn } from "@/components/ui/motion";
 import { DashboardCharts } from "@/components/dashboard/dashboard-charts";
+import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
 import { requireOrganization, requireUser } from "@/lib/session";
 import { isManager } from "@/lib/rbac";
 import { getDashboardOverview } from "@/lib/dashboard-overview";
+import { onboardingService } from "@/modules/auth/onboarding.service";
 import { formatCurrency } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -51,7 +53,11 @@ export const metadata: Metadata = {
 export default async function DashboardPage() {
   const user = await requireUser();
   const organizationId = await requireOrganization();
-  const overview = await getDashboardOverview(organizationId);
+  const [overview, onboarding] = await Promise.all([
+    getDashboardOverview(organizationId),
+    // PR010.4 §9 — derived from live tenant counts, so it is always honest.
+    onboardingService.getState(organizationId),
+  ]);
 
   const canManage = isManager(user.role);
   const periodDays = overview.period.days;
@@ -73,6 +79,20 @@ export default async function DashboardPage() {
           </>
         }
       />
+
+      {/* PR010.4 §9 — first-run onboarding, above everything else.
+          A workspace created a minute ago has nothing to chart; this panel is
+          what turns six zeroed KPI cards into four things worth doing. It
+          renders only while the checklist is unfinished and undismissed. */}
+      {onboarding.visible && (
+        <FadeIn className="mb-4">
+          <OnboardingChecklist
+            steps={onboarding.steps}
+            completed={onboarding.completed}
+            total={onboarding.total}
+          />
+        </FadeIn>
+      )}
 
       {/* KPI row */}
       <FadeIn>

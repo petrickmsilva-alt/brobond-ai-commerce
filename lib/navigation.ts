@@ -19,7 +19,6 @@ import {
   Rocket,
   Cable,
   SlidersHorizontal,
-  UserCheck,
 } from "lucide-react";
 
 export interface NavItem {
@@ -172,12 +171,10 @@ export const navigationGroups: NavGroup[] = [
         icon: Settings,
         description: "Organização, membros e preferências",
       },
-      {
-        label: "Acesso",
-        href: "/dashboard/settings/access",
-        icon: UserCheck,
-        description: "Aprovação de solicitações de acesso e convites (ADMIN)",
-      },
+      // PR010.4 §1 — the "Acesso" entry pointed at the access-request queue,
+      // which no longer exists. Invitations (the only membership operation
+      // left) live inside Configurações, so a second entry would be a second
+      // door onto the same room.
     ],
   },
 ];

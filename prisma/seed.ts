@@ -9,10 +9,13 @@
  * TENANCY: every domain record is created inside the `brobond` Organization —
  * `organizationId` is NOT NULL on User/Product/Creator/Campaign (PR000.2).
  *
- * SECURITY: there is no public sign-up. The seed is the only bootstrap path
- * for the first ADMIN account, and it stores **only a bcrypt hash**. When
- * `SEED_ADMIN_PASSWORD` is not set, the admin is created WITHOUT a password
- * (credentials login disabled for that account) — no password is invented.
+ * SECURITY: the seed stores **only a bcrypt hash**. When `SEED_ADMIN_PASSWORD`
+ * is not set, the admin is created WITHOUT a password (credentials login
+ * disabled for that account) — no password is invented.
+ *
+ * PR010.4: this is no longer the ONLY bootstrap path. `/signup` provisions a
+ * tenant for any visitor; the seed remains the way to get a known, fully
+ * populated development workspace.
  */
 import {
   PrismaClient,
@@ -59,6 +62,12 @@ async function main() {
     create: {
       name: "Brobond",
       slug: "brobond",
+      // PR010.4 — the seed tenant is provisioned out-of-band, not self-serve,
+      // and its onboarding is complete by definition: this script creates the
+      // products, creators and campaigns the checklist would ask for.
+      workspaceName: "Brobond",
+      selfServe: false,
+      onboardingCompletedAt: NOW,
     },
   });
 
