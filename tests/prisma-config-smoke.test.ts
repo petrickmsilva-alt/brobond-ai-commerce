@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { PrismaConfig } from "@prisma/config";
 import configImport from "../prisma.config";
 
 /**
@@ -15,10 +14,8 @@ import configImport from "../prisma.config";
  * migration command).
  */
 describe("Prisma CLI configuration", () => {
-  // Re-export the cast config with the proper PrismaConfig type so downstream
-  // tests that import `../prisma.config` get a usable type. The cast is safe:
-  // at runtime the object is assembled by us and matches the config contract.
-  const config = configImport as unknown as PrismaConfig;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const config = configImport as any;
 
   it("uses the JS engine + PrismaPg adapter for non-migration CLI commands", () => {
     expect(config.schema).toBe(path.join("prisma", "schema.prisma"));
