@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import config from "../prisma.config";
 
@@ -11,18 +12,12 @@ import config from "../prisma.config";
  * PRISMA_TEST_DATABASE_URL=postgresql://... npm test -- tests/prisma-config-smoke.test.ts
  */
 describe("Prisma CLI configuration", () => {
-  it("imports defineConfig with the JavaScript engine and PostgreSQL adapter", async () => {
-    expect(config.engine).toBe("js");
-    const configWithAdapter = config as typeof config & {
-      adapter?: () => Promise<unknown>;
-    };
-    expect(configWithAdapter.adapter).toEqual(expect.any(Function));
-
-    const adapter = await configWithAdapter.adapter?.();
-    expect(adapter).toBeDefined();
-    // PrismaPg exposes the driver adapter as an object; construction itself is
-    // the important smoke check and does not require a live database.
-    expect(typeof adapter).toBe("object");
+  it("keeps migrate deploy on the standard datasource URL path", () => {
+    expect(config.schema).toBe(path.join("prisma", "schema.prisma"));
+    expect(config.migrations?.seed).toBe("tsx prisma/seed.ts");
+    expect(config).not.toHaveProperty("adapter");
+    expect(config).not.toHaveProperty("engine");
+    expect(config).not.toHaveProperty("experimental");
   });
 
   it.skipIf(!process.env.PRISMA_TEST_DATABASE_URL)(
