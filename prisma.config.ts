@@ -62,5 +62,5 @@ export default defineConfig({
   },
   experimental: { adapter: true },
   engine: isMigrationCommand() ? undefined : "js",
-  adapter: cliAdapter,
+  adapter: isMigrationCommand() ? undefined : cliAdapter,
 });
