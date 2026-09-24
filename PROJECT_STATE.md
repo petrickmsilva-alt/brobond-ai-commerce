@@ -27,6 +27,65 @@ not be deserialized from the database` while initializing migration
   production behavior change was introduced. Resolution needs a separately
   scoped Prisma/adapter version strategy or an upstream fix.
 
+### PR010.4.7 — Prisma Runtime Strategy Split (2026-09-24) — pending (PR#33)
+
+- **Symptom.** `prisma migrate deploy` (e `prisma db push`, `prisma studio`)
+  falham no JavaScript schema engine com `Column type 'name' could not be
+  deserialized from the database` — PostgreSQL system type OID 19 (`name`) não
+  tem mapeamento no `@prisma/adapter-pg@6.19.3` / JS engine (upstream
+  `prisma/prisma#27403`). O projeto havia migrado o CLI para `engine = "js"`
+  + `PrismaPg` via `prisma.config.ts` (era do PR010.4.5) para resolver um
+  problema de runtime diferente, o que regressou os comandos de migration.
+- **Scope.** Apenas o caminho CLI do Prisma é afetado. O runtime do Next.js
+  (`lib/prisma.ts`, Server Actions, API Routes, `getPrisma()`) já usa seu próprio
+  singleton `new PrismaPg()` e nunca carrega `prisma.config.ts`, então é
+  inalterado por essa mudança.
+- **Correção — strategy split em `prisma.config.ts`.**
+  - Um helper de detecção `isMigrationCommand()` verifica `process.argv` por
+    `migrate`, `db`, ou `studio` (cobre `prisma migrate deploy`,
+    `prisma migrate dev`, `prisma db push`, `prisma studio`, e subcomandos
+    spellados de qualquer forma).
+  - Quando um comando de migration é detectado: `engine` é unset (engine Rust
+    nativo escolhido pelo Prisma) e `adapter` retorna `cliAdapter()` que sempre
+    retorna um `PrismaPg` válido — o engine nativo ignora o adapter, então o
+    bug de deserialização OID 19 nunca é alcançado.
+  - Para todos os outros comandos CLI (`validate`, `format`, etc.): o caminho
+    existente `engine = "js"` + `PrismaPg` adapter é preservado inalterado.
+  - **Correção de tipo (PR#33):** a versão original do PR#32 retornava
+    `undefined` do `adapter` em comandos de migration, o que violava o tipo
+    `SqlMigrationAwareDriverAdapterFactory` esperado pelo `defineConfig`. A
+    correção faz `cliAdapter()` sempre retornar um `PrismaPg` válido
+    (que implementa `SqlMigrationAwareDriverAdapterFactory`), eliminando o erro
+    de tipo e o `build` failure no Dockerfile do Render.
+- **`lib/prisma.ts` — inalterado.** O singleton de runtime (`getPrisma()`,
+  `prisma` proxy facade, lazy init, `DATABASE_URL` gate) é exatamente como
+  antes. Server Actions e API routes continuam usando `PrismaPg` sem mudança de
+  comportamento.
+- **`prisma/schema.prisma` — inalterado.** `generator client { engineType =
+  "client" }` e `datasource { url = env("DATABASE_URL") }` são mantidos.
+- **Render — inalterado.** `preDeployCommand: npx prisma migrate deploy` e
+  `startCommand` ambos agora rodam o comando de migration pelo caminho do engine
+  nativo, então os deploys do Render usam o mesmo split que o desenvolvimento
+  local. Nenhum SQL manual, nenhuma migration desabilitada, nenhum copy de
+  `prisma.config.ts` no Docker runner.
+- **Smoke test (`scripts/smoke-prisma-migrate-runtime.sh` /
+  `npm run smoke:prisma-runtime`) — ainda válido.** O script copia
+  `prisma.config.ts` para uma árvore de produção limpa e roda `npx prisma migrate
+  deploy`. Com o split, esse comando agora alcança o caminho de setup de
+  migration sob o engine nativo instead de falhar no deserializer OID 19. Um
+  `MODULE_NOT_FOUND` ainda faz o teste falhar; um erro de conexão (DB
+  inalcançável) ainda é o estado de pass esperado sem `SMOKE_DATABASE_URL`.
+- **Comandos verificados (local, sem DB live na maioria):**
+  - `npm ci` — instalação intacta.
+  - `npx prisma validate` — JS engine + adapter (comando não-migration).
+  - `npx prisma generate` — engine nativo, sem adapter (generate não é comando
+    de migration, mas o gerador nativo de client é usado independentemente; o
+    split preserva isso).
+  - `npx prisma migrate deploy` — engine nativo, adapter presente mas ignorado
+    (comando de migration detectado; bypasses o deserializer OID 19).
+  - `npm run build` — `prisma generate` roda primeiro (nativo), depois o build
+    do Next.js usa o client gerado + `lib/prisma.ts` em runtime.
+
 ### PR010.4.5 — Prisma migration runtime dependencies (2026-09-23) — completed
 
 - **Symptom.** The build passed, but the Render deploy failed in the
