@@ -59,9 +59,10 @@ async function cliAdapter() {
 // handles the command using the schema.prisma datasource URL directly —
 // bypassing the OID 19 deserializer bug in the JS engine.
 //
-// The defineConfig() type in Prisma 6.19.3 is a discriminated union that
-// does not accept `engine: "js" | undefined` or `adapter: ... | undefined`
-// inline, so we assemble the object and cast it.
+// Prisma 6.19.3's defineConfig type is a discriminated union that does not
+// accept `engine: "js" | undefined` or `adapter: ... | undefined` inline.
+// We assemble the object with a spread conditional and export the plain
+// object — Prisma's config loader accepts the plain-object shape.
 const config = {
   schema: path.join("prisma", "schema.prisma"),
   migrations: {
@@ -73,4 +74,4 @@ const config = {
     : { engine: "js" as const, adapter: cliAdapter }),
 };
 
-export default config as unknown as Parameters<typeof defineConfig>[0];
+export default config;
