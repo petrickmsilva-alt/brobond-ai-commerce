@@ -1,3 +1,5 @@
+import "server-only";
+
 import { DeliveryProviderError } from "../core/delivery.interface";
 
 /**

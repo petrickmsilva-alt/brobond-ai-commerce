@@ -49,9 +49,9 @@ const eslintConfig = [
                 "@/modules/ai/openai/generator",
               ],
               message:
-                "The OpenAI Responses API client/generator may only be used from server " +
-                "actions (app/dashboard/ai/actions.ts) or server-only modules under " +
-                "modules/ai/. It must never be imported by a Client Component.",
+                "The OpenAI Responses API client/generator may only be used from audited " +
+                "server-only modules (modules/ai or modules/ai-ceo). It must never be " +
+                "imported by a Client Component.",
             },
           ],
         },

@@ -116,8 +116,8 @@ export function extractOutputText(payload: unknown): string {
  * Call the OpenAI Responses API and return the extracted text plus usage.
  *
  * Never called from a Client Component (enforced by `server-only` above and
- * the module boundary — only `modules/ai/openai/generator.ts` may import
- * this file).
+ * the module boundary — only audited server-only engines such as
+ * `modules/ai/openai/generator.ts` and PR011's AI CEO may import this file).
  */
 export async function callOpenAiResponses(
   request: OpenAiResponseRequest,
