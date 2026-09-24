@@ -42,16 +42,12 @@ function isMigrationCommand(): boolean {
  *
  * - Migration commands (migrate deploy / db push / studio) → native
  *   engine, no adapter (bypasses the OID 19 JS-engine deserializer
- *   bug).
+ *   bug). The adapter value is still supplied (type contract) but the
+ *   native Rust engine ignores it.
  * - All other CLI commands (validate, format, etc.) → PrismaPg adapter
  *   so they share the same runtime path the app uses.
  */
 async function cliAdapter() {
-  if (isMigrationCommand()) {
-    // Native engine path — no driver adapter in the CLI context.
-    return undefined;
-  }
-
   const connectionString = process.env.DATABASE_URL?.trim();
   if (!connectionString) {
     throw new Error("DATABASE_URL is required for Prisma database commands.");
@@ -66,5 +62,5 @@ export default defineConfig({
   },
   experimental: { adapter: true },
   engine: isMigrationCommand() ? undefined : "js",
-  adapter: isMigrationCommand() ? undefined : cliAdapter,
+  adapter: cliAdapter,
 });
