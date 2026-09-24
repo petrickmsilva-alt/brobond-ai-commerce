@@ -407,6 +407,26 @@ switching migrations to manual SQL, or by removing `prisma.config.ts` — those
 hide the real problem. If the CLI needs a package at runtime, it belongs in
 production `dependencies`.
 
+### Migration order & failed-migration recovery (P3018 / P3009)
+
+`prisma migrate deploy` replays `prisma/migrations/` in lexicographic order of
+the directory names, so a migration may only touch relations created by a
+**strictly earlier** migration. PR010.4.7 repaired the one place where that
+contract was broken (`20260922194600_outreach_ai_sales_pipeline` referenced
+`CreatorProfile`, a table that only exists after
+`20260923120000_creator_discovery_engine` renames `Creator`), which made every
+replay from an empty database fail with
+`P3018 — relation "CreatorProfile" does not exist`.
+
+- Full audit, the corrective SQL and the operator runbook:
+  [`docs/database/migration-order-and-recovery.md`](./docs/database/migration-order-and-recovery.md).
+- A database stuck on the failed migration is recovered **only** with
+  `npx prisma migrate resolve --rolled-back 20260922194600_outreach_ai_sales_pipeline`
+  followed by `npx prisma migrate deploy` — never by editing or deleting rows
+  in `_prisma_migrations`.
+- The ordering contract is enforced without a database by
+  `npx vitest run tests/migration-order.test.ts`.
+
 ### CI/CD
 
 | Trigger              | Workflow                       | Actions                                                                                                                       |
