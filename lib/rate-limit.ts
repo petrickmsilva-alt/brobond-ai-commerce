@@ -1,10 +1,33 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { assertOrganizationId } from "@/lib/tenant";
-import type { Prisma } from "@prisma/client";
+
+/**
+ * Login brute-force protection (PR011.1).
+ *
+ * Backed by the `RateLimit` table (tenant-agnostic by design: login happens
+ * BEFORE a session/tenant exists, so the identifier is the login email).
+ *
+ * - MAX_ATTEMPTS: failed attempts before the identifier is locked.
+ * - LOCK_WINDOW_MINUTES: sliding window counting consecutive failures.
+ * - LOCK_DURATION_MINUTES: how long an active lock lasts.
+ *
+ * The identifier is the login email (lowercased). IP-based limiting would
+ * require request-header access inside `authorize()` and is intentionally
+ * out of scope for this first cut — tracked as a follow-up.
+ */
+const MAX_ATTEMPTS = 5;
+const LOCK_WINDOW_MINUTES = 15;
+const LOCK_DURATION_MINUTES = 15;
 
 const LOCK_WINDOW_MS = LOCK_WINDOW_MINUTES * 60 * 1000;
 const LOCK_DURATION_MS = LOCK_DURATION_MINUTES * 60 * 1000;
+
+/** Exported for tests — the policy constants behind the lockout. */
+export const RATE_LIMIT_POLICY = {
+  maxAttempts: MAX_ATTEMPTS,
+  lockWindowMinutes: LOCK_WINDOW_MINUTES,
+  lockDurationMinutes: LOCK_DURATION_MINUTES,
+} as const;
 
 export async function isRateLimited(identifier: string): Promise<boolean> {
   const normalized = identifier.toLowerCase();
@@ -29,7 +52,7 @@ export async function isRateLimited(identifier: string): Promise<boolean> {
     return false;
   }
 
-  // Janela deslizante: se a última atualização é antigas demais, reset
+  // Janela deslizante: se a última atualização é antiga demais, reset
   if (record.updatedAt < new Date(now.getTime() - LOCK_WINDOW_MS)) {
     await prisma.rateLimit.update({
       where: { identifier_type: { identifier: normalized, type: "login" } },

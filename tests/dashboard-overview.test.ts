@@ -140,17 +140,11 @@ describe("dashboard overview — tenant isolation", () => {
     }
   });
 
-  it("applies the relational tenant scope to Sale (which has no org column)", async () => {
+  it("scopes Sale by its direct tenant FK (PR011.1)", async () => {
     await getDashboardOverview(ORG, { now: NOW });
 
     const where = prismaMock.sale.findMany.mock.calls[0]![0].where;
-    expect(where.AND[0]).toEqual({
-      OR: [
-        { product: { organizationId: ORG } },
-        { creator: { organizationId: ORG } },
-        { campaign: { organizationId: ORG } },
-      ],
-    });
+    expect(where.AND[0]).toEqual({ organizationId: ORG });
   });
 
   it("forwards the tenant to the analytics pipeline", async () => {
