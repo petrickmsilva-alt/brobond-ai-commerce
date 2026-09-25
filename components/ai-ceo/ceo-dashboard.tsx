@@ -101,12 +101,13 @@ function DecisionActions({
   return null;
 }
 
-export function CeoDashboard({ data, role }: { data: AICeoDashboardDTO; role: string }) {
+function CeoDashboard({ data, role }: { data: AICeoDashboardDTO; role: string }) {
   const router = useRouter();
   const [feedback, setFeedback] = useState("");
   const [pendingKey, setPendingKey] = useState("");
   const [isPending, startTransition] = useTransition();
   const isAdmin = role === "ADMIN";
+  const isManager = role === "ADMIN" || role === "MANAGER";
 
   function run(key: string, task: () => Promise<{ ok: boolean; error?: string }>, success: string) {
     setPendingKey(key);
@@ -126,6 +127,18 @@ export function CeoDashboard({ data, role }: { data: AICeoDashboardDTO; role: st
       status === "EXECUTED"
         ? "Execução externa registrada; nenhuma ação automática foi disparada."
         : "Estado da decisão atualizado.",
+    );
+  }
+
+  function batchExecute() {
+    run(
+      "batch-execute",
+      executeApprovedDecisionsAction,
+      (result) => {
+        if (!result.ok) return result.error ?? "Erro na execução em lote.";
+        const r = result.data;
+        return `Executadas ${r.executed} decisão(ões)${r.failed > 0 ? `; ${r.failed} falharam.` : "."}`;
+      },
     );
   }
 
@@ -154,6 +167,16 @@ export function CeoDashboard({ data, role }: { data: AICeoDashboardDTO; role: st
         >
           <FileText className="h-4 w-4" /> Gerar relatório diário
         </Button>
+        {isManager && (
+          <Button
+            variant="outline"
+            onClick={batchExecute}
+            disabled={isPending || data.decisions.filter((d) => d.status === "APPROVED").length === 0}
+          >
+            <PlayCircle className={`h-4 w-4 ${pendingKey === "batch-execute" ? "animate-pulse" : ""}`} />
+            Executar aprovadas em lote
+          </Button>
+        )}
         <p className="ml-auto max-w-xl text-xs text-white/40">
           O AI CEO apenas recomenda. Aprovação e confirmação de execução são humanas; este módulo
           nunca dispara campanhas, mensagens ou alterações comerciais.

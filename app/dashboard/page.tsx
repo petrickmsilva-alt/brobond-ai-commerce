@@ -198,6 +198,14 @@ export default async function DashboardPage() {
               label="Conectar plataforma"
               description="Importar conteúdo e catálogo externo"
             />
+            {canManage && (
+              <QuickAction
+                href="/dashboard/ceo"
+                icon={Sparkles}
+                label="IA Executiva"
+                description="Decisões, oportunidades e relatórios"
+              />
+            )}
           </div>
         </SectionCard>
 
