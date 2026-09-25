@@ -13,6 +13,7 @@ import type {
   DecisionPriorityName,
   DecisionStatusName,
 } from "@/modules/ai-ceo/dto";
+import type { AICeoActionResult } from "@/app/dashboard/ceo/actions";
 import {
   generateExecutiveDecisionsAction,
   generateExecutiveReportAction,
