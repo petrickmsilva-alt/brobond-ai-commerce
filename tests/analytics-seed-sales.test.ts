@@ -10,20 +10,21 @@ const products = [
 ];
 const creators = [{ id: "c1" }, { id: "c2" }];
 const campaigns = [{ id: "cp1" }];
+const ORG_ID = "org-test-001";
 
 describe("buildSeedSales() — PR008", () => {
   it(`generates exactly ${SEED_SALE_COUNT} sales`, () => {
-    expect(buildSeedSales(products, creators, campaigns, NOW)).toHaveLength(SEED_SALE_COUNT);
+    expect(buildSeedSales(products, creators, campaigns, ORG_ID, NOW)).toHaveLength(SEED_SALE_COUNT);
   });
 
   it("is fully deterministic for the same inputs", () => {
-    const a = buildSeedSales(products, creators, campaigns, NOW);
-    const b = buildSeedSales(products, creators, campaigns, NOW);
+    const a = buildSeedSales(products, creators, campaigns, ORG_ID, NOW);
+    const b = buildSeedSales(products, creators, campaigns, ORG_ID, NOW);
     expect(a).toEqual(b);
   });
 
   it("honors the status distribution (28 PAID · 5 PENDING · 4 REFUNDED · 3 CANCELLED)", () => {
-    const rows = buildSeedSales(products, creators, campaigns, NOW);
+    const rows = buildSeedSales(products, creators, campaigns, ORG_ID, NOW);
     const counts = rows.reduce<Record<string, number>>((acc, row) => {
       acc[row.status] = (acc[row.status] ?? 0) + 1;
       return acc;
@@ -33,18 +34,18 @@ describe("buildSeedSales() — PR008", () => {
 
   it("links every sale to a real product of the workspace", () => {
     const ids = new Set(products.map((product) => product.id));
-    for (const row of buildSeedSales(products, creators, campaigns, NOW)) {
+    for (const row of buildSeedSales(products, creators, campaigns, ORG_ID, NOW)) {
       expect(ids.has(row.productId)).toBe(true);
     }
   });
 
   it("links creators/campaigns round-robin (null-safe when lists are empty)", () => {
-    const rows = buildSeedSales(products, creators, campaigns, NOW);
+    const rows = buildSeedSales(products, creators, campaigns, ORG_ID, NOW);
     expect(rows.every((row) => row.creatorId === "c1" || row.creatorId === "c2")).toBe(true);
     expect(rows.every((row) => row.campaignId === "cp1")).toBe(true);
     expect(rows.filter((row) => row.creatorId === "c2")).not.toHaveLength(0);
 
-    const withoutActors = buildSeedSales(products, [], [], NOW);
+    const withoutActors = buildSeedSales(products, [], [], ORG_ID, NOW);
     expect(withoutActors.every((row) => row.creatorId === null && row.campaignId === null)).toBe(
       true,
     );
@@ -52,7 +53,7 @@ describe("buildSeedSales() — PR008", () => {
 
   it("computes amountCents = priceCents × quantity with quantity in 1–3", () => {
     const byId = new Map(products.map((product) => [product.id, product.priceCents]));
-    for (const row of buildSeedSales(products, creators, campaigns, NOW)) {
+    for (const row of buildSeedSales(products, creators, campaigns, ORG_ID, NOW)) {
       expect(row.quantity).toBeGreaterThanOrEqual(1);
       expect(row.quantity).toBeLessThanOrEqual(3);
       expect(row.amountCents).toBe((byId.get(row.productId) ?? 0) * row.quantity);
@@ -60,7 +61,7 @@ describe("buildSeedSales() — PR008", () => {
   });
 
   it("spreads sales over the last 30 days, never in the future", () => {
-    for (const row of buildSeedSales(products, creators, campaigns, NOW)) {
+    for (const row of buildSeedSales(products, creators, campaigns, ORG_ID, NOW)) {
       const ageMs = NOW.getTime() - row.occurredAt.getTime();
       expect(ageMs).toBeGreaterThanOrEqual(0);
       expect(ageMs).toBeLessThan(31 * 86_400_000);
@@ -68,14 +69,14 @@ describe("buildSeedSales() — PR008", () => {
   });
 
   it("emits unique, stable references", () => {
-    const rows = buildSeedSales(products, creators, campaigns, NOW);
+    const rows = buildSeedSales(products, creators, campaigns, ORG_ID, NOW);
     expect(new Set(rows.map((row) => row.reference)).size).toBe(SEED_SALE_COUNT);
     expect(rows.map((row) => row.reference)).toEqual(
-      buildSeedSales(products, creators, campaigns, NOW).map((row) => row.reference),
+      buildSeedSales(products, creators, campaigns, ORG_ID, NOW).map((row) => row.reference),
     );
   });
 
   it("returns an empty list when the workspace has no products", () => {
-    expect(buildSeedSales([], creators, campaigns, NOW)).toEqual([]);
+    expect(buildSeedSales([], creators, campaigns, ORG_ID, NOW)).toEqual([]);
   });
 });

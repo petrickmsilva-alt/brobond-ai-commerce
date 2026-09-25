@@ -110,12 +110,13 @@ export function CeoDashboard({ data, role }: { data: AICeoDashboardDTO; role: st
   const isAdmin = role === "ADMIN";
   const isManager = role === "ADMIN" || role === "MANAGER";
 
-  function run(key: string, task: () => Promise<{ ok: boolean; error?: string }>, success: string) {
+  function run(key: string, task: () => Promise<AICeoActionResult>, success: string | ((result: AICeoActionResult) => string)) {
     setPendingKey(key);
     setFeedback("");
     startTransition(async () => {
       const result = await task();
-      setFeedback(result.ok ? success : (result.error ?? "Erro inesperado."));
+      const message = typeof success === "string" ? success : success(result);
+      setFeedback(result.ok ? message : (result.error ?? "Erro inesperado."));
       setPendingKey("");
       if (result.ok) router.refresh();
     });
