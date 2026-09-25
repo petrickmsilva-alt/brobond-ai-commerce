@@ -3,6 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { assertOrganizationId } from "@/lib/tenant";
 import type { Prisma } from "@prisma/client";
 
+const MAX_ATTEMPTS = 5;
+const LOCK_WINDOW_MINUTES = 15;
+const LOCK_DURATION_MINUTES = 15;
+
 const LOCK_WINDOW_MS = LOCK_WINDOW_MINUTES * 60 * 1000;
 const LOCK_DURATION_MS = LOCK_DURATION_MINUTES * 60 * 1000;
 

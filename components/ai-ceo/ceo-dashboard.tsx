@@ -17,6 +17,7 @@ import {
   generateExecutiveDecisionsAction,
   generateExecutiveReportAction,
   transitionExecutiveDecisionAction,
+  executeApprovedDecisionsAction,
 } from "@/app/dashboard/ceo/actions";
 
 const PRIORITY_LABEL: Record<DecisionPriorityName, string> = {
@@ -101,7 +102,7 @@ function DecisionActions({
   return null;
 }
 
-function CeoDashboard({ data, role }: { data: AICeoDashboardDTO; role: string }) {
+export function CeoDashboard({ data, role }: { data: AICeoDashboardDTO; role: string }) {
   const router = useRouter();
   const [feedback, setFeedback] = useState("");
   const [pendingKey, setPendingKey] = useState("");
@@ -133,7 +134,7 @@ function CeoDashboard({ data, role }: { data: AICeoDashboardDTO; role: string })
   function batchExecute() {
     run(
       "batch-execute",
-      executeApprovedDecisionsAction,
+      () => executeApprovedDecisionsAction(),
       (result) => {
         if (!result.ok) return result.error ?? "Erro na execução em lote.";
         const r = result.data;

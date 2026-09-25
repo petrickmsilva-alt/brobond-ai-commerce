@@ -27,7 +27,11 @@ export interface SeedSaleDraft {
   campaignId: string | null;
 }
 
-/** Total number of generated sales. */
+export interface SeedSaleDraftWithOrgId extends SeedSaleDraft {
+  organizationId: string;
+}
+
+/** Total number de generated sales. */
 export const SEED_SALE_COUNT = 40;
 
 /** Status distribution — 28 PAID · 5 PENDING · 4 REFUNDED · 3 CANCELLED. */
@@ -45,8 +49,9 @@ export function buildSeedSales(
   products: readonly SeedSaleProduct[],
   creators: readonly SeedSaleActor[],
   campaigns: readonly SeedSaleActor[],
+  organizationId: string,
   now: Date,
-): SeedSaleDraft[] {
+): SeedSaleDraftWithOrgId[] {
   if (products.length === 0) return [];
 
   return Array.from({ length: SEED_SALE_COUNT }, (_, index) => {
@@ -74,6 +79,7 @@ export function buildSeedSales(
       productId: product.id,
       creatorId: creators.length > 0 ? creators[index % creators.length]!.id : null,
       campaignId: campaigns.length > 0 ? campaigns[index % campaigns.length]!.id : null,
+      organizationId,
     };
   });
 }

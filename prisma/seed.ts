@@ -814,9 +814,10 @@ async function main() {
       select: { id: true },
       orderBy: { createdAt: "asc" },
     });
-    const drafts = buildSeedSales(products, saleCreators, saleCampaigns, NOW);
+    const drafts = buildSeedSales(products, saleCreators, saleCampaigns, organization.id, NOW);
     await prisma.sale.createMany({
-      data: drafts.map((draft) => ({ ...draft, currency: "BRL" })),
+      data: drafts.map((draft) => ({ ...draft, organizationId: organization.id })),
+      skipDuplicates: true,
     });
     seededSales = drafts.length;
   }
