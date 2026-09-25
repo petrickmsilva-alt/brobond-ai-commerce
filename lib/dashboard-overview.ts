@@ -101,13 +101,8 @@ function dayLabel(date: Date): string {
  */
 function saleTenantWhere(organizationId: string) {
   const scope = assertOrganizationId(organizationId);
-  return {
-    OR: [
-      { product: { organizationId: scope } },
-      { creator: { organizationId: scope } },
-      { campaign: { organizationId: scope } },
-    ],
-  };
+  // PR011.1: Sale agora tem organizationId direto; filtro simples pelo FK.
+  return { organizationId: scope };
 }
 
 /** Human-facing pt-BR labels for the creator pipeline statuses. */

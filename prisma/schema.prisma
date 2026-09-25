@@ -770,6 +770,10 @@ model Sale {
   status      SaleStatus @default(PENDING)
   occurredAt  DateTime   @default(now())
 
+  // Tenant — REQUIRED. Fecha a lacuna de isolamento transitivo (ver PR011.1).
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   productId String?
   product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
@@ -786,6 +790,8 @@ model Sale {
   @@index([productId])
   @@index([creatorId])
   @@index([campaignId])
+  @@index([organizationId])
+  @@index([organizationId, status])
 }
 
 // ------------------------------------------------------------------
@@ -1722,4 +1728,21 @@ model PasswordResetToken {
 
   @@index([userId, expiresAt])
   @@index([expiresAt])
+}
+
+// ------------------------------------------------------------------
+// Rate Limiting (PR011.1 — Login Bruteforce Protection)
+// ------------------------------------------------------------------
+
+model RateLimit {
+  id        String   @id @default(cuid())
+  identifier String
+  type      String   @default("login")
+  attempts  Int      @default(0)
+  lockedAt  DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([identifier, type])
+  @@index([type, attempts])
 }

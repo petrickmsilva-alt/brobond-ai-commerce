@@ -8,6 +8,7 @@ import { equalizeVerificationTiming, verifyPassword } from "@/lib/password";
 import { credentialsSchema } from "@/lib/validations/auth";
 import { isGoogleProviderConfigured, resolveGoogleCredentials } from "@/lib/auth-providers";
 import { resolveTrustHost } from "@/lib/auth-trust-host";
+import { isRateLimited, recordFailedAttempt, resetFailedAttempts } from "@/lib/rate-limit";
 
 /**
  * NextAuth v5 configuration.
@@ -150,8 +151,21 @@ export const authConfig = {
           return null;
         }
 
+        // Rate limiting: verifica se o email atingiu o limite de tentativas falhadas.
+        if (await isRateLimited(email)) {
+          await equalizeVerificationTiming(password);
+          return null;
+        }
+
         const valid = await verifyPassword(password, user.passwordHash);
-        if (!valid) return null;
+        if (!valid) {
+          await recordFailedAttempt(email);
+          await equalizeVerificationTiming(password);
+          return null;
+        }
+
+        // Login bem-sucedido: reseta o contador de falhas.
+        await resetFailedAttempts(email);
 
         // NOTE: `passwordHash` is deliberately dropped here — it must never
         // travel to the JWT, the session, or a client component.
