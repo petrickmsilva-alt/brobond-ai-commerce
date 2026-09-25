@@ -1,5 +1,39 @@
 # PROJECT STATE — Brobond AI Commerce OS
 
+### PR010.4.8 — prisma.config.ts migration-branch parse fix (2026-09-25) — implemented
+
+- **Symptom.** `prisma migrate deploy` (and `db push` / `studio`) aborted
+  with `Failed to parse syntax of config file at "prisma.config.ts"`
+  BEFORE any migration work — breaking Render's `preDeployCommand` and
+  the CI smoke test. `prisma validate` / `generate` kept working, which
+  made the regression look command-specific and hid it: PR #33's CI died
+  at `Format check`, so the smoke test step never ran; the first CI run
+  to reach it (PR #35) exposed the failure.
+- **Root cause.** The PR010.4.7 strategy split assembled the config by
+  spreading `{ engine: undefined, adapter: undefined }` for migration
+  commands. `@prisma/config` validates the default export with an Effect
+  schema union inside `parseDefaultExport` — keys that are PRESENT with
+  an `undefined` value do not match the native-engine branch (which
+  requires the keys to be absent) nor the `"js"` branch (which requires
+  `adapter` to be a factory). The thrown `ConfigFileSyntaxError`
+  surfaces in the CLI as the misleading "Failed to parse syntax"
+  message. TypeScript was satisfied (the keys' types are `undefined`),
+  so `tsc --noEmit` never caught it.
+- **Fix.** `prisma.config.ts` now assembles the config as one of two
+  COMPLETE literals: migration commands get `{ schema, migrations,
+experimental }` with no `engine`/`adapter` keys at all; every other
+  CLI command keeps `engine: "js"` + `adapter: cliAdapter` exactly as
+  before. The strategy-split behavior (native Rust engine for
+  migrations, bypassing the OID 19 deserializer bug) is unchanged.
+- **Verified locally** (offline-safe): `prisma validate` (js path, schema
+  valid) and `prisma migrate deploy` both print `Loaded Prisma config
+from prisma.config.ts.`; `npm run smoke:prisma-runtime` passes end to
+  end. New regression cases in `tests/prisma-config-smoke.test.ts` pin
+  the key-absence for `migrate deploy`, `migrate dev`, `db push` and
+  `studio` (the old spread would fail them: the keys existed).
+- **Render unchanged:** `preDeployCommand: npx prisma migrate deploy`
+  now actually reaches the native engine path it was designed for.
+
 ### PR011.1 — Sale Tenant FK + Login Rate Limiting (2026-09-25) — implemented
 
 - **Sale promoted to a direct tenant FK.** `Sale.organizationId` is now
