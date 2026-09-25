@@ -56,7 +56,14 @@ CREATE INDEX "FollowUpSequence_templateId_idx" ON "FollowUpSequence"("templateId
 
 ALTER TABLE "MessageTemplate" ADD CONSTRAINT "MessageTemplate_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "OutreachMessage" ADD CONSTRAINT "OutreachMessage_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "OutreachMessage" ADD CONSTRAINT "OutreachMessage_creatorId_fkey" FOREIGN KEY ("creatorId") REFERENCES "CreatorProfile"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- NOTE: at this point in migration history the creators table is still named
+-- "Creator"; it is renamed to "CreatorProfile" in
+-- 20260923120000_creator_discovery_engine. PostgreSQL automatically keeps this
+-- foreign key pointing at the table across the rename, so the constraint must
+-- reference "Creator" here or `prisma migrate deploy` fails on a fresh database
+-- ("relation \"CreatorProfile\" does not exist"), which blocks every later
+-- migration — including 20260929090000_self_signup_first_tenant.
+ALTER TABLE "OutreachMessage" ADD CONSTRAINT "OutreachMessage_creatorId_fkey" FOREIGN KEY ("creatorId") REFERENCES "Creator"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "OutreachMessage" ADD CONSTRAINT "OutreachMessage_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "OutreachMessage" ADD CONSTRAINT "OutreachMessage_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "OutreachMessage" ADD CONSTRAINT "OutreachMessage_templateId_fkey" FOREIGN KEY ("templateId") REFERENCES "MessageTemplate"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
