@@ -17,6 +17,7 @@ import {
   generateExecutiveDecisionsAction,
   generateExecutiveReportAction,
   transitionExecutiveDecisionAction,
+  executeApprovedDecisionsAction,
 } from "@/app/dashboard/ceo/actions";
 
 const PRIORITY_LABEL: Record<DecisionPriorityName, string> = {
@@ -101,7 +102,7 @@ function DecisionActions({
   return null;
 }
 
-function CeoDashboard({ data, role }: { data: AICeoDashboardDTO; role: string }) {
+export function CeoDashboard({ data, role }: { data: AICeoDashboardDTO; role: string }) {
   const router = useRouter();
   const [feedback, setFeedback] = useState("");
   const [pendingKey, setPendingKey] = useState("");
@@ -109,12 +110,17 @@ function CeoDashboard({ data, role }: { data: AICeoDashboardDTO; role: string })
   const isAdmin = role === "ADMIN";
   const isManager = role === "ADMIN" || role === "MANAGER";
 
-  function run(key: string, task: () => Promise<{ ok: boolean; error?: string }>, success: string) {
+  function run<T extends { ok: boolean; error?: string }>(
+    key: string,
+    task: () => Promise<T>,
+    success: string | ((result: T) => string),
+  ) {
     setPendingKey(key);
     setFeedback("");
     startTransition(async () => {
       const result = await task();
-      setFeedback(result.ok ? success : (result.error ?? "Erro inesperado."));
+      const message = typeof success === "function" ? success(result) : success;
+      setFeedback(result.ok ? message : (result.error ?? "Erro inesperado."));
       setPendingKey("");
       if (result.ok) router.refresh();
     });
@@ -131,15 +137,11 @@ function CeoDashboard({ data, role }: { data: AICeoDashboardDTO; role: string })
   }
 
   function batchExecute() {
-    run(
-      "batch-execute",
-      executeApprovedDecisionsAction,
-      (result) => {
-        if (!result.ok) return result.error ?? "Erro na execução em lote.";
-        const r = result.data;
-        return `Executadas ${r.executed} decisão(ões)${r.failed > 0 ? `; ${r.failed} falharam.` : "."}`;
-      },
-    );
+    run("batch-execute", executeApprovedDecisionsAction, (result) => {
+      if (!result.ok) return result.error ?? "Erro na execução em lote.";
+      const { executed, failed } = result.data ?? { executed: 0, failed: 0 };
+      return `Executadas ${executed} decisão(ões)${failed > 0 ? `; ${failed} falharam.` : "."}`;
+    });
   }
 
   return (
@@ -171,9 +173,13 @@ function CeoDashboard({ data, role }: { data: AICeoDashboardDTO; role: string })
           <Button
             variant="outline"
             onClick={batchExecute}
-            disabled={isPending || data.decisions.filter((d) => d.status === "APPROVED").length === 0}
+            disabled={
+              isPending || data.decisions.filter((d) => d.status === "APPROVED").length === 0
+            }
           >
-            <PlayCircle className={`h-4 w-4 ${pendingKey === "batch-execute" ? "animate-pulse" : ""}`} />
+            <PlayCircle
+              className={`h-4 w-4 ${pendingKey === "batch-execute" ? "animate-pulse" : ""}`}
+            />
             Executar aprovadas em lote
           </Button>
         )}

@@ -17,6 +17,7 @@ export interface SeedSaleActor {
 }
 
 export interface SeedSaleDraft {
+  organizationId: string;
   reference: string;
   quantity: number;
   amountCents: number;
@@ -40,8 +41,12 @@ const SEED_REFUNDED_COUNT = 4;
  * Deterministic pseudo-distribution of 40 sales over the LAST 30 days
  * (relative to `now`), linked round-robin to the workspace's real
  * products/creators/campaigns so every attribution bucket has data.
+ *
+ * `organizationId` is the first argument (tenant-scope convention) and is
+ * stamped on every draft — `Sale.organizationId` is required since PR011.1.
  */
 export function buildSeedSales(
+  organizationId: string,
   products: readonly SeedSaleProduct[],
   creators: readonly SeedSaleActor[],
   campaigns: readonly SeedSaleActor[],
@@ -66,6 +71,7 @@ export function buildSeedSales(
     const occurredAt = new Date(now.getTime() - daysAgo * 86_400_000 - (index % 5) * 3_600_000);
 
     return {
+      organizationId,
       reference: `seed-sale-${String(index + 1).padStart(3, "0")}`,
       quantity,
       amountCents: product.priceCents * quantity,

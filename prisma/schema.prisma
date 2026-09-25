@@ -300,6 +300,8 @@ model Organization {
   users     User[]
   products  Product[]
   campaigns Campaign[]
+  // PR011.1 — Sale promoted to a direct tenant FK.
+  sales Sale[]
 
   productMedia    ProductMedia[]
   productVariants ProductVariant[]

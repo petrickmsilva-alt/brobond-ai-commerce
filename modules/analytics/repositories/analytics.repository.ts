@@ -33,20 +33,18 @@ export interface AnalyticsPeriodRange {
 
 /**
  * Tenant filter for `Sale` — mirrors `modules/sales/sales.service.ts`.
- * `Sale` carries no direct `organizationId` column; the tenant scope is
- * transitive through product/creator/campaign (promoting `Sale` to a
- * direct tenant FK is tracked for a later PR). Until then, no analytics
- * query runs without this relational scope.
+ *
+ * PR011.1: `Sale` carries a direct, required `organizationId` FK, so the
+ * scope is a simple column filter. The old transitive scope (OR over
+ * product/creator/campaign) made "orphan" sales — rows whose relations
+ * were `SetNull`-ed by a deletion — invisible to their own tenant's
+ * analytics. With the direct FK every sale is attributable to exactly
+ * one tenant, and relation-less rows land in the "Sem atribuição"
+ * bucket instead of disappearing.
  */
 function saleTenantWhere(organizationId: string): Prisma.SaleWhereInput {
   const scope = assertOrganizationId(organizationId);
-  return {
-    OR: [
-      { product: { organizationId: scope } },
-      { creator: { organizationId: scope } },
-      { campaign: { organizationId: scope } },
-    ],
-  };
+  return { organizationId: scope };
 }
 
 const salePeriodSelect = {

@@ -906,7 +906,7 @@ modules/analytics/
 ├── metrics/          sales-metrics.ts · attribution.ts · snapshot-builder.ts
 │                     (pure: totals · margin/ROI bps · share bps · versioned payload)
 ├── repositories/     analytics.repository.ts — tenant scope ALWAYS 1st arg
-│                     (sale scope mirrors modules/sales until Sale gains organizationId)
+│                     (Sale scopes by its direct organizationId FK — PR011.1)
 ├── services/         analytics.service.ts — lazy pipeline (snapshot-first,
 │                     compute+persist on miss, refresh() forcing recompute,
 │                     stale detection via max(sale.updatedAt))

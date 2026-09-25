@@ -105,16 +105,7 @@ describe("analytics repository — PR008", () => {
     expect(fake.sale.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          AND: [
-            {
-              OR: [
-                { product: { organizationId: "org_a" } },
-                { creator: { organizationId: "org_a" } },
-                { campaign: { organizationId: "org_a" } },
-              ],
-            },
-            { occurredAt: { gte: from, lt: to } },
-          ],
+          AND: [{ organizationId: "org_a" }, { occurredAt: { gte: from, lt: to } }],
         },
       }),
     );

@@ -1,5 +1,79 @@
 # PROJECT STATE — Brobond AI Commerce OS
 
+### PR011.1 — Sale Tenant FK + Login Rate Limiting (2026-09-25) — implemented
+
+- **Sale promoted to a direct tenant FK.** `Sale.organizationId` is now
+  `String` (required) with `organizationId → Organization.id`
+  `onDelete: Cascade`, plus `@@index([organizationId])` and
+  `@@index([organizationId, status])`. Migration
+  `20260930000000_sale_rate_limit` backfills existing rows from
+  product → creator → campaign (in that order) before enforcing
+  `NOT NULL` + FK. This closes the transitive-isolation gap flagged in the
+  architectural audit: a sale whose relations were `SetNull`-ed by a
+  deletion can no longer become tenant-invisible.
+- **Analytics scope simplified.** `saleTenantWhere()` in
+  `modules/analytics/repositories/analytics.repository.ts` and
+  `lib/dashboard-overview.ts` now filter by the direct column instead of the
+  old `OR: [product, creator, campaign]` join. Relation-less sales land in
+  the "Sem atribuição" bucket — no cent disappears, no row hides from its
+  tenant. `modules/sales/sales.service.ts` already used the direct FK.
+- **Login brute-force protection.** New `RateLimit` table
+  (`@@unique([identifier, type])`) + `lib/rate-limit.ts` wired into
+  `authorize()` in `lib/auth.ts`: unknown account → generic error;
+  locked identifier → generic error (same message, no oracle);
+  failed password → `recordFailedAttempt`; success →
+  `resetFailedAttempts`. Policy: **5 failed attempts inside a 15-minute
+  sliding window → 15-minute lock**, identifier = lowercased login email.
+  IP-based limiting (needs request-header access inside `authorize()`) is
+  tracked as a follow-up, not shipped here.
+- **Compile/format bugs fixed in this pass** (the original PR011.1 commit
+  referenced constants that were never defined, shipped Windows line
+  endings and left the CEO dashboard half-wired):
+  - `lib/rate-limit.ts` referenced `MAX_ATTEMPTS`, `LOCK_WINDOW_MINUTES`
+    and `LOCK_DURATION_MINUTES` without defining them — `tsc --noEmit`,
+    `next build` and Docker builds failed. Constants are now defined and
+    exported for tests via `RATE_LIMIT_POLICY`; unused `Prisma` /
+    `assertOrganizationId` imports removed.
+  - `prisma/schema.prisma` declared `Sale.organization` without the
+    opposite `sales Sale[]` relation on `Organization` — `prisma
+validate`/`generate` failed with P1012 ("missing an opposite relation
+    field"). The back-relation is now declared under the tenant-scoped
+    relations block.
+  - `components/ai-ceo/ceo-dashboard.tsx` used
+    `executeApprovedDecisionsAction` without importing it, passed a
+    success-message _builder_ to a `run()` helper that only accepted a
+    string, and never exported `CeoDashboard` (breaking the page import).
+    The component now imports the action, exports itself, and `run()`
+    accepts `string | ((result) => string)`.
+  - `app/dashboard/ceo/actions.ts` — `executeApprovedDecisionsAction`
+    was written without importing `requireOrganization` or `prisma`.
+  - `app/dashboard/ceo/page.tsx` rendered `<Button onClick={…}>` inside a
+    Server Component (event handlers cannot cross the server/client
+    boundary) with duplicated, permanently-disabled buttons. The
+    interactive controls live exclusively in the client
+    `CeoDashboard`; the page keeps the KPI cards.
+  - CRLF line endings (violating `endOfLine: "lf"`) removed from
+    `app/dashboard/ceo/actions.ts`, `app/dashboard/ceo/page.tsx`,
+    `app/dashboard/page.tsx`, `components/ai-ceo/ceo-dashboard.tsx`,
+    `lib/auth.ts`, `lib/dashboard-overview.ts`,
+    `modules/sales/sales.service.ts` and `prisma/schema.prisma` — the
+    `format:check` CI step is green again.
+  - `buildSeedSales()` did not set the now-required `organizationId`, so
+    `prisma/seed.ts` would fail typecheck and runtime. It now takes
+    `organizationId` as its first argument (tenant-scope convention) and
+    stamps it on every draft.
+- **Tests.** `tests/analytics-repository.test.ts` and
+  `tests/dashboard-overview.test.ts` re-pinned to the direct tenant filter;
+  `tests/analytics-seed-sales.test.ts` updated for the new signature and
+  asserts the tenant stamp; new `tests/rate-limit.test.ts` (12 cases) pins
+  the lockout policy against a mocked Prisma.
+- **Docs.** README tenant-isolation and analytics-layout sections updated
+  (Sale no longer "transitive"). This entry documents PR011.1.
+- **Known follow-ups (from the architectural audit, not in scope here):**
+  AI-decisions "Approve & Execute" flow, analytics drill-down/comparison,
+  IP-based rate limiting, resource-level permissions beyond
+  ADMIN/MANAGER/MEMBER.
+
 ### PR010.4.6 — Prisma driver adapter configuration cleanup (2026-09-23) — blocked
 
 - **The schema property is not redundant on Prisma 6.19.3.** Removing only
@@ -31,11 +105,11 @@ not be deserialized from the database` while initializing migration
 
 - **Symptom.** `prisma migrate deploy` (e `prisma db push`, `prisma studio`)
   falham no JavaScript schema engine com `Column type 'name' could not be
-  deserialized from the database` — PostgreSQL system type OID 19 (`name`) não
+deserialized from the database` — PostgreSQL system type OID 19 (`name`) não
   tem mapeamento no `@prisma/adapter-pg@6.19.3` / JS engine (upstream
   `prisma/prisma#27403`). O projeto havia migrado o CLI para `engine = "js"`
-  + `PrismaPg` via `prisma.config.ts` (era do PR010.4.5) para resolver um
-  problema de runtime diferente, o que regressou os comandos de migration.
+  - `PrismaPg` via `prisma.config.ts` (era do PR010.4.5) para resolver um
+    problema de runtime diferente, o que regressou os comandos de migration.
 - **Scope.** Apenas o caminho CLI do Prisma é afetado. O runtime do Next.js
   (`lib/prisma.ts`, Server Actions, API Routes, `getPrisma()`) já usa seu próprio
   singleton `new PrismaPg()` e nunca carrega `prisma.config.ts`, então é
@@ -62,7 +136,7 @@ not be deserialized from the database` while initializing migration
   antes. Server Actions e API routes continuam usando `PrismaPg` sem mudança de
   comportamento.
 - **`prisma/schema.prisma` — inalterado.** `generator client { engineType =
-  "client" }` e `datasource { url = env("DATABASE_URL") }` são mantidos.
+"client" }` e `datasource { url = env("DATABASE_URL") }` são mantidos.
 - **Render — inalterado.** `preDeployCommand: npx prisma migrate deploy` e
   `startCommand` ambos agora rodam o comando de migration pelo caminho do engine
   nativo, então os deploys do Render usam o mesmo split que o desenvolvimento
@@ -71,7 +145,7 @@ not be deserialized from the database` while initializing migration
 - **Smoke test (`scripts/smoke-prisma-migrate-runtime.sh` /
   `npm run smoke:prisma-runtime`) — ainda válido.** O script copia
   `prisma.config.ts` para uma árvore de produção limpa e roda `npx prisma migrate
-  deploy`. Com o split, esse comando agora alcança o caminho de setup de
+deploy`. Com o split, esse comando agora alcança o caminho de setup de
   migration sob o engine nativo instead de falhar no deserializer OID 19. Um
   `MODULE_NOT_FOUND` ainda faz o teste falhar; um erro de conexão (DB
   inalcançável) ainda é o estado de pass esperado sem `SMOKE_DATABASE_URL`.

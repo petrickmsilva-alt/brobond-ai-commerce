@@ -95,13 +95,13 @@ function dayLabel(date: Date): string {
 }
 
 /**
- * Tenant filter for `Sale`, copied from
- * `modules/analytics/repositories/analytics.repository.ts`. `Sale` has no
- * direct `organizationId` column; the scope is transitive.
+ * Tenant filter for `Sale`, mirroring
+ * `modules/analytics/repositories/analytics.repository.ts`. PR011.1
+ * promoted `Sale` to a direct tenant FK, so the scope is a simple
+ * column filter — no relational joins required.
  */
 function saleTenantWhere(organizationId: string) {
   const scope = assertOrganizationId(organizationId);
-  // PR011.1: Sale agora tem organizationId direto; filtro simples pelo FK.
   return { organizationId: scope };
 }
 
