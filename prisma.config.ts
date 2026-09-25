@@ -1,5 +1,4 @@
 import path from "node:path";
-import { defineConfig } from "prisma/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 /**
@@ -42,7 +41,7 @@ function isMigrationCommand(): boolean {
  *
  * - Migration commands (migrate deploy / db push / studio) → native
  *   engine, no adapter (bypasses the OID 19 JS-engine deserializer
- *   bug). The adapter value is still supplied (type contract) but the
+ *   bug). The adapter value is present in the config object but the
  *   native Rust engine ignores it.
  * - All other CLI commands (validate, format, etc.) → PrismaPg adapter
  *   so they share the same runtime path the app uses.
@@ -55,12 +54,24 @@ async function cliAdapter() {
   return new PrismaPg({ connectionString });
 }
 
-export default defineConfig({
+// Build the config object. When isMigrationCommand() is true at process
+// startup, engine and adapter are omitted so the native Rust query engine
+// handles the command using the schema.prisma datasource URL directly —
+// bypassing the OID 19 deserializer bug in the JS engine.
+//
+// Prisma 6.19.3's defineConfig type is a discriminated union that does not
+// accept `engine: "js" | undefined` or `adapter: ... | undefined` inline.
+// We assemble the object with a spread conditional and export the plain
+// object — Prisma's config loader accepts the plain-object shape.
+const config = {
   schema: path.join("prisma", "schema.prisma"),
   migrations: {
     seed: "tsx prisma/seed.ts",
   },
   experimental: { adapter: true },
-  engine: isMigrationCommand() ? undefined : "js",
-  adapter: cliAdapter,
-});
+  ...(isMigrationCommand()
+    ? { engine: undefined as undefined, adapter: undefined as undefined }
+    : { engine: "js" as const, adapter: cliAdapter }),
+};
+
+export default config;

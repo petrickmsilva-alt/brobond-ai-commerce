@@ -1,23 +1,37 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import config from "../prisma.config";
+import configImport from "../prisma.config";
 
 /**
  * Prisma CLI config smoke test.
  *
- * The migration case is opt-in because the regular unit-test suite does not
- * provision PostgreSQL. Run it against a disposable test database with:
+ * The config object is built at module-load time from `process.argv`. When
+ * vitest imports this module, `process.argv` does NOT contain a Prisma
+ * migration command, so `isMigrationCommand()` returns false and the config
+ * carries the JS engine + PrismaPg adapter (the non-migration shape).
  *
- * PRISMA_TEST_DATABASE_URL=postgresql://... npm test -- tests/prisma-config-smoke.test.ts
+ * The migration-specific shape (engine absent, adapter absent — native Rust
+ * engine uses schema.prisma datasource URL directly) is exercised by:
+ *   - `npm run smoke:prisma-runtime` (scripts/smoke-prisma-migrate-runtime.sh)
+ *   - real `prisma migrate deploy` / `prisma db push` / `prisma studio`
+ *     invocations, where `process.argv[1]` is the migration subcommand.
+ *
+ * This test validates the non-migration shape only.
  */
 describe("Prisma CLI configuration", () => {
-  it("keeps migrate deploy on the standard datasource URL path", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const config = configImport as any;
+
+  it("uses the JS engine + PrismaPg adapter for non-migration CLI commands", () => {
     expect(config.schema).toBe(path.join("prisma", "schema.prisma"));
     expect(config.migrations?.seed).toBe("tsx prisma/seed.ts");
-    expect(config).not.toHaveProperty("adapter");
-    expect(config).not.toHaveProperty("engine");
-    expect(config).not.toHaveProperty("experimental");
+    // Non-migration CLI commands (validate, format, etc.) share the JS
+    // engine + PrismaPg adapter path with the application runtime
+    // (lib/prisma.ts), so the same adapter works for both.
+    expect(typeof config.adapter).toBe("function");
+    expect(config.engine).toBe("js");
+    expect(config.experimental).toEqual({ adapter: true });
   });
 
   it.skipIf(!process.env.PRISMA_TEST_DATABASE_URL)(
