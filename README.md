@@ -277,6 +277,27 @@ this project defines no `NEXT_PUBLIC_` variable. (`APP_URL` was removed in
 PR000.2 because nothing read it, and reintroduced by PR010.3 with a narrower
 mandate — human-facing links only.)
 
+### Operational observability
+
+The application emits structured JSON logs server-side. Credential-like fields,
+connection strings and obvious PII are redacted recursively before logging.
+Each readiness failure has a `requestId`; send `x-request-id` and
+`x-correlation-id` headers to propagate an existing identifier.
+
+| Variable                      | Required | Purpose                                                              |
+| ----------------------------- | -------- | -------------------------------------------------------------------- |
+| `SENTRY_DSN`                  | no       | Enables Sentry error reporting for server, edge and browser runtimes |
+| `SENTRY_ENVIRONMENT`          | no       | Sentry environment label (for example `production`)                  |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | no       | Enables OpenTelemetry OTLP/HTTP trace export                         |
+| `OTEL_SERVICE_NAME`           | no       | Trace service name; defaults to `brobond-ai-commerce`                |
+| `OTEL_SERVICE_VERSION`        | no       | Trace service version; defaults to `unknown`                         |
+
+No external telemetry client starts unless its corresponding endpoint/DSN is
+configured. The Render readiness probe validates `AUTH_SECRET`, `NEXTAUTH_URL`
+and `DATABASE_URL` before checking database connectivity, migrations and
+schema; it returns a generic `ENV_INVALID` or `PRISMA_UNAVAILABLE` code and
+never exposes configuration values.
+
 ### First login
 
 Since PR010.4 the primary path is **self sign-up**: open `/signup`, fill in
@@ -348,6 +369,9 @@ Deployment is defined as code in [`render.yaml`](./render.yaml) (a Render Bluepr
    - a native Node **web service** (`brobond-ai-commerce`).
 4. `DATABASE_URL` is injected from the database; `AUTH_SECRET` is auto-generated.
    Set the required `NEXTAUTH_URL` to your service URL (e.g. `https://brobond-ai-commerce.onrender.com`).
+   Generate a local secret with `openssl rand -base64 32`. Optionally set
+   `SENTRY_DSN` and/or `OTEL_EXPORTER_OTLP_ENDPOINT` in Render to enable
+   observability; neither integration starts when unset.
 5. `buildCommand` runs the locked install, Prisma generation and Next.js build.
 6. `npm run prisma:deploy` runs **twice, by design**: once as
    `preDeployCommand` (the right place for it — once per release) and again at

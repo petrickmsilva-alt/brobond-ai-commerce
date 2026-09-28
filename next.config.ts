@@ -19,6 +19,12 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  env: {
+    // A Sentry DSN identifies a project but is not a credential; the client
+    // SDK needs it to report browser exceptions when server reporting is on.
+    NEXT_PUBLIC_SENTRY_DSN: process.env.SENTRY_DSN,
+    NEXT_PUBLIC_SENTRY_ENVIRONMENT: process.env.SENTRY_ENVIRONMENT,
+  },
 };
 
 export default nextConfig;
