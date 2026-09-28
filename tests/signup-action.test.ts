@@ -334,13 +334,13 @@ describe("signupAction() — duplicate email", () => {
     expect(signInMock).not.toHaveBeenCalled();
   });
 
-  it("keeps the database stack in `details` while returning the friendly duplicate message", async () => {
+  it("does not expose the database stack while returning the friendly duplicate message", async () => {
     registerMock.mockRejectedValue(new FakePrismaKnownError("P2002", { target: ["email"] }));
 
     const result = await signupAction(VALID);
     if (result.ok) throw new Error("expected failure");
     expect(result.message).not.toMatch(/Prisma|P2002|unique/i);
-    expect(result.details.stack).toContain("Prisma error P2002");
+    expect(result.details).toEqual({ requestId: expect.any(String) });
   });
 });
 
@@ -349,26 +349,24 @@ describe("signupAction() — duplicate email", () => {
 // ------------------------------------------------------------------
 
 describe("signupAction() — precise failures and diagnostics", () => {
-  it("returns the original message, code, details and stack for an unknown provisioning error", async () => {
+  it("returns a safe message and request id for an unknown provisioning error", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     registerMock.mockRejectedValue(new Error("connection reset"));
 
     const result = await signupAction(VALID);
     if (result.ok) throw new Error("expected failure");
     expect(result.code).toBe("SIGNUP_FAILED");
-    expect(result.message).toBe("connection reset");
-    expect(result.details.reason).toBe("connection reset");
-    expect(result.details.stack).toContain("connection reset");
+    expect(result.message).toBe("Não foi possível concluir seu cadastro. Tente novamente.");
+    expect(result.details).toEqual({ requestId: expect.any(String) });
   });
 
-  it("returns the real connection diagnostic instead of a generic signup message", async () => {
+  it("does not disclose connection diagnostics", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     registerMock.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.5:5432"));
 
     const result = await signupAction(VALID);
     if (result.ok) throw new Error("expected failure");
-    expect(result.message).toContain("10.0.0.5");
-    expect(result.details.stack).toContain("10.0.0.5");
+    expect(JSON.stringify(result)).not.toContain("10.0.0.5");
   });
 
   it("attaches NO fieldErrors to a server fault — it belongs to no field", async () => {
@@ -397,7 +395,7 @@ describe("signupAction() — precise failures and diagnostics", () => {
     expect(result.message).toMatch(/Faça login/i);
   });
 
-  it("returns a diagnostic ActionResult for a non-AuthError from signIn", async () => {
+  it("returns a safe ActionResult for a non-AuthError from signIn", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const redirectSignal = new Error("NEXT_REDIRECT");
     signInMock.mockRejectedValue(redirectSignal);
@@ -406,8 +404,8 @@ describe("signupAction() — precise failures and diagnostics", () => {
     expect(result).toMatchObject({
       ok: false,
       code: "SIGNUP_FAILED",
-      message: "NEXT_REDIRECT",
-      details: { stack: expect.stringContaining("NEXT_REDIRECT") },
+      message: "Não foi possível concluir seu cadastro. Tente novamente.",
+      details: { requestId: expect.any(String) },
     });
   });
 });
@@ -432,7 +430,7 @@ describe("signupAction() — pre-signup healthcheck", () => {
     expect(result).toMatchObject({
       code: "PRISMA_UNAVAILABLE",
       message: "Banco de dados indisponível.",
-      details: { reason: expect.stringContaining("ECONNREFUSED") },
+      details: { requestId: expect.any(String) },
     });
     expect(registerMock).not.toHaveBeenCalled();
     expect(signInMock).not.toHaveBeenCalled();
@@ -452,7 +450,7 @@ describe("signupAction() — pre-signup healthcheck", () => {
     if (result.ok) throw new Error("expected failure");
     expect(result.code).toBe("MIGRATION_PENDING");
     expect(result.message).toMatch(/migration de cadastro/i);
-    expect(result.details.reason).toBe("Execute npm run prisma:deploy.");
+    expect(result.details).toEqual({ requestId: expect.any(String) });
     expect(registerMock).not.toHaveBeenCalled();
     expect(signInMock).not.toHaveBeenCalled();
   });
@@ -470,7 +468,7 @@ describe("signupAction() — pre-signup healthcheck", () => {
     const result = await signupAction(VALID);
     if (result.ok) throw new Error("expected failure");
     expect(result.code).toBe("SCHEMA_INCOMPLETE");
-    expect(result.details.reason).toContain("User");
+    expect(result.details).toEqual({ requestId: expect.any(String) });
   });
 });
 

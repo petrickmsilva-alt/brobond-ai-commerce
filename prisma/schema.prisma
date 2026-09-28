@@ -6,6 +6,7 @@
 generator client {
   provider   = "prisma-client-js"
   engineType = "client"
+  previewFeatures = ["queryCompiler", "driverAdapters"]
   // Uses the pg driver adapter (see lib/prisma.ts) — GA since Prisma 6.16,
   // so no preview feature flag or Rust query-engine binary is required.
 }

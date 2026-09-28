@@ -59,7 +59,7 @@ function fail(error: unknown, scope: string): AdminActionResult<never> {
  *
  * PR010.3 §9/§12: the link is built from `APP_URL` (falling back to
  * `NEXTAUTH_URL`) and delivered through the `InvitationMailer` — the
- * ConsoleMailer logs it today, a Resend transport can drop in later without
+ * configured transactional email delivers it without
  * touching this action.
  */
 export async function createInvitationAction(

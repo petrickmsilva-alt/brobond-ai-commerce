@@ -4,7 +4,7 @@
  * PURE MODULE — imports nothing but types. It is consumed by three very
  * different runtimes and must stay free of Node, Prisma, NextAuth and React:
  *
- *   1. `middleware.ts`               → Edge runtime
+ *   1. `proxy.ts`                    → Edge runtime
  *   2. Server Components / actions   → Node runtime
  *   3. Vitest                        → plain Node, no bundler
  *

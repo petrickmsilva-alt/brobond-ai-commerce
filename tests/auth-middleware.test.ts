@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * PR010.2 §2 — Edge middleware behaviour.
+ * PR010.2 §2 — Edge proxy behaviour.
  *
  * `next-auth/jwt`'s `getToken` is mocked so these tests exercise the redirect
  * logic itself with no NextAuth, no Prisma, no database and no real cookie
- * crypto. The middleware's contract is:
+ * crypto. The proxy's contract is:
  *
  *   protected + no session  → 307 to /login?next=<currentPath>
  *   protected + session     → pass through
@@ -18,7 +18,8 @@ const getTokenMock = vi.hoisted(() => vi.fn());
 
 vi.mock("next-auth/jwt", () => ({ getToken: getTokenMock }));
 
-const { middleware, config } = await import("@/middleware");
+const { proxy, config } = await import("@/proxy");
+const middleware = proxy;
 
 /** Build the minimal NextRequest surface the middleware actually reads. */
 function makeRequest(url: string, cookie?: string) {
@@ -61,7 +62,7 @@ describe("protected routes without a session", () => {
 
   it.each(PROTECTED)("redirects %s to /login with the destination preserved", async (path) => {
     signedOut();
-    const response = await middleware(makeRequest(`https://app.brobond.ai${path}`));
+    const response = await proxy(makeRequest(`https://app.brobond.ai${path}`));
 
     expect(response.status).toBe(307);
 

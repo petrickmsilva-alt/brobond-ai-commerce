@@ -12,37 +12,19 @@ import { APP_SHORT_NAME } from "@/lib/constants";
  * Approval and manual invites produce an `Invitation` + a raw token; this
  * module turns that into an outbound message.
  *
- * `InvitationMailer` is the interface. `ConsoleMailer` is the only
- * implementation today — it prints the invitation link to the server log,
- * which is the PR010.3 delivery channel ("Enviar link no log"). A future
- * `ResendMailer` implements the same interface with zero caller changes:
- *
- *   export class ResendMailer implements InvitationMailer {
- *     readonly provider = "resend" as const;
- *     constructor(private readonly apiKey: string) {}
- *     async sendInvitation(payload: InvitationEmailPayload) {
- *       await fetch("https://api.resend.com/emails", { … });
- *     }
- *   }
- *
- * …and `createInvitationMailer()` grows one branch:
- *
- *   if (present(env, "RESEND_API_KEY")) return new ResendMailer(env.RESEND_API_KEY);
- *
- * Nothing else in the codebase knows which mailer is wired, which is exactly
- * what makes the swap safe.
+ * `InvitationMailer` is the interface. Production delivery uses Resend and
+ * refuses to send when the provider is not configured. Invitation URLs embed
+ * single-use bearer tokens, so they must never be used as a log transport.
  *
  * SECURITY CONTRACT
  * -----------------
- * - The invite URL contains the RAW token — that is the delivery channel, the
- *   same way an email would carry it. It must only travel through this
- *   interface (log line today, email tomorrow), never into a persisted column
- *   (only the SHA-256 digest is stored).
+ * - The invite URL contains the RAW token and may only travel to the email
+ *   provider. It is never written to logs or persisted (only its SHA-256
+ *   digest is stored).
  * - The mailer never receives, and therefore can never leak, a password hash,
  *   a session token or another user's data: the payload is one invitee, one
  *   workspace, one link.
- * - `formatInvitationEmail()` is pure and exported for tests; `ConsoleMailer`
- *   accepts an injectable logger for the same reason.
+ * - `formatInvitationEmail()` is pure and exported for tests.
  */
 
 /** Everything the mailer needs — and nothing it does not. */
@@ -61,8 +43,8 @@ export interface InvitationEmailPayload {
   expiresAt: Date;
 }
 
-/** Transport providers. `resend` is reserved for the future implementation. */
-export type MailerProvider = "console" | "resend";
+/** Transport providers. */
+export type MailerProvider = "resend" | "unconfigured";
 
 /** The seam every invitation delivery must implement (PR010.3 §9). */
 export interface InvitationMailer {
@@ -77,7 +59,7 @@ export interface InvitationMailer {
   sendInvitation(payload: InvitationEmailPayload): Promise<void>;
 }
 
-/** Rendered message — the shape `ConsoleMailer` logs and Resend will send. */
+/** Rendered message delivered by the configured provider. */
 export interface RenderedInvitationEmail {
   subject: string;
   text: string;
@@ -123,27 +105,46 @@ export function formatInvitationEmail(payload: InvitationEmailPayload): Rendered
   return { subject, text };
 }
 
-/**
- * The PR010.3 delivery channel: the invitation link in the server log.
- *
- * In development (and until Resend ships) the operator reads the log to copy
- * the link. The message is prefixed so it is greppable
- * (`grep "invitation-mailer"`), and the full rendered email is logged — the
- * same bytes a real transport would send.
- */
-export class ConsoleMailer implements InvitationMailer {
-  readonly provider = "console" as const;
+export class ResendMailer implements InvitationMailer {
+  readonly provider = "resend" as const;
 
-  constructor(private readonly log: (...args: unknown[]) => void = console.info) {}
+  constructor(
+    private readonly apiKey: string,
+    private readonly from: string,
+    private readonly send: typeof fetch = fetch,
+  ) {}
 
   async sendInvitation(payload: InvitationEmailPayload): Promise<void> {
     if (!payload.to?.trim()) throw new Error("Invitation mailer: missing recipient.");
     if (!payload.inviteUrl?.trim()) throw new Error("Invitation mailer: missing invite URL.");
 
     const email = formatInvitationEmail(payload);
-    this.log(
-      `[invitation-mailer:console] → ${payload.to}`,
-      `\nsubject: ${email.subject}\n${email.text}`,
+    const response = await this.send("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: this.from,
+        to: [payload.to],
+        subject: email.subject,
+        text: email.text,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Invitation mailer: Resend delivery failed (${response.status}).`);
+    }
+  }
+}
+
+class UnconfiguredInvitationMailer implements InvitationMailer {
+  readonly provider = "unconfigured" as const;
+
+  async sendInvitation(_payload: InvitationEmailPayload): Promise<void> {
+    throw new Error(
+      "Invitation mailer is not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.",
     );
   }
 }
@@ -154,13 +155,16 @@ export type MailerEnv = Record<string, string | undefined>;
 /**
  * Compose the deployment's mailer (PR010.3 §9).
  *
- * Today every deployment — production included — gets the `ConsoleMailer`.
+ * A configured Resend transport delivers every invitation.
  * The `RESEND_API_KEY` branch is reserved: when the Resend integration ships,
  * this factory (and only this factory) changes, returning a `ResendMailer`
  * that implements the same `InvitationMailer` interface. Until then the
  * variable is deliberately ignored so an early value cannot half-activate an
  * unimplemented transport.
  */
-export function createInvitationMailer(_env: MailerEnv = process.env): InvitationMailer {
-  return new ConsoleMailer();
+export function createInvitationMailer(env: MailerEnv = process.env): InvitationMailer {
+  const apiKey = env.RESEND_API_KEY?.trim();
+  const from = env.RESEND_FROM_EMAIL?.trim();
+  if (apiKey && from) return new ResendMailer(apiKey, from);
+  return new UnconfiguredInvitationMailer();
 }

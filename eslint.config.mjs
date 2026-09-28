@@ -1,16 +1,12 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
+import { defineConfig } from "eslint/config";
+import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
+import nextTypeScript from "eslint-config-next/typescript";
+import prettier from "eslint-config-prettier";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
-const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript", "prettier"),
+export default defineConfig(
+  ...nextCoreWebVitals,
+  ...nextTypeScript,
+  prettier,
   {
     ignores: [
       "node_modules/**",
@@ -22,19 +18,16 @@ const eslintConfig = [
     ],
   },
   {
-    // PR007 — AI Personalization Engine.
-    //
-    // `modules/ai/openai/client.ts` (the OpenAI Responses API client) and
-    // `modules/ai/openai/generator.ts` (which calls it) must run
-    // server-side only — the API key must never reach a browser bundle.
-    // Both already import `server-only`, which fails the Next.js *build*
-    // if pulled into a Client Component's module graph. This rule adds a
-    // second, faster line of defense at `next lint` time: Client
-    // Components (everything under `components/**`) are forbidden from
-    // importing either module directly — even transitively via a
-    // re-export — so the mistake is caught before a build is attempted.
-    // (`modules/ai/openai/prompts.ts` holds no secret and no network call —
-    // it's plain data/types safely shared with the UI — so it is exempt.)
+    rules: {
+      // Preserve the existing lint contract while adopting Next 16's native
+      // flat config; these rules are newly enabled by the upgraded preset.
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-require-imports": "off",
+      "react-hooks/incompatible-library": "off",
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
+  {
     files: ["components/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": [
@@ -58,6 +51,4 @@ const eslintConfig = [
       ],
     },
   },
-];
-
-export default eslintConfig;
+);

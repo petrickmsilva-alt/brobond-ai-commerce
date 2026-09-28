@@ -220,17 +220,18 @@ describe("§8 — errors are rendered UNDER their field", () => {
     expect(signupAction).toContain("details: SignupFailureDetails");
   });
 
-  it("the form exposes the backend diagnostic details instead of hiding a real error", () => {
+  it("the form exposes only a safe support correlation identifier", () => {
     expect(signupForm).toContain("signup-error-details");
-    expect(signupForm).toContain("errorDetails.stack");
+    expect(signupForm).toContain("errorDetails.requestId");
+    expect(signupForm).not.toContain("errorDetails.stack");
   });
 
   it("renders the dedicated Prisma unavailable recovery UI", () => {
     expect(signupForm).toContain('result.code === "PRISMA_UNAVAILABLE"');
     expect(signupForm).toContain("Banco de dados indisponível.");
     expect(signupForm).toContain("Tentar novamente");
-    expect(signupForm).toContain("Copiar diagnóstico");
-    expect(signupForm).toContain("navigator.clipboard.writeText");
+    expect(signupForm).toContain("Protocolo:");
+    expect(signupForm).not.toContain("navigator.clipboard.writeText");
   });
 
   it("the action names a concrete first problem as its summary", () => {
