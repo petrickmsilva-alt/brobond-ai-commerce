@@ -7,7 +7,7 @@
 # The image used to start with `node server.js`, which skips the one step the
 # Render deploy path performs before boot:
 #
-#   npx prisma migrate deploy   (render.yaml `preDeployCommand`)
+#   npm run prisma:deploy   (render.yaml `preDeployCommand`)
 #
 # A container booted without it serves an application whose database has no
 # schema at all. That is exactly the production failure this fixes:
@@ -40,7 +40,10 @@ if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
   log "MIGRATE_DEPLOY_START" "applying pending Prisma migrations"
   # `migrate deploy` is idempotent: it applies only what is missing, creates
   # _prisma_migrations on a virgin database, and never rewrites history.
-  if ! node_modules/.bin/prisma migrate deploy; then
+  # The wrapper also resolves the one known P3009 state left by the pre-PR36
+  # outreach migration failure, but only after proving the partial tables are
+  # empty so it never discards production data.
+  if ! node scripts/prisma-migrate-deploy-with-repair.cjs; then
     log "MIGRATE_DEPLOY_FAILED" "prisma migrate deploy returned a non-zero status"
     exit 1
   fi

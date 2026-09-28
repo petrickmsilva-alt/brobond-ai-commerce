@@ -133,7 +133,7 @@ export async function checkDatabaseHealth(
 
   if (!migrations.some((row) => row.migration_name === REQUIRED_DATABASE_MIGRATION)) {
     throw new DatabaseHealthError("MIGRATION_PENDING", "Migration do banco pendente.", {
-      details: `A migration ${REQUIRED_DATABASE_MIGRATION} não está concluída. Execute npx prisma migrate deploy.`,
+      details: `A migration ${REQUIRED_DATABASE_MIGRATION} não está concluída. Execute npm run prisma:deploy.`,
       status: { prisma: true, database: true, migrations: false },
       latency: latency(),
     });

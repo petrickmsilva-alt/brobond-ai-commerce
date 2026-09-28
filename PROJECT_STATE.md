@@ -1,5 +1,27 @@
 # PROJECT STATE — Brobond AI Commerce OS
 
+### PR010.4.9 — Render P3009 outreach migration recovery (2026-09-28) — implemented
+
+- **Symptom.** After PR #36 fixed the bad `CreatorProfile` forward reference in
+  `20260922194600_outreach_ai_sales_pipeline`, Render still failed every deploy
+  with Prisma **P3009** because the production database already had an
+  unresolved failed row for that migration in `_prisma_migrations`.
+- **Root cause.** Prisma will not apply any new migrations while a previous
+  migration is recorded as failed. The SQL was corrected in Git, but the target
+  database still needed the failed migration row to be resolved before the
+  corrected migration could be replayed.
+- **Fix.** Added `scripts/prisma-migrate-deploy-with-repair.cjs` and routed
+  Render, Docker and `npm run prisma:deploy` through it. The wrapper handles only
+  the known outreach migration: it verifies no later migration is finished,
+  refuses to drop any partial table containing data, removes only empty partial
+  outreach objects, marks the failed row as rolled back via Prisma, then
+  executes normal `prisma migrate deploy`.
+- **Safety.** The repair can be disabled with
+  `PRISMA_REPAIR_OUTREACH_MIGRATION=false`; it logs structured JSON and fails
+  closed if the database state does not match the known P3009 recovery window.
+- **Regression guard.** `tests/prisma-migration-repair.test.ts` pins the wrapper,
+  safety checks, Docker copy and Render/npm deploy path.
+
 ### PR010.4.8 — prisma.config.ts migration-branch parse fix (2026-09-25) — implemented
 
 - **Symptom.** `prisma migrate deploy` (and `db push` / `studio`) aborted

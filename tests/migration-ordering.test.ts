@@ -29,12 +29,14 @@ import { describe, expect, it } from "vitest";
 const MIGRATIONS_DIR = path.resolve(__dirname, "..", "prisma", "migrations");
 
 function migrationDirsInDeployOrder(): string[] {
-  return readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .filter((name) => existsSync(path.join(MIGRATIONS_DIR, name, "migration.sql")))
-    // Prisma applies migrations in lexicographic order of the directory name.
-    .sort();
+  return (
+    readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .filter((name) => existsSync(path.join(MIGRATIONS_DIR, name, "migration.sql")))
+      // Prisma applies migrations in lexicographic order of the directory name.
+      .sort()
+  );
 }
 
 /** Strip `--` line comments so commented-out SQL never trips the scanner. */
@@ -72,11 +74,11 @@ describe("Prisma migration ordering", () => {
       // A statement may both create a table and add a self-referencing FK, so
       // register all tables created/renamed in this migration BEFORE checking
       // its REFERENCES clauses.
-      for (const m of sql.matchAll(createRe)) existingTables.add(m[1]);
-      for (const m of sql.matchAll(renameToRe)) existingTables.add(m[1]);
+      for (const m of sql.matchAll(createRe)) existingTables.add(m[1]!);
+      for (const m of sql.matchAll(renameToRe)) existingTables.add(m[1]!);
 
       for (const m of sql.matchAll(referencesRe)) {
-        const referenced = m[1];
+        const referenced = m[1]!;
         if (!existingTables.has(referenced)) {
           violations.push(`${dir}: foreign key REFERENCES "${referenced}" before it exists`);
         }
@@ -84,7 +86,7 @@ describe("Prisma migration ordering", () => {
 
       // Apply drops last so a table dropped and recreated in the same file is
       // still considered present for that file's references.
-      for (const m of sql.matchAll(dropTableRe)) existingTables.delete(m[1]);
+      for (const m of sql.matchAll(dropTableRe)) existingTables.delete(m[1]!);
     }
 
     expect(violations).toEqual([]);
