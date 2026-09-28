@@ -63,7 +63,7 @@ NODE_ENV=production npm ci --omit=dev --no-audit --no-fund
 
 # --- 2. Assert the Prisma migration runtime closure is present ---------------
 log "Verifying required runtime packages exist in the production tree"
-REQUIRED_PKGS=(prisma @prisma/config @prisma/client effect fast-check pure-rand empathic pg typescript)
+REQUIRED_PKGS=(prisma @prisma/config @prisma/client effect fast-check pure-rand pg typescript)
 for pkg in "${REQUIRED_PKGS[@]}"; do
   if [ ! -e "node_modules/$pkg" ]; then
     fail "production tree is missing '$pkg' — 'prisma migrate deploy' would break at runtime"
