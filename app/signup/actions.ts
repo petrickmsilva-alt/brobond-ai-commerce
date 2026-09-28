@@ -16,18 +16,13 @@ import { SignupError, signupService } from "@/modules/auth/signup.service";
  *
  * The action owns the operational boundaries around the transaction:
  * validation → database readiness → atomic provisioning → automatic login.
- * Every failure has a stable code, an explainable message and diagnostic
- * details. The browser gets the actual actionable cause and the server log
- * keeps the original stack trace under the same request id.
+ * Every failure has a stable code, an actionable public message and a request
+ * identifier. Detailed diagnostics remain only in the server log.
  */
 
 export interface SignupFailureDetails {
   /** Correlates the UI error with structured server logs. */
   requestId: string;
-  /** Human-readable diagnostic. Never includes the password. */
-  reason: string;
-  /** Original stacktrace retained for immediate troubleshooting. */
-  stack?: string;
 }
 
 export type SignupActionErrorCode =
@@ -64,7 +59,7 @@ export async function signupAction(input: unknown): Promise<SignupActionResult> 
       ok: false,
       code: "VALIDATION_ERROR",
       message,
-      details: { requestId, reason: message },
+      details: { requestId },
       fieldErrors,
     };
   }
@@ -111,9 +106,7 @@ export async function signupAction(input: unknown): Promise<SignupActionResult> 
     logSignupEvent("LOGIN_SUCCESS", { requestId, stage, code: "SIGNUP_SUCCESS" });
     return { ok: true, redirectTo };
   } catch (error) {
-    // Keep the original object (and its native stack) in the server log. The
-    // ActionResult below exposes the same diagnostic in a serializable shape
-    // for the technical details panel in the signup UI.
+    // Keep the original object (and its native stack) in the server log only.
     logSignupFailure(error, { requestId, stage });
     return toSignupActionFailure(error, { requestId, accountCreated });
   }
@@ -130,11 +123,7 @@ function toSignupActionFailure(
   }
 
   if (error instanceof SignupReadinessError) {
-    // The readiness wrapper supplies a friendly code/message, while its cause
-    // preserves the original Prisma/PostgreSQL stack in `details.stack`.
-    return failure(error.code, error.message, error.cause ?? error, context, {
-      reason: error.details,
-    });
+    return failure(error.code, error.message, error.cause ?? error, context);
   }
 
   // A unique email index decides the race between concurrent signup requests.
@@ -147,7 +136,7 @@ function toSignupActionFailure(
 
     return failure(
       "DATABASE_CONSTRAINT",
-      `O banco de dados rejeitou uma informação do cadastro: ${error.message}`,
+      "Não foi possível validar uma informação do cadastro. Revise os dados e tente novamente.",
       error,
       context,
     );
@@ -178,7 +167,7 @@ function toSignupActionFailure(
   const original = asError(error);
   return failure(
     "SIGNUP_FAILED",
-    original.message.trim() || "O cadastro falhou sem uma mensagem de diagnóstico.",
+    "Não foi possível concluir seu cadastro. Tente novamente.",
     original,
     context,
   );
@@ -189,19 +178,14 @@ function failure(
   message: string,
   error: unknown,
   context: { requestId: string; accountCreated: boolean },
-  options: { fieldErrors?: Record<string, string[]>; reason?: string } = {},
+  options: { fieldErrors?: Record<string, string[]> } = {},
 ): Extract<SignupActionResult, { ok: false }> {
-  const original = asError(error);
-  const reason = options.reason ?? original.message ?? message;
-
   return {
     ok: false,
     code,
     message,
     details: {
       requestId: context.requestId,
-      reason,
-      stack: original.stack,
     },
     ...(options.fieldErrors ? { fieldErrors: options.fieldErrors } : {}),
   };

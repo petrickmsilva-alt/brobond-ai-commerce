@@ -10,7 +10,6 @@ import {
   ArrowRight,
   Building2,
   CheckCircle2,
-  Copy,
   Eye,
   EyeOff,
   Loader2,
@@ -77,12 +76,9 @@ export function SignupForm({ next = null }: SignupFormProps) {
   const [showPassword, setShowPassword] = React.useState(false);
   const [showConfirm, setShowConfirm] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
-  const [diagnosticCopied, setDiagnosticCopied] = React.useState(false);
   const [errorDetails, setErrorDetails] = React.useState<{
     code: string;
     requestId: string;
-    reason: string;
-    stack?: string;
   } | null>(null);
 
   const {
@@ -113,7 +109,6 @@ export function SignupForm({ next = null }: SignupFormProps) {
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
     setErrorDetails(null);
-    setDiagnosticCopied(false);
 
     const result = await signupAction({ ...values, next });
 
@@ -134,8 +129,6 @@ export function SignupForm({ next = null }: SignupFormProps) {
       setErrorDetails({
         code: result.code,
         requestId: result.details.requestId,
-        reason: result.details.reason,
-        stack: result.details.stack,
       });
       return;
     }
@@ -146,30 +139,6 @@ export function SignupForm({ next = null }: SignupFormProps) {
   });
 
   const prismaUnavailable = errorDetails?.code === "PRISMA_UNAVAILABLE";
-
-  async function copyDiagnostic(): Promise<void> {
-    if (!errorDetails) return;
-
-    const diagnostic = JSON.stringify(
-      {
-        code: errorDetails.code,
-        requestId: errorDetails.requestId,
-        reason: errorDetails.reason,
-        ...(errorDetails.stack ? { stack: errorDetails.stack } : {}),
-      },
-      null,
-      2,
-    );
-
-    try {
-      await navigator.clipboard.writeText(diagnostic);
-      setDiagnosticCopied(true);
-    } catch {
-      // Clipboard may be denied outside a secure context. The disclosure
-      // remains visible, so the diagnostic can still be selected manually.
-      setDiagnosticCopied(false);
-    }
-  }
 
   /** A field that is valid AND has been filled earns a quiet green check. */
   function isValid(field: keyof FormValues): boolean {
@@ -348,9 +317,8 @@ export function SignupForm({ next = null }: SignupFormProps) {
         </p>
       )}
 
-      {/* The backend returns a real code/reason/stack rather than a generic
-          failure. Keep the technical trace in a native disclosure so the
-          concrete cause is available without obscuring the field-level UI. */}
+      {/* A stable code and request id let support correlate server-side logs
+          without exposing runtime or database details to anonymous users. */}
       {errorDetails && (
         <details
           data-testid="signup-error-details"
@@ -359,18 +327,17 @@ export function SignupForm({ next = null }: SignupFormProps) {
           <summary className="cursor-pointer font-medium text-amber-200">
             Detalhes técnicos ({errorDetails.code})
           </summary>
-          <p className="mt-2 break-words leading-relaxed">{errorDetails.reason}</p>
-          <p className="mt-1 text-[11px] text-amber-100/50">Protocolo: {errorDetails.requestId}</p>
-          {errorDetails.stack && (
-            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/20 p-2 text-[10px] leading-relaxed text-amber-100/65">
-              {errorDetails.stack}
-            </pre>
-          )}
+          <p className="mt-2 leading-relaxed">
+            Informe este protocolo ao suporte caso o problema persista.
+          </p>
+          <p className="mt-1 select-all text-[11px] text-amber-100/50">
+            Protocolo: {errorDetails.requestId}
+          </p>
         </details>
       )}
 
       {prismaUnavailable ? (
-        <div data-testid="prisma-unavailable-actions" className="grid gap-2 sm:grid-cols-2">
+        <div data-testid="prisma-unavailable-actions">
           <Button type="submit" size="lg" disabled={isSubmitting}>
             {isSubmitting ? (
               <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
@@ -378,10 +345,6 @@ export function SignupForm({ next = null }: SignupFormProps) {
               <RotateCcw aria-hidden className="h-4 w-4" />
             )}
             {isSubmitting ? "Tentando novamente…" : "Tentar novamente"}
-          </Button>
-          <Button type="button" variant="outline" size="lg" onClick={copyDiagnostic}>
-            <Copy aria-hidden className="h-4 w-4" />
-            {diagnosticCopied ? "Diagnóstico copiado" : "Copiar diagnóstico"}
           </Button>
         </div>
       ) : (

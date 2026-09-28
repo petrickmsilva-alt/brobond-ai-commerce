@@ -11,7 +11,7 @@ import {
 } from "@/lib/auth-routes";
 
 /**
- * Edge middleware — the perimeter of the application (PR010.2 §2).
+ * Edge proxy — the perimeter of the application (PR010.2 §2).
  *
  * WHY THIS EXISTS
  * ---------------
@@ -20,7 +20,7 @@ import {
  * rendered the framework's error boundary: a white screen with a digest. The
  * user was never *told* to log in.
  *
- * The middleware turns that failure into an intent-preserving redirect —
+ * The proxy turns that failure into an intent-preserving redirect —
  * `/login?next=/dashboard` — so the user signs in once and lands exactly where
  * they were going.
  *
@@ -29,7 +29,7 @@ import {
  * This layer answers only "is there a session?". It deliberately does NOT
  * answer "may this role do this?". Every server component, server action and
  * route handler keeps its `requireUser` / `requireRole` / `requireOrganization`
- * guard, and every domain query keeps its `organizationId` scope. Middleware
+ * guard, and every domain query keeps its `organizationId` scope. The proxy
  * is a UX affordance and a first filter; the authoritative checks stay where
  * the data is touched. Nothing about RBAC (§11) changes.
  *
@@ -57,7 +57,7 @@ function usesSecureCookies(request: NextRequest): boolean {
   return request.nextUrl.protocol === "https:";
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   // Auth endpoints, webhooks, OAuth callbacks and static assets are never

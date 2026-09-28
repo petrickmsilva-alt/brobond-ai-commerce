@@ -3,7 +3,7 @@ import "server-only";
 import type { PrismaClient, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { buildInviteUrl, resolveAppBaseUrl } from "@/lib/app-url";
-import { ConsoleMailer, createInvitationMailer, type InvitationMailer } from "./invitation-mailer";
+import { createInvitationMailer, type InvitationMailer } from "./invitation-mailer";
 
 /**
  * Invitation delivery (PR010.4 — extracted from the deleted
@@ -57,7 +57,7 @@ export function createInvitationDeliveryService(deps: {
   /** Base URL for invite links — injectable so tests never touch process.env. */
   getBaseUrl?: () => string;
 }) {
-  const mailer = deps.mailer ?? new ConsoleMailer();
+  const mailer = deps.mailer ?? createInvitationMailer();
   const getBaseUrl = deps.getBaseUrl ?? (() => resolveAppBaseUrl());
 
   return {

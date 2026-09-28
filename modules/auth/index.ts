@@ -88,7 +88,7 @@ export {
 } from "./invitation.service";
 
 export {
-  ConsoleMailer,
+  ResendMailer,
   createInvitationMailer,
   formatInvitationEmail,
   type InvitationEmailPayload,
