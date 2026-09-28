@@ -93,12 +93,17 @@ export async function assertSignupReady(
     );
   }
 
-  let tableRows: Array<{ organization: string | null; user: string | null }>;
+  let tableRows: Array<{ organization: boolean; user: boolean }>;
   try {
-    tableRows = await db.$queryRaw<Array<{ organization: string | null; user: string | null }>>`
+    // Never return `to_regclass()` itself here. Its PostgreSQL `regclass`
+    // result (OID 2205) is intentionally unsupported by @prisma/adapter-pg,
+    // so a healthy schema would be reported as SCHEMA_INCOMPLETE at runtime.
+    // PostgreSQL evaluates existence first and returns ordinary booleans,
+    // matching the startup/database-health probe.
+    tableRows = await db.$queryRaw<Array<{ organization: boolean; user: boolean }>>`
       SELECT
-        to_regclass('public."Organization"') AS "organization",
-        to_regclass('public."User"') AS "user"
+        to_regclass('public."Organization"') IS NOT NULL AS "organization",
+        to_regclass('public."User"') IS NOT NULL AS "user"
     `;
   } catch (error) {
     throw new SignupReadinessError(
