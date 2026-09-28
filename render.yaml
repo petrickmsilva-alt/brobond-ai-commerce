@@ -27,10 +27,12 @@ services:
     # kept, because running migrations once per release is the right place for
     # them, but the start command now applies them too. `migrate deploy` is
     # idempotent, so the second invocation is a no-op on an up-to-date
-    # database, and `npm start`'s prestart gate still refuses to boot if the
-    # schema is somehow still incomplete.
-    preDeployCommand: npx prisma migrate deploy
-    startCommand: npx prisma migrate deploy && npm start
+    # database. `npm run prisma:deploy` wraps `prisma migrate deploy` with the
+    # safe one-time repair for the known pre-PR36 outreach P3009 state, and
+    # `npm start`'s prestart gate still refuses to boot if the schema is somehow
+    # still incomplete.
+    preDeployCommand: npm run prisma:deploy
+    startCommand: npm run prisma:deploy && npm start
     healthCheckPath: /api/health/database
     envVars:
       # Do not set NODE_ENV here: Render also applies envVars during `npm ci`,

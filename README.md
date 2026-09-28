@@ -349,14 +349,17 @@ Deployment is defined as code in [`render.yaml`](./render.yaml) (a Render Bluepr
 4. `DATABASE_URL` is injected from the database; `AUTH_SECRET` is auto-generated.
    Set the required `NEXTAUTH_URL` to your service URL (e.g. `https://brobond-ai-commerce.onrender.com`).
 5. `buildCommand` runs the locked install, Prisma generation and Next.js build.
-6. `prisma migrate deploy` runs **twice, by design**: once as
+6. `npm run prisma:deploy` runs **twice, by design**: once as
    `preDeployCommand` (the right place for it — once per release) and again at
-   the head of `startCommand`. `preDeployCommand` is a paid-plan feature and is
-   silently ignored on plans that do not have it, which is exactly how a
-   deployment can end up serving an application whose database has no schema at
-   all (`relation "_prisma_migrations" does not exist`). `migrate deploy` is
-   idempotent, so the second run is a no-op once the schema is current.
-   The Docker image gets the same guarantee from
+   the head of `startCommand`. That script wraps `prisma migrate deploy` with
+   [`scripts/prisma-migrate-deploy-with-repair.cjs`](./scripts/prisma-migrate-deploy-with-repair.cjs),
+   which safely clears the known pre-PR36 `20260922194600_outreach_ai_sales_pipeline`
+   P3009 state before replaying the corrected migration. `preDeployCommand` is
+   a paid-plan feature and is silently ignored on some plans, which is exactly
+   how a deployment can end up serving an application whose database has no
+   schema at all (`relation "_prisma_migrations" does not exist`). The Prisma
+   deploy is idempotent, so the second run is a no-op once the schema is
+   current. The Docker image gets the same guarantee from
    [`scripts/docker-entrypoint.sh`](./scripts/docker-entrypoint.sh); set
    `RUN_MIGRATIONS=false` to opt a container out when a separate release job
    owns migrations.
@@ -369,11 +372,12 @@ Deployment is defined as code in [`render.yaml`](./render.yaml) (a Render Bluepr
 
 ### Render Prisma Migration Runtime
 
-The `preDeployCommand` runs **`npx prisma migrate deploy`**, and it executes in
-a **production-only** environment (`npm ci --omit=dev`, `NODE_ENV=production`).
-That command is not just a schema push — it boots the whole Prisma CLI, which
-loads [`prisma.config.ts`](./prisma.config.ts). Loading that config drags in a
-real dependency chain at runtime:
+The `preDeployCommand` runs **`npm run prisma:deploy`**, which first executes
+our P3009 repair guard and then runs the Prisma CLI's `migrate deploy`. Render
+executes that path in a **production-only** environment (`npm ci --omit=dev`,
+`NODE_ENV=production`). The deploy is not just a schema push — it boots the
+whole Prisma CLI, which loads [`prisma.config.ts`](./prisma.config.ts). Loading
+that config drags in a real dependency chain at runtime:
 
 ```
 prisma.config.ts → prisma/config → @prisma/config → effect → fast-check
@@ -399,13 +403,34 @@ Two guarantees keep the migration runtime intact:
 Verify the runtime the way Render sees it, in a clean production install:
 
 ```bash
-npm run smoke:prisma-runtime   # npm ci --omit=dev + prisma migrate deploy, asserts no MODULE_NOT_FOUND
+npm run smoke:prisma-runtime   # npm ci --omit=dev + npm run prisma:deploy, asserts no MODULE_NOT_FOUND
 ```
 
 Do **not** "fix" a missing module by copying all of `node_modules`, by
 switching migrations to manual SQL, or by removing `prisma.config.ts` — those
 hide the real problem. If the CLI needs a package at runtime, it belongs in
 production `dependencies`.
+
+### Recovering the PR36 outreach P3009 state
+
+Before PR36, `20260922194600_outreach_ai_sales_pipeline` could fail on a fresh
+production database by referencing `CreatorProfile` before that table existed.
+Prisma then stores the failed row in `_prisma_migrations` and every later deploy
+fails with **P3009** until the row is resolved.
+
+`npm run prisma:deploy` handles that one known state automatically:
+
+1. It looks for an unresolved failed row for
+   `20260922194600_outreach_ai_sales_pipeline`.
+2. If absent, it immediately runs the normal `prisma migrate deploy`.
+3. If present, it refuses to continue if any later migration is already marked
+   finished or if any partial outreach table contains data.
+4. Only when the partial tables are empty, it drops those partial objects,
+   executes `prisma migrate resolve --rolled-back 20260922194600_outreach_ai_sales_pipeline`,
+   and replays the corrected migration through `migrate deploy`.
+
+Set `PRISMA_REPAIR_OUTREACH_MIGRATION=false` to disable the repair guard for a
+manual recovery window.
 
 ### CI/CD
 

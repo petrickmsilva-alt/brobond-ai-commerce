@@ -8,8 +8,9 @@ describe("Render database deployment contract", () => {
     expect(blueprint).toContain("buildCommand: npm ci && npx prisma generate && npm run build");
   });
 
-  it("deploys migrations before starting the release", () => {
-    expect(blueprint).toContain("preDeployCommand: npx prisma migrate deploy");
+  it("deploys migrations through the P3009 repair wrapper before starting the release", () => {
+    expect(blueprint).toContain("preDeployCommand: npm run prisma:deploy");
+    expect(blueprint).toContain("startCommand: npm run prisma:deploy && npm start");
   });
 
   it("uses the database readiness endpoint as Render's health check", () => {

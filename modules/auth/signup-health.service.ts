@@ -80,7 +80,7 @@ export async function assertSignupReady(
     throw new SignupReadinessError(
       "MIGRATION_PENDING",
       "O cadastro está indisponível porque a migration de cadastro ainda não foi aplicada.",
-      `Execute \`npx prisma migrate deploy\` e confirme a migration ${SELF_SIGNUP_MIGRATION}.`,
+      `Execute \`npm run prisma:deploy\` e confirme a migration ${SELF_SIGNUP_MIGRATION}.`,
       error,
     );
   }

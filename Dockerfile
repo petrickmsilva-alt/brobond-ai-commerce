@@ -94,6 +94,7 @@ COPY --from=proddeps --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY scripts/prisma-migrate-deploy-with-repair.cjs ./scripts/prisma-migrate-deploy-with-repair.cjs
 RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh
 
 USER nextjs

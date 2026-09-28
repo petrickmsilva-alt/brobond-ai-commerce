@@ -444,7 +444,7 @@ describe("signupAction() — pre-signup healthcheck", () => {
       new FakeSignupReadinessError(
         "MIGRATION_PENDING",
         "O cadastro está indisponível porque a migration de cadastro ainda não foi aplicada.",
-        "Execute npx prisma migrate deploy.",
+        "Execute npm run prisma:deploy.",
       ),
     );
 
@@ -452,7 +452,7 @@ describe("signupAction() — pre-signup healthcheck", () => {
     if (result.ok) throw new Error("expected failure");
     expect(result.code).toBe("MIGRATION_PENDING");
     expect(result.message).toMatch(/migration de cadastro/i);
-    expect(result.details.reason).toBe("Execute npx prisma migrate deploy.");
+    expect(result.details.reason).toBe("Execute npm run prisma:deploy.");
     expect(registerMock).not.toHaveBeenCalled();
     expect(signInMock).not.toHaveBeenCalled();
   });

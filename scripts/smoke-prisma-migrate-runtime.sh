@@ -5,9 +5,10 @@
 #
 # WHY THIS EXISTS
 # ---------------
-# Render runs `npx prisma migrate deploy` as its `preDeployCommand`, in an
-# environment that installs ONLY production dependencies (`npm ci --omit=dev`,
-# NODE_ENV=production). The Prisma CLI loads prisma.config.ts, which pulls in
+# Render runs `npm run prisma:deploy` as its `preDeployCommand`; that wrapper
+# ultimately invokes `prisma migrate deploy` in an environment that installs ONLY
+# production dependencies (`npm ci --omit=dev`, NODE_ENV=production). The Prisma
+# CLI loads prisma.config.ts, which pulls in
 #
 #   @prisma/config -> effect -> fast-check   (fast-check is npm-HOISTED)
 #
@@ -50,6 +51,8 @@ log "Reproducing the Render preDeploy runtime in: $WORKDIR"
 cp "$REPO_ROOT/package.json"      "$WORKDIR/"
 cp "$REPO_ROOT/package-lock.json" "$WORKDIR/"
 cp "$REPO_ROOT/prisma.config.ts"  "$WORKDIR/"
+mkdir -p "$WORKDIR/scripts"
+cp "$REPO_ROOT/scripts/prisma-migrate-deploy-with-repair.cjs" "$WORKDIR/scripts/"
 cp -R "$REPO_ROOT/prisma"         "$WORKDIR/prisma"
 
 cd "$WORKDIR"
@@ -70,9 +73,9 @@ done
 pass "all required migration-runtime packages are installed by npm ci --omit=dev"
 
 # --- 3. Run the exact preDeployCommand and inspect module resolution ---------
-log "Running: npx prisma migrate deploy (DATABASE_URL=<unreachable unless SMOKE_DATABASE_URL set>)"
+log "Running: npm run prisma:deploy (repair disabled; DATABASE_URL=<unreachable unless SMOKE_DATABASE_URL set>)"
 set +e
-OUTPUT="$(DATABASE_URL="$DB_URL" npx --no-install prisma migrate deploy 2>&1)"
+OUTPUT="$(DATABASE_URL="$DB_URL" PRISMA_REPAIR_OUTREACH_MIGRATION=false npm run --silent prisma:deploy 2>&1)"
 STATUS=$?
 set -e
 
@@ -87,13 +90,13 @@ fi
 if ! printf '%s' "$OUTPUT" | grep -qE "Loaded Prisma config|Prisma schema loaded|Datasource"; then
   fail "Prisma CLI did not load its config/schema — dependency closure is incomplete."
 fi
-pass "Prisma CLI loaded prisma.config.ts and the full dependency closure with no MODULE_NOT_FOUND"
+pass "Prisma deploy wrapper loaded pg, prisma.config.ts and the full dependency closure with no MODULE_NOT_FOUND"
 
 if [ "$STATUS" -eq 0 ]; then
-  pass "prisma migrate deploy completed successfully (real database reachable)."
+  pass "npm run prisma:deploy completed successfully (real database reachable)."
 else
-  log "prisma migrate deploy exited non-zero — expected without a real database"
-  log "(a CONNECTION error here still proves every module resolved; set SMOKE_DATABASE_URL to run a real deploy)."
+  log "npm run prisma:deploy exited non-zero — expected without a real database"
+  log "(a CONNECTION or schema-engine download error here still proves every module resolved; set SMOKE_DATABASE_URL to run a real deploy)."
 fi
 
 pass "Prisma migration runtime smoke test succeeded."
