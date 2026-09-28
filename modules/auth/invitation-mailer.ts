@@ -125,7 +125,12 @@ export class ResendMailer implements InvitationMailer {
         Authorization: `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ from: this.from, to: [payload.to], subject: email.subject, text: email.text }),
+      body: JSON.stringify({
+        from: this.from,
+        to: [payload.to],
+        subject: email.subject,
+        text: email.text,
+      }),
     });
 
     if (!response.ok) {
@@ -138,7 +143,9 @@ class UnconfiguredInvitationMailer implements InvitationMailer {
   readonly provider = "unconfigured" as const;
 
   async sendInvitation(_payload: InvitationEmailPayload): Promise<void> {
-    throw new Error("Invitation mailer is not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.");
+    throw new Error(
+      "Invitation mailer is not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.",
+    );
   }
 }
 
