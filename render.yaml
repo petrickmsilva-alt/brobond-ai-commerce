@@ -57,6 +57,18 @@ services:
         value: "5"
       - key: DATABASE_CONNECTION_TIMEOUT_MS
         value: "5000"
+      # Optional observability integrations. Leave SENTRY_DSN and the OTLP
+      # endpoint unset to keep reporting/export disabled.
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
+      - key: OTEL_EXPORTER_OTLP_ENDPOINT
+        sync: false
+      - key: OTEL_SERVICE_NAME
+        value: brobond-ai-commerce
+      - key: OTEL_SERVICE_VERSION
+        sync: false
       # PR007 — AI Personalization Engine. Never committed; set manually in
       # the Render dashboard. Read only server-side.
       - key: OPENAI_API_KEY

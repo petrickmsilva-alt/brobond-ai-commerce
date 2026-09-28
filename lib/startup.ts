@@ -1,6 +1,8 @@
 import type { PrismaClient } from "@prisma/client";
 import { getEnv } from "@/lib/env";
 import { checkDatabaseHealth, type DatabaseHealthResult } from "@/lib/database-health";
+import { reportError } from "@/lib/observability/error-reporter";
+import { log } from "@/lib/observability/logger";
 
 export interface StartupValidationOptions {
   /** A one-shot prestart process closes its pool before handing off to Next. */
@@ -26,23 +28,11 @@ export async function validateStartup(
     prisma = (await import("@/lib/prisma")).prisma;
     const health = await checkDatabaseHealth(prisma);
 
-    console.info(
-      JSON.stringify({
-        timestamp: new Date().toISOString(),
-        event: "DATABASE_READY",
-        ...health,
-      }),
-    );
+    log({ event: "DATABASE_READY", level: "info", context: health });
 
     return health;
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        timestamp: new Date().toISOString(),
-        event: "DATABASE_NOT_READY",
-        reason: error instanceof Error ? error.message : String(error),
-      }),
-    );
+    reportError(error, { event: "DATABASE_NOT_READY" });
     throw error;
   } finally {
     if (options.disconnect && prisma) await prisma.$disconnect();
