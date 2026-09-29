@@ -35,7 +35,12 @@ RUN npm run build
 FROM node:20-alpine AS proddeps
 WORKDIR /app
 RUN apk add --no-cache libc6-compat openssl
+# Prisma's postinstall runs `prisma generate`, which requires the schema and
+# config files before any dependencies are installed. Copy them in first so the
+# production dependency install succeeds in Render builds.
 COPY package.json package-lock.json* ./
+COPY prisma ./prisma
+COPY prisma.config.ts ./prisma.config.ts
 RUN npm ci --omit=dev
 
 # --- Stage 3: runtime ---------------------------------------------
