@@ -99,6 +99,12 @@ const envSchema = z.object({
    * button that fails at the callback. SERVER ONLY.
    */
   AUTH_GOOGLE_SECRET: z.string().min(1).optional(),
+  /** Payment provider selection for commerce checkout. */
+  PAYMENT_PROVIDER: z.enum(["mock", "stripe"]).default("mock").optional(),
+  /** Stripe secret key used to create live checkout sessions. */
+  STRIPE_SECRET_KEY: z.string().min(1).optional(),
+  /** Stripe webhook signing secret used for payment confirmation. */
+  STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -91,6 +91,12 @@ export const navigationGroups: NavGroup[] = [
         description: "Catálogo, variantes, custos e margem",
       },
       {
+        label: "Pedidos",
+        href: "/dashboard/orders",
+        icon: ShoppingBag,
+        description: "Checkout, pagamentos e ciclo de ordem",
+      },
+      {
         label: "Trends",
         href: "/dashboard/trends",
         icon: TrendingUp,

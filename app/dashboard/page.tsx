@@ -174,6 +174,12 @@ export default async function DashboardPage() {
               disabled={!canManage}
             />
             <QuickAction
+              href="/dashboard/orders"
+              icon={ShoppingCart}
+              label="Pedidos"
+              description="Checkout, status e pagamentos"
+            />
+            <QuickAction
               href="/dashboard/creators"
               icon={Users}
               label="Descobrir creators"

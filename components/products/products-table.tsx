@@ -1,8 +1,9 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowDown, ArrowUp, ArrowUpDown, Package, Plus } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Package, Plus, ShoppingCart } from "lucide-react";
 import type { ProductListItemDTO } from "@/modules/commerce/products/dto/product.dto";
 import { formatCurrency, cn } from "@/lib/utils";
 import {
@@ -64,6 +65,60 @@ function SortableHead({ column, label }: { column: string; label: string }) {
         <ArrowUpDown className="h-3 w-3 opacity-40" />
       )}
     </button>
+  );
+}
+
+function CheckoutButton({ product }: { product: ProductListItemDTO }) {
+  const router = useRouter();
+  const [loading, setLoading] = React.useState(false);
+
+  async function handleCheckout() {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amountCents: product.priceCents,
+          currency: product.currency ?? "BRL",
+          quantity: 1,
+          productId: product.id,
+          productName: product.name,
+          reference: `product-${product.id}-${Date.now()}`,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("checkout-failed");
+      }
+
+      const payload = await response.json();
+      const checkoutUrl = payload?.checkout?.url ?? payload?.url;
+
+      if (checkoutUrl) {
+        window.location.assign(checkoutUrl);
+        return;
+      }
+
+      router.push("/dashboard/orders?checkout=success");
+    } catch {
+      router.push("/dashboard/orders?checkout=cancelled");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Button
+      type="button"
+      size="xs"
+      variant="secondary"
+      onClick={handleCheckout}
+      disabled={loading || product.priceCents <= 0}
+    >
+      <ShoppingCart className="h-3.5 w-3.5" />
+      {loading ? "Abrindo..." : "Pagar agora"}
+    </Button>
   );
 }
 
@@ -171,7 +226,8 @@ export function ProductsTable({ items, canEdit, canDelete }: ProductsTableProps)
               {product.stockQuantity}
             </TableCell>
             <TableCell className="text-right">
-              <div className="flex items-center justify-end gap-1">
+              <div className="flex items-center justify-end gap-2">
+                <CheckoutButton product={product} />
                 {canEdit ? (
                   <Link
                     href={`/dashboard/products/${product.id}`}
