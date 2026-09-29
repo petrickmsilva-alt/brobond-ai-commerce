@@ -1,7 +1,9 @@
 import "server-only";
 
 import { analyticsService } from "@/modules/analytics/services/analytics.service";
+import { createAIGovernanceService } from "@/modules/ai-governance";
 import { assertOrganizationId } from "@/lib/tenant";
+import { getPrisma } from "@/lib/prisma";
 import { generateExecutiveDecisions } from "../engine/decision.engine";
 import { findRevenueOpportunities } from "../engine/opportunity.engine";
 import { requestExecutiveReport, requestExecutiveStrategy } from "../engine/executive-ai.engine";
@@ -22,6 +24,10 @@ export interface AICeoServiceDependencies {
   >;
   strategyProvider: typeof requestExecutiveStrategy;
   reportProvider: typeof requestExecutiveReport;
+  governance: Pick<
+    ReturnType<typeof createAIGovernanceService>,
+    "startRun" | "completeRun" | "failRun"
+  >;
 }
 
 /**
@@ -42,7 +48,25 @@ export function createAICeoService(deps: AICeoServiceDependencies) {
       const organization = assertOrganizationId(organizationId);
       const context = await loadContext(organization, now);
       const opportunities = findRevenueOpportunities(context);
-      const strategy = await deps.strategyProvider(context, opportunities);
+      const governedRun = await deps.governance.startRun({
+        organizationId: organization,
+        trigger: "AI_CEO_EXECUTIVE_DECISIONS",
+        model: "ai-ceo-strategist",
+        input: { opportunities: opportunities.length },
+      });
+      let strategy;
+      try {
+        strategy = await deps.strategyProvider(context, opportunities);
+        await deps.governance.completeRun(organization, governedRun.id, {
+          output: { decisions: strategy.data.decisions.length },
+          inputTokens: strategy.inputTokens,
+          outputTokens: strategy.outputTokens,
+          costCents: 0,
+        });
+      } catch (error) {
+        await deps.governance.failRun(organization, governedRun.id, error);
+        throw error;
+      }
       const decisions = generateExecutiveDecisions(context, strategy.data.decisions, opportunities);
       const run = await deps.repository.persistGeneration(organization, {
         context,
@@ -67,7 +91,25 @@ export function createAICeoService(deps: AICeoServiceDependencies) {
       const organization = assertOrganizationId(organizationId);
       const context = await loadContext(organization, now);
       const opportunities = findRevenueOpportunities(context);
-      const report = await deps.reportProvider(context, opportunities);
+      const governedRun = await deps.governance.startRun({
+        organizationId: organization,
+        trigger: "AI_CEO_EXECUTIVE_REPORT",
+        model: "ai-ceo-report",
+        input: { opportunities: opportunities.length },
+      });
+      let report;
+      try {
+        report = await deps.reportProvider(context, opportunities);
+        await deps.governance.completeRun(organization, governedRun.id, {
+          output: { report: "generated" },
+          inputTokens: report.inputTokens,
+          outputTokens: report.outputTokens,
+          costCents: 0,
+        });
+      } catch (error) {
+        await deps.governance.failRun(organization, governedRun.id, error);
+        throw error;
+      }
       return deps.repository.persistReport(organization, {
         context,
         summary: report.data.summary,
@@ -112,4 +154,5 @@ export const aiCeoService = createAICeoService({
   repository: aiCeoRepository,
   strategyProvider: requestExecutiveStrategy,
   reportProvider: requestExecutiveReport,
+  governance: createAIGovernanceService(getPrisma()),
 });

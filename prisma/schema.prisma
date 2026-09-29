@@ -253,6 +253,35 @@ enum DecisionPriority {
   CRITICAL
 }
 
+/// Durable lifecycle for events written with a domain transaction and later
+/// dispatched by the separate worker process.
+enum OutboxEventStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+enum AgentRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  BLOCKED
+}
+
+enum AgentToolCallStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  BLOCKED
+}
+
+enum ApprovalRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 // ------------------------------------------------------------------
 // Tenancy
 // ------------------------------------------------------------------
@@ -337,6 +366,9 @@ model Organization {
   tikTokOAuthStates TikTokOAuthState[]
 
   auditLogs         AuditLog[]
+  outboxEvents      OutboxEvent[]
+  agentRuns         AgentRun[]
+  approvalRequests  ApprovalRequest[]
 
   // Omnichannel Delivery Engine (PR010) — Meta credentials never leave the server.
   deliveryAccounts     DeliveryAccount[]
@@ -1579,6 +1611,93 @@ model ExecutiveReport {
 
   @@index([organizationId, reportDate])
   @@index([organizationId, createdAt])
+}
+
+/// Durable, tenant-scoped transactional outbox. Domain code writes this row in
+/// its own Prisma transaction; only the standalone worker can dispatch it.
+model OutboxEvent {
+  id             String           @id @default(cuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic          String
+  aggregateType  String
+  aggregateId    String
+  payload        Json
+  idempotencyKey String
+  status         OutboxEventStatus @default(PENDING)
+  attempts       Int              @default(0)
+  availableAt    DateTime         @default(now())
+  lockedAt       DateTime?
+  processedAt    DateTime?
+  lastError      String?          @db.Text
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([status, availableAt])
+  @@index([organizationId, status, availableAt])
+}
+
+/// Tenant-scoped audit envelope for one governed AI execution. Inputs and
+/// outputs are sanitised before persistence and no prompt is stored verbatim.
+model AgentRun {
+  id             String         @id @default(cuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestId      String
+  trigger        String
+  model          String
+  status         AgentRunStatus @default(RUNNING)
+  safeInput      Json?
+  safeOutput     Json?
+  inputTokens    Int            @default(0)
+  outputTokens   Int            @default(0)
+  costCents      Int            @default(0)
+  budgetCents    Int
+  startedAt      DateTime       @default(now())
+  completedAt    DateTime?
+  lastError      String?        @db.Text
+
+  toolCalls AgentToolCall[]
+
+  @@unique([organizationId, requestId])
+  @@index([organizationId, startedAt])
+  @@index([organizationId, status, startedAt])
+}
+
+model AgentToolCall {
+  id           String              @id @default(cuid())
+  agentRunId   String
+  agentRun     AgentRun            @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+  tool         String
+  status       AgentToolCallStatus @default(PENDING)
+  safeInput    Json?
+  safeOutput   Json?
+  durationMs   Int?
+  startedAt    DateTime            @default(now())
+  completedAt  DateTime?
+  lastError    String?             @db.Text
+
+  @@index([agentRunId, startedAt])
+}
+
+/// An explicit, tenant-scoped human approval gate for any external tool
+/// effect. A tool execution checks this row before it is allowed to proceed.
+model ApprovalRequest {
+  id             String                @id @default(cuid())
+  organizationId String
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agentRunId     String?
+  proposedAction String
+  risk           String
+  status         ApprovalRequestStatus @default(PENDING)
+  requestedById  String?
+  resolvedById   String?
+  requestedAt    DateTime              @default(now())
+  resolvedAt     DateTime?
+
+  @@index([organizationId, status, requestedAt])
+  @@index([organizationId, agentRunId])
 }
 
 // ------------------------------------------------------------------

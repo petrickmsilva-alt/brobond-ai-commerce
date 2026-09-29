@@ -701,6 +701,27 @@ o dashboard já estão prontos e testados.
 
 ---
 
+## Async execution and governed AI operations
+
+`npm run worker` is a separate process from Next.js. It claims durable
+tenant-scoped `OutboxEvent` rows and publishes idempotent BullMQ jobs to Redis.
+Set `REDIS_URL` before starting it; a missing or invalid URL fails readiness
+and enqueue operations explicitly. Never run the worker inside the web process.
+
+Domain services must write an outbox event through
+`createTransactionalOutboxRepository(...).create(transaction, organizationId, input)`
+inside the same Prisma transaction as the domain mutation. The unique
+`(organizationId, idempotencyKey)` constraint makes producer retries safe.
+
+AI runs are governed by a global `AI_AUTONOMY_ENABLED` kill switch and explicit
+per-run/period budgets. `AgentRun`, `AgentToolCall`, and `ApprovalRequest`
+provide tenant-scoped audit history with sanitized input/output. External-effect
+tools are blocked unless their exact run has an approved human request. The AI
+CEO remains advisory: its decisions and reports never dispatch messages,
+campaigns, or delivery actions automatically.
+
+---
+
 ## License
 
 Proprietary © Brobond. All rights reserved.
