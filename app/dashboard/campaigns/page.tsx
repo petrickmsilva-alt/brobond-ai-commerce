@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { BarChart3, Package, Sparkles, Users } from "lucide-react";
+import { BarChart3, Package, Sparkles, TrendingUp, Users } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { CampaignAudienceTable } from "@/components/campaigns/campaign-audience-table";
 import { requireOrganization } from "@/lib/session";
@@ -36,6 +37,12 @@ export default async function CampaignsPage() {
       <PageHeader
         title="Campanhas"
         description="Campaign Engine — creators elegíveis e produtos ranqueados por matching determinístico, sem chamadas a provedores externos."
+        actions={
+          <Badge tone="brand" size="sm" className="inline-flex items-center gap-1.5">
+            <TrendingUp className="h-3 w-3" />
+            Matching ativo
+          </Badge>
+        }
       />
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard label="Creators Recomendados" value={String(creators.size)} icon={Users} />
@@ -43,8 +50,30 @@ export default async function CampaignsPage() {
         <KpiCard label="Score Médio" value={`${averageScore}/100`} icon={Sparkles} />
         <KpiCard label="ROI Previsto" value={`${predictedRoi}%`} icon={BarChart3} />
       </div>
+
+      <Card className="mb-4 border-white/8 bg-surface-850/80" variant="glass">
+        <div className="flex flex-col gap-3 border-b border-white/8 px-4 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/45">
+              Performance estimada
+            </p>
+            <h3 className="mt-1 text-base font-semibold text-white">
+              {rows.filter((row) => row.recommended).length} recomendações com potencial de escala
+            </h3>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-white/60">
+            <Badge tone="success" size="sm">
+              {predictedRoi}% ROI
+            </Badge>
+            <Badge tone="info" size="sm">
+              {averageScore}/100 score
+            </Badge>
+          </div>
+        </div>
+      </Card>
+
       <h2 className="mb-3 text-sm font-medium text-white/70">Audiência recomendada</h2>
-      <Card className="overflow-hidden p-0">
+      <Card className="overflow-hidden p-0" variant="default">
         <CampaignAudienceTable
           items={rows.map((row) => ({
             id: row.id,

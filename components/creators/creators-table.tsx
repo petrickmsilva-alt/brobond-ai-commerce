@@ -120,7 +120,7 @@ export function CreatorsTable({ items }: CreatorsTableProps) {
       </TableHeader>
       <TableBody>
         {items.map((creator) => (
-          <TableRow key={creator.id}>
+          <TableRow key={creator.id} className="border-b border-white/6 last:border-none hover:bg-white/[0.025]">
             <TableCell>
               <CreatorAvatar displayName={creator.displayName} avatarUrl={creator.avatarUrl} />
             </TableCell>
@@ -131,7 +131,9 @@ export function CreatorsTable({ items }: CreatorsTableProps) {
               </p>
             </TableCell>
             <TableCell>
-              <Badge tone="neutral">{creator.niche}</Badge>
+              <Badge tone="neutral" className="border-white/10 bg-white/[0.04]">
+                {creator.niche}
+              </Badge>
             </TableCell>
             <TableCell className="text-right tabular-nums text-white/70">
               {formatCompactNumber(creator.followers)}
