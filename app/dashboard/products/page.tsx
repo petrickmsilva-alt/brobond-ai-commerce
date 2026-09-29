@@ -80,11 +80,33 @@ export default async function ProductsPage({
         />
       </div>
 
-      <Suspense>
-        <ProductsToolbar />
-      </Suspense>
+      <Card className="mb-4 border-white/8 bg-surface-850/80" variant="glass">
+        <div className="flex flex-col gap-4 border-b border-white/8 px-4 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/45">
+              Visão do catálogo
+            </p>
+            <h3 className="mt-1 text-base font-semibold text-white">
+              {stats.total} produtos em operação
+            </h3>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-white/60">
+            <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">
+              {stats.active} ativos
+            </span>
+            <span className="rounded-full border border-brand-400/20 bg-brand-500/10 px-2.5 py-1 text-brand-200">
+              {stats.totalStock} unidades em estoque
+            </span>
+          </div>
+        </div>
+        <div className="px-4 py-4 lg:px-6">
+          <Suspense>
+            <ProductsToolbar />
+          </Suspense>
+        </div>
+      </Card>
 
-      <Card>
+      <Card className="overflow-hidden" variant="default">
         <Suspense>
           <ProductsTable items={pageData.items} canEdit={canEdit} canDelete={canDelete} />
           <ProductsPagination

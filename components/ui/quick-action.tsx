@@ -23,10 +23,10 @@ import { focusRing } from "@/components/ui/design-system/theme";
 
 const tileClasses =
   "group relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-white/8 " +
-  "bg-surface-850 bg-gradient-to-b from-white/[0.04] to-transparent p-4 text-left " +
+  "bg-surface-850/90 bg-gradient-to-b from-white/[0.04] to-transparent p-4 text-left " +
   "transition-[border-color,background-color,transform,box-shadow] duration-200 ease-out " +
   "hover:-translate-y-0.5 hover:border-brand-400/30 hover:bg-surface-800 " +
-  "hover:shadow-[0_16px_40px_-16px_rgba(79,70,229,0.55)] " +
+  "hover:shadow-[0_18px_44px_-18px_rgba(79,70,229,0.55)] " +
   "aria-disabled:pointer-events-none aria-disabled:opacity-45 disabled:pointer-events-none disabled:opacity-45";
 
 interface QuickActionBodyProps {
@@ -42,7 +42,7 @@ function QuickActionBody({ label, description, iconSlot, badge }: QuickActionBod
     <>
       <span
         aria-hidden
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/8 bg-brand-500/12 text-brand-300 transition-colors duration-200 group-hover:bg-brand-500/20 group-hover:text-brand-200"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/8 bg-brand-500/12 text-brand-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition-colors duration-200 group-hover:bg-brand-500/20 group-hover:text-brand-200"
       >
         {iconSlot}
       </span>
@@ -50,7 +50,9 @@ function QuickActionBody({ label, description, iconSlot, badge }: QuickActionBod
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-white">{label}</span>
         {description && (
-          <span className="mt-0.5 block truncate text-xs text-white/45">{description}</span>
+          <span className="mt-0.5 block truncate text-xs leading-relaxed text-white/45">
+            {description}
+          </span>
         )}
       </span>
 

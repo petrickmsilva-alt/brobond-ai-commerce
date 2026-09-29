@@ -177,7 +177,7 @@ export function ProductsTable({ items, canEdit, canDelete }: ProductsTableProps)
       </TableHeader>
       <TableBody>
         {items.map((product) => (
-          <TableRow key={product.id}>
+          <TableRow key={product.id} className="border-b border-white/6 last:border-none">
             <TableCell>
               <Link
                 href={`/dashboard/products/${product.id}`}

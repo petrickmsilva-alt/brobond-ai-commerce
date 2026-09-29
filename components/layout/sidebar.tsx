@@ -155,8 +155,8 @@ export function Sidebar({
         aria-hidden={!sidebarAvailable ? true : undefined}
         inert={!sidebarAvailable ? true : undefined}
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-white/8",
-          "bg-surface-900/85 backdrop-blur-xl",
+          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-white/8 shadow-[0_20px_60px_-22px_rgba(0,0,0,0.8)]",
+          "bg-surface-900/90 backdrop-blur-2xl",
           "transition-[width,transform] duration-200 ease-out",
           railCollapsed ? "w-[76px]" : "w-[min(320px,calc(100vw-24px))] lg:w-[264px]",
           mobileOpen
@@ -168,13 +168,13 @@ export function Sidebar({
         {/* Decorative brand glow at the top of the rail */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-brand-600/10 to-transparent"
+          className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-brand-600/10 via-brand-500/5 to-transparent"
         />
 
         {/* Brand / workspace */}
         <div
           className={cn(
-            "relative flex h-16 shrink-0 items-center gap-2 border-b border-white/8 px-3",
+            "relative flex h-16 shrink-0 items-center gap-2 border-b border-white/8 px-3 pb-2 pt-3",
             railCollapsed && "justify-center px-0",
           )}
         >
@@ -214,12 +214,15 @@ export function Sidebar({
                     aria-expanded={expanded}
                     aria-controls={`nav-group-${group.id}`}
                     className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em]",
+                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em]",
                       "transition-colors duration-150 hover:bg-white/[0.04]",
                       groupHasActive ? "text-white/60" : "text-white/35 hover:text-white/55",
                       focusRingRaised,
                     )}
                   >
+                    <span className="flex h-5 w-5 items-center justify-center rounded-md border border-white/8 bg-white/[0.02]">
+                      <group.icon aria-hidden className="h-2.5 w-2.5 text-white/55" />
+                    </span>
                     <span className="flex-1 text-left">{group.label}</span>
                     <ChevronDown
                       aria-hidden
@@ -261,9 +264,9 @@ export function Sidebar({
                               title={railCollapsed ? item.label : undefined}
                               className={cn(
                                 "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
-                                "transition-[background-color,color] duration-150",
+                                "transition-[background-color,color,box-shadow] duration-150",
                                 active
-                                  ? "bg-brand-500/14 text-white"
+                                  ? "bg-gradient-to-r from-brand-500/14 to-transparent text-white shadow-[inset_1px_0_0_rgba(129,140,248,0.65)]"
                                   : "text-white/60 hover:bg-white/[0.06] hover:text-white",
                                 railCollapsed && "justify-center px-0",
                                 focusRingRaised,

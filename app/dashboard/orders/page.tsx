@@ -108,7 +108,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         />
       </div>
 
-      <Card className="mb-6">
+      <Card className="mb-6" variant="glass">
         <CardHeader>
           <div>
             <CardTitle>Saúde operacional do checkout</CardTitle>
@@ -116,16 +116,31 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
               Estado do provedor de pagamento e readiness do fluxo em produção/local.
             </CardDescription>
           </div>
+          <Badge
+            tone={
+              health.status === "healthy"
+                ? "success"
+                : health.status === "warning"
+                  ? "warning"
+                  : "danger"
+            }
+          >
+            {health.status === "healthy"
+              ? "Healthy"
+              : health.status === "warning"
+                ? "Warning"
+                : "Critical"}
+          </Badge>
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-3">
-          <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
+          <div className="rounded-2xl border border-white/8 bg-surface-900/65 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <div className="text-[11px] uppercase tracking-[0.12em] text-white/45">Provedor</div>
             <div className="mt-2 text-lg font-semibold text-white">{health.provider}</div>
             <div className="mt-2 text-xs text-white/55">
               {health.providerConfigured ? "Configuração ativa" : "Sem configuração ativa"}
             </div>
           </div>
-          <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
+          <div className="rounded-2xl border border-white/8 bg-surface-900/65 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <div className="text-[11px] uppercase tracking-[0.12em] text-white/45">
               Webhook Stripe
             </div>
@@ -136,15 +151,9 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
               {health.stripeReady ? "Pagamento em produção pronto" : "Fallback/mock em uso"}
             </div>
           </div>
-          <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
-            <div className="text-[11px] uppercase tracking-[0.12em] text-white/45">Status</div>
-            <div className="mt-2 text-lg font-semibold text-white">
-              {health.status === "healthy"
-                ? "Healthy"
-                : health.status === "warning"
-                  ? "Warning"
-                  : "Critical"}
-            </div>
+          <div className="rounded-2xl border border-white/8 bg-surface-900/65 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-white/45">Recomendação</div>
+            <div className="mt-2 text-lg font-semibold text-white">Operação estável</div>
             <div className="mt-2 text-xs text-white/55">
               {health.recommendations[0] ?? "Fluxo está sendo processado normalmente."}
             </div>

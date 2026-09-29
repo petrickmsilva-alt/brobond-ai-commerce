@@ -12,8 +12,11 @@ import {
   Send,
   ShoppingCart,
   Sparkles,
+  TrendingUp,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { AnalyticsDashboard } from "@/components/analytics/analytics-dashboard";
 import { requireOrganization, requireUser } from "@/lib/session";
@@ -50,6 +53,12 @@ export default async function AnalyticsPage({ searchParams }: PageProps) {
       <PageHeader
         title="Analytics & Atribuição"
         description="Pipeline de métricas determinístico — receita, margem e atribuição por produto, creator e campanha."
+        actions={
+          <Badge tone="brand" size="sm" className="inline-flex items-center gap-1.5">
+            <TrendingUp className="h-3 w-3" />
+            Performance live
+          </Badge>
+        }
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
@@ -123,6 +132,27 @@ export default async function AnalyticsPage({ searchParams }: PageProps) {
           icon={MailOpen}
         />
       </div>
+
+      <Card className="mb-4 border-white/8 bg-surface-850/80" variant="glass">
+        <div className="flex flex-col gap-3 border-b border-white/8 px-4 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/45">
+              Revenue signal
+            </p>
+            <h3 className="mt-1 text-base font-semibold text-white">
+              {totals.paidCount} vendas pagas com margem de {formatCurrency(totals.grossMarginCents)}
+            </h3>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-white/60">
+            <Badge tone="success" size="sm">
+              {dashboard.metrics.roiBps / 100}% ROI
+            </Badge>
+            <Badge tone="info" size="sm">
+              {formatEstimatedCost(ai.estimatedCostUsdCents)} IA
+            </Badge>
+          </div>
+        </div>
+      </Card>
 
       <AnalyticsDashboard
         days={days}
