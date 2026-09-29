@@ -4,13 +4,14 @@
 # ------------------------------------------------------------------
 
 # --- Stage 1: dependencies (full, incl. devDependencies) ----------
+# --- Stage 1: dependencies (full, incl. devDependencies) ----------
 FROM node:20-alpine AS deps
 WORKDIR /app
 RUN apk add --no-cache libc6-compat openssl
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./prisma.config.ts
-RUN npm ci --omit=dev
+RUN npm ci
 
 # --- Stage 2: build -----------------------------------------------
 FROM node:20-alpine AS builder
