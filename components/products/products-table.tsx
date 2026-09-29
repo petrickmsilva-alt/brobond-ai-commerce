@@ -1,0 +1,254 @@
+"use client";
+
+import * as React from "react";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ArrowDown, ArrowUp, ArrowUpDown, Package, Plus, ShoppingCart } from "lucide-react";
+import type { ProductListItemDTO } from "@/modules/commerce/products/dto/product.dto";
+import { formatCurrency, cn } from "@/lib/utils";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { TableEmptyState } from "@/components/ui/table-empty-state";
+import { ProductStatusBadge } from "./product-status-badge";
+import { MarginBadge } from "./margin-badge";
+import { DeleteProductButton } from "./delete-product-button";
+
+interface ProductsTableProps {
+  items: ProductListItemDTO[];
+  /** RBAC resolved server-side: MANAGER+ can edit. */
+  canEdit: boolean;
+  /** RBAC resolved server-side: only ADMIN can delete. */
+  canDelete: boolean;
+}
+
+function SortableHead({ column, label }: { column: string; label: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const activeSort = searchParams.get("sort") ?? "createdAt";
+  const activeOrder = searchParams.get("order") ?? "desc";
+  const isActive = activeSort === column;
+
+  function toggle() {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("sort", column);
+    params.set("order", isActive && activeOrder === "desc" ? "asc" : "desc");
+    params.delete("page");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      className={cn(
+        "inline-flex items-center gap-1 uppercase tracking-wide transition-colors hover:text-white/70",
+        isActive ? "text-white/80" : "text-white/40",
+      )}
+    >
+      {label}
+      {isActive ? (
+        activeOrder === "desc" ? (
+          <ArrowDown className="h-3 w-3" />
+        ) : (
+          <ArrowUp className="h-3 w-3" />
+        )
+      ) : (
+        <ArrowUpDown className="h-3 w-3 opacity-40" />
+      )}
+    </button>
+  );
+}
+
+function CheckoutButton({ product }: { product: ProductListItemDTO }) {
+  const router = useRouter();
+  const [loading, setLoading] = React.useState(false);
+
+  async function handleCheckout() {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amountCents: product.priceCents,
+          currency: product.currency ?? "BRL",
+          quantity: 1,
+          productId: product.id,
+          productName: product.name,
+          reference: `product-${product.id}-${Date.now()}`,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("checkout-failed");
+      }
+
+      const payload = await response.json();
+      const checkoutUrl = payload?.checkout?.url ?? payload?.url;
+
+      if (checkoutUrl) {
+        window.location.assign(checkoutUrl);
+        return;
+      }
+
+      router.push("/dashboard/orders?checkout=success");
+    } catch {
+      router.push("/dashboard/orders?checkout=cancelled");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Button
+      type="button"
+      size="xs"
+      variant="secondary"
+      onClick={handleCheckout}
+      disabled={loading || product.priceCents <= 0}
+    >
+      <ShoppingCart className="h-3.5 w-3.5" />
+      {loading ? "Abrindo..." : "Pagar agora"}
+    </Button>
+  );
+}
+
+export function ProductsTable({ items, canEdit, canDelete }: ProductsTableProps) {
+  if (items.length === 0) {
+    // §10 — an empty catalogue is an onboarding moment, not a dead end.
+    // The CTA is gated on `canEdit` so a MEMBER is never offered an action
+    // the server would refuse (RBAC §11).
+    return (
+      <TableEmptyState
+        icon={Package}
+        title="Nenhum produto no catálogo"
+        description="Importe seu catálogo do TikTok Shop ou cadastre o primeiro produto para começar a montar campanhas."
+        action={
+          canEdit ? (
+            <>
+              <Link href="/dashboard/products/new">
+                <Button size="sm">
+                  <Plus aria-hidden className="h-4 w-4" />
+                  Importar produtos
+                </Button>
+              </Link>
+              <Link href="/dashboard/tiktok">
+                <Button size="sm" variant="outline">
+                  Sincronizar TikTok
+                </Button>
+              </Link>
+            </>
+          ) : undefined
+        }
+      />
+    );
+  }
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow className="hover:bg-transparent">
+          <TableHead>
+            <SortableHead column="name" label="Produto" />
+          </TableHead>
+          <TableHead>SKU</TableHead>
+          <TableHead>Status</TableHead>
+          <TableHead className="text-right">
+            <SortableHead column="priceCents" label="Preço" />
+          </TableHead>
+          <TableHead className="text-right">Custo</TableHead>
+          <TableHead className="text-right">
+            <SortableHead column="marginBps" label="Margem" />
+          </TableHead>
+          <TableHead className="text-right">
+            <SortableHead column="stockQuantity" label="Estoque" />
+          </TableHead>
+          <TableHead className="text-right">Ações</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {items.map((product) => (
+          <TableRow key={product.id} className="border-b border-white/6 last:border-none">
+            <TableCell>
+              <Link
+                href={`/dashboard/products/${product.id}`}
+                className="group flex items-center gap-3"
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-surface-700 bg-surface-800">
+                  {product.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={product.imageUrl} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <Package className="h-4 w-4 text-white/30" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-white group-hover:text-brand-300">
+                    {product.name}
+                  </p>
+                  <p className="truncate text-xs text-white/30">
+                    /{product.slug}
+                    {product.variantCount > 0 && ` · ${product.variantCount} variação(ões)`}
+                  </p>
+                </div>
+              </Link>
+            </TableCell>
+            <TableCell className="text-xs text-white/50">{product.sku ?? "—"}</TableCell>
+            <TableCell>
+              <ProductStatusBadge status={product.status} />
+            </TableCell>
+            <TableCell className="text-right tabular-nums">
+              {formatCurrency(product.priceCents, product.currency)}
+            </TableCell>
+            <TableCell className="text-right tabular-nums text-white/50">
+              {product.currentCostCents > 0
+                ? formatCurrency(product.currentCostCents, product.currency)
+                : "—"}
+            </TableCell>
+            <TableCell className="text-right">
+              <MarginBadge bps={product.marginBps} />
+            </TableCell>
+            <TableCell
+              className={cn(
+                "text-right tabular-nums",
+                product.stockQuantity === 0 && "text-red-300",
+              )}
+            >
+              {product.stockQuantity}
+            </TableCell>
+            <TableCell className="text-right">
+              <div className="flex items-center justify-end gap-2">
+                <CheckoutButton product={product} />
+                {canEdit ? (
+                  <Link
+                    href={`/dashboard/products/${product.id}`}
+                    className="rounded-md px-2 py-1 text-xs text-white/60 transition-colors hover:bg-surface-700 hover:text-white"
+                  >
+                    Editar
+                  </Link>
+                ) : (
+                  <Link
+                    href={`/dashboard/products/${product.id}`}
+                    className="rounded-md px-2 py-1 text-xs text-white/60 transition-colors hover:bg-surface-700 hover:text-white"
+                  >
+                    Ver
+                  </Link>
+                )}
+                {canDelete && <DeleteProductButton productId={product.id} name={product.name} />}
+              </div>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}

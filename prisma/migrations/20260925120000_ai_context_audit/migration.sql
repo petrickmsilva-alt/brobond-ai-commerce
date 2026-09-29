@@ -1,0 +1,23 @@
+-- ------------------------------------------------------------------
+-- Brobond AI Commerce OS — AI Context Audit Hotfix (PR007.1)
+--
+-- NOTES
+-- -----
+-- * Purely ADDITIVE: adds the NULLABLE column `contextSnapshot` to the
+--   existing `AIGeneratedMessage` table. No existing column, constraint,
+--   index or row is touched, so the migration is safe to deploy on a
+--   populated database (including one already serving PR007 traffic).
+-- * `contextSnapshot` stores the full structured (creator + product +
+--   campaign + trend) context used to generate a message
+--   (`modules/ai/personalization/context-builder.ts#serializeContext`).
+-- * NULLABLE intentionally: rows generated before PR007.1 predate the
+--   audit trail and simply carry `NULL`; every row generated from
+--   PR007.1 onwards is snapshot at generation time.
+-- * The cache contract is UNCHANGED: `(organizationId, contextHash)`
+--   stays the only cache key. `contextSnapshot` is never an input to
+--   the hash — the hash is still computed from
+--   `serializeContextForHash()` exactly as in PR007.
+-- ------------------------------------------------------------------
+
+-- AlterTable
+ALTER TABLE "AIGeneratedMessage" ADD COLUMN "contextSnapshot" JSONB;

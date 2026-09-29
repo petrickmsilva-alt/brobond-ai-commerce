@@ -1,0 +1,1870 @@
+// ------------------------------------------------------------------
+// Brobond AI Commerce OS — Prisma Schema
+// PR000 Bootstrap Foundation
+// ------------------------------------------------------------------
+
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client"
+  previewFeatures = ["queryCompiler", "driverAdapters"]
+  // Uses the pg driver adapter (see lib/prisma.ts) — GA since Prisma 6.16,
+  // so no preview feature flag or Rust query-engine binary is required.
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------------
+// Enums
+// ------------------------------------------------------------------
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  MEMBER
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+/// CRM pipeline status of a creator (PR003 — Creator Discovery Engine).
+/// Ordered funnel: NEW → QUALIFIED → CONTACTED → NEGOTIATING → ACTIVE,
+/// with ARCHIVED as the terminal side-state (see
+/// `modules/creators/interfaces/creator.interface.ts` for the transition map).
+enum CreatorStatus {
+  NEW
+  QUALIFIED
+  CONTACTED
+  NEGOTIATING
+  ACTIVE
+  ARCHIVED
+}
+
+/// Origin of a creator profile (PR003 — Creator Discovery Engine).
+/// `MOCK` is the discovery default; `MANUAL` covers profiles created through
+/// the CRM form (no collector exists for it, by design).
+enum CreatorSource {
+  MOCK
+  TIKTOK
+  INSTAGRAM
+  SHOPEE
+  MANUAL
+}
+
+enum CampaignAudienceType {
+  ALL
+  NICHE
+  SCORE
+  MANUAL
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageChannel {
+  SYSTEM
+  EMAIL
+  DM
+  SMS
+}
+
+enum SaleStatus {
+  PENDING
+  PAID
+  REFUNDED
+  CANCELLED
+}
+
+enum ProductMediaType {
+  IMAGE
+  VIDEO
+}
+
+/// Origin of a trend snapshot (PR002.1 — Multi-Source Data Architecture).
+/// `MOCK` is the default so every snapshot created before PR002.1 keeps its
+/// meaning (retrocompatible — no existing row is touched by the migration).
+enum TrendSource {
+  MOCK
+  TIKTOK
+  SHOPEE
+  INSTAGRAM
+  MANUAL
+}
+
+/// Lifecycle of a generated outreach message. No status sends a real message
+/// in PR004: SENT is available for imported/manual delivery records only.
+enum OutreachStatus {
+  DRAFT
+  READY
+  SCHEDULED
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum TemplateType {
+  FIRST_CONTACT
+  FOLLOW_UP
+  NEGOTIATION
+  REENGAGEMENT
+}
+
+/// Platform a connector talks to (PR005 — Connector Framework).
+/// `MOCK` is the only implemented platform: TIKTOK, INSTAGRAM and SHOPEE are
+/// registered placeholders — NO real API is integrated in PR005, by design.
+enum ConnectorPlatform {
+  MOCK
+  TIKTOK
+  INSTAGRAM
+  SHOPEE
+}
+
+/// Operational state of one connector inside one workspace (PR005).
+/// `IDLE` = registered, never synced · `ACTIVE` = last sync succeeded ·
+/// `ERROR` = last sync failed · `DISABLED` = turned off by an ADMIN.
+enum ConnectorState {
+  IDLE
+  ACTIVE
+  ERROR
+  DISABLED
+}
+
+/// Kind of content a connector imports (PR005).
+enum ExternalContentType {
+  VIDEO
+  IMAGE
+  POST
+  PRODUCT
+  LIVE
+}
+
+/// Import outcome of one external content record (PR005) — the three
+/// dashboard KPIs (Importados · Duplicados · Falhas) are derived from it.
+enum ExternalContentStatus {
+  IMPORTED
+  DUPLICATE
+  FAILED
+}
+
+/// Origin of a product match (PR005.1 — Product Match Architecture).
+/// `RULE` = produced by the deterministic rules engine (`matcher.ts`) —
+/// the only automatic producer today; `MANUAL` = created or approved by a
+/// human (a MANUAL match is, by definition, approved); `AI` = reserved for
+/// the future AI provider — NO AI call exists in PR005.1, by design.
+enum MatchSource {
+  AI
+  MANUAL
+  RULE
+}
+
+/// Tone/persona of an AI-generated commercial message (PR007 — AI
+/// Personalization Engine). Each tone maps to exactly one versioned prompt
+/// in `modules/ai/openai/prompts.ts`.
+enum AiMessageTone {
+  FRIENDLY
+  PREMIUM
+  LUXURY
+  STREET
+  FITNESS
+}
+
+/// OAuth lifecycle of a TikTok Shop seller account (PR009).
+enum TikTokConnectionStatus {
+  CONNECTED
+  DISCONNECTED
+  EXPIRED
+  ERROR
+}
+
+/// Omnichannel delivery provider (PR010 — Omnichannel Delivery Engine).
+/// Only official Meta APIs are used: Instagram Business Messaging and the
+/// WhatsApp Business Cloud API. No scraping, no browser automation.
+enum DeliveryChannel {
+  INSTAGRAM
+  WHATSAPP
+}
+
+/// Lifecycle of one outbound omnichannel message (PR010).
+/// Contracted flow: DRAFT → QUEUED → SENDING → SENT → DELIVERED → READ.
+/// FAILED (terminal, exhausts retries) and CANCELLED (terminal, operator)
+/// are the side states — see `modules/delivery/core/delivery.interface.ts`
+/// for the full transition map enforced by the service layer.
+enum DeliveryStatus {
+  DRAFT
+  QUEUED
+  SENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  CANCELLED
+}
+
+/// OAuth lifecycle of a connected Meta delivery account (PR010).
+enum DeliveryAccountStatus {
+  CONNECTED
+  DISCONNECTED
+  EXPIRED
+  ERROR
+}
+
+/// Lifecycle of a workspace invitation (PR010.2).
+/// `EXPIRED` is a derived terminal state persisted lazily when a stale
+/// invitation is read — the token itself is validated against `expiresAt`,
+/// never against this column alone.
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+/// Human-governed lifecycle of an AI CEO recommendation (PR011).
+/// The AI can only create PENDING decisions. APPROVED, REJECTED and EXECUTED
+/// are explicit human transitions enforced by the AI CEO repository.
+enum DecisionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXECUTED
+}
+
+/// Executive ordering produced from ROI, potential revenue, urgency and trend.
+enum DecisionPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+/// Durable lifecycle for events written with a domain transaction and later
+/// dispatched by the separate worker process.
+enum OutboxEventStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+enum AgentRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  BLOCKED
+}
+
+enum AgentToolCallStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  BLOCKED
+}
+
+enum ApprovalRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ------------------------------------------------------------------
+// Tenancy
+// ------------------------------------------------------------------
+
+// Organization is the top-level tenant boundary. Every domain record
+// (users, products, creators, campaigns) belongs to exactly one
+// Organization, enabling multi-tenant data isolation.
+model Organization {
+  id   String @id @default(cuid())
+  name String
+  slug String @unique
+
+  // ------------------------------------------------------------------
+  // First tenant setup (PR010.4 — Self Signup)
+  // ------------------------------------------------------------------
+  // Written once by `signupService.register()` when the very first ADMIN of
+  // this tenant creates it through `/signup`. They are presentation/defaults
+  // only — no credential, no token, nothing secret ever lands here.
+
+  /// Display name of the workspace shown in the sidebar switcher. Defaults to
+  /// the company name typed at signup; kept separate so renaming the legal
+  /// entity never has to rename the workspace.
+  workspaceName String?
+
+  /// Contact WhatsApp captured at signup, stored exactly as normalized by the
+  /// validator. Never used for authentication.
+  whatsapp String?
+
+  /// Default currency / locale / timezone applied to every new record of this
+  /// tenant. Seeded at signup so a brand-new workspace is never "unconfigured".
+  currency String @default("BRL")
+  locale   String @default("pt-BR")
+  timezone String @default("America/Sao_Paulo")
+
+  /// Onboarding checklist state (PR010.4 §9). `onboardingCompletedAt` is set
+  /// when every step has been done; until then `/dashboard` shows the
+  /// first-run checklist.
+  onboardingCompletedAt DateTime?
+
+  /// Whether this tenant was created by the public self-signup flow (as
+  /// opposed to the seed or an internal migration). Useful for analytics and
+  /// for deciding whether the first-run experience has ever been relevant.
+  selfServe Boolean @default(false)
+
+  // Tenant-scoped relations
+  users     User[]
+  products  Product[]
+  campaigns Campaign[]
+  // PR011.1 — Sale promoted to a direct tenant FK.
+  sales Sale[]
+
+  productMedia    ProductMedia[]
+  productVariants ProductVariant[]
+  productCosts    ProductCost[]
+  productMetrics  ProductMetric[]
+
+  trendSnapshots  TrendSnapshot[]
+  trendKeywords   TrendKeyword[]
+  trendCategories TrendCategory[]
+
+  creatorProfiles CreatorProfile[]
+  creatorMetrics  CreatorMetric[]
+  creatorTags     CreatorTag[]
+
+  outreachMessages  OutreachMessage[]
+  messageTemplates  MessageTemplate[]
+  followUpSequences FollowUpSequence[]
+
+  connectorStatuses ConnectorStatus[]
+  externalContents  ExternalContent[]
+
+  productMatches    ProductMatch[]
+  campaignAudiences CampaignAudience[]
+  campaignRules     CampaignRule[]
+
+  analyticsSnapshots AnalyticsSnapshot[]
+
+  aiGeneratedMessages AIGeneratedMessage[]
+
+  // TikTok Shop Connector (PR009) — secrets always remain server-side.
+  tikTokAccounts    TikTokAccount[]
+  tikTokOAuthStates TikTokOAuthState[]
+
+  auditLogs         AuditLog[]
+  outboxEvents      OutboxEvent[]
+  agentRuns         AgentRun[]
+  approvalRequests  ApprovalRequest[]
+
+  // Omnichannel Delivery Engine (PR010) — Meta credentials never leave the server.
+  deliveryAccounts     DeliveryAccount[]
+  deliveryMessages     DeliveryMessage[]
+  deliveryOAuthStates DeliveryOAuthState[]
+
+  // Enterprise Authentication & UX (PR010.2) — invitations are the only
+  // path that provisions a user inside this tenant.
+  invitations Invitation[]
+
+  // AI CEO (PR011) — advisory only; execution always requires a human transition.
+  aiDecisionRuns   AIDecisionRun[]
+  aiDecisions      AIDecision[]
+  executiveReports ExecutiveReport[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug])
+}
+
+// ------------------------------------------------------------------
+// Core Models
+// ------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  image         String?
+  passwordHash  String?
+  role          UserRole  @default(MEMBER)
+  emailVerified DateTime?
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // NextAuth relations (adapter-ready)
+  accounts Account[]
+  sessions Session[]
+
+  // Domain relations
+  campaigns        Campaign[]        @relation("CampaignOwner")
+  messages         Message[]         @relation("MessageAuthor")
+  outreachMessages OutreachMessage[] @relation("OutreachAuthor")
+
+  aiGeneratedMessages AIGeneratedMessage[] @relation("AiMessageCreator")
+
+  // Enterprise Authentication & UX (PR010.2)
+  passwordResetTokens PasswordResetToken[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role])
+  @@index([organizationId])
+}
+
+model Product {
+  id          String        @id @default(cuid())
+  name        String
+  slug        String
+  description String?
+  sku         String?
+  priceCents  Int           @default(0)
+  currency    String        @default("BRL")
+  imageUrl    String?
+  status      ProductStatus @default(DRAFT)
+  /// Stable product identifier from the official TikTok Shop API. It is the
+  /// idempotency key used by PR009 imports; null for products created locally.
+  tiktokProductId String?
+
+  /**
+   * Aggregate stock on hand (variant stock is tracked per ProductVariant).
+   */
+  stockQuantity Int @default(0)
+
+  // Denormalized pricing snapshot — kept in sync by modules/commerce/products/pricing.
+  // `currentCostCents` mirrors the latest ProductCost total; `marginBps` is the
+  // gross margin in basis points (e.g. 3550 = 35.50%). Denormalized so the
+  // dashboard can sort/filter by margin at the database level.
+  currentCostCents Int @default(0)
+  marginBps        Int @default(0)
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  media    ProductMedia[]
+  variants ProductVariant[]
+  costs    ProductCost[]
+  metrics  ProductMetric[]
+
+  campaigns        CampaignProduct[]
+  sales            Sale[]
+  outreachMessages OutreachMessage[]
+
+  productMatches      ProductMatch[]
+  campaignAudiences   CampaignAudience[]
+  aiGeneratedMessages AIGeneratedMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Tenant-scoped uniqueness: two organizations may reuse the same slug/SKU.
+  @@unique([organizationId, slug])
+  @@unique([organizationId, sku])
+  @@unique([organizationId, tiktokProductId])
+  @@index([status])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, marginBps])
+  @@index([organizationId, priceCents])
+}
+
+/// Media asset (image/video) attached to a product. Upload flow is interface-
+/// prepared: `url` may point to any storage provider (PR00X wires the real
+/// uploader behind modules/commerce/products/services/media-storage.ts).
+model ProductMedia {
+  id        String           @id @default(cuid())
+  type      ProductMediaType @default(IMAGE)
+  url       String
+  altText   String?
+  position  Int              @default(0)
+  /**
+   * Exactly one primary media per product is enforced at the service layer.
+   */
+  isPrimary Boolean          @default(false)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Tenant — REQUIRED (denormalized for direct scoped queries).
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+  @@index([organizationId])
+}
+
+/// Sellable variation of a product (size, color, bundle…).
+model ProductVariant {
+  id            String  @id @default(cuid())
+  name          String
+  sku           String?
+  /**
+   * Override price. `null` inherits the parent product price.
+   */
+  priceCents    Int?
+  /**
+   * Override unit cost. `null` inherits the product's current cost.
+   */
+  costCents     Int?
+  stockQuantity Int     @default(0)
+  isActive      Boolean @default(true)
+  position      Int     @default(0)
+  /**
+   * Free-form option map, e.g. { "size": "M", "color": "black" }.
+   */
+  attributes    Json?
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Tenant — REQUIRED (denormalized for direct scoped queries).
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, sku])
+  @@index([productId])
+  @@index([organizationId])
+}
+
+/// Cost snapshot for a product. The most recent record (by `effectiveFrom`)
+/// is the product's current cost; history is preserved for future analytics.
+model ProductCost {
+  id             String   @id @default(cuid())
+  /**
+   * Unit acquisition/production cost.
+   */
+  unitCents      Int      @default(0)
+  /**
+   * Inbound freight per unit.
+   */
+  freightCents   Int      @default(0)
+  /**
+   * Packaging per unit.
+   */
+  packagingCents Int      @default(0)
+  /**
+   * Marketplace/platform fees per unit.
+   */
+  feesCents      Int      @default(0)
+  /**
+   * Anything else per unit.
+   */
+  otherCents     Int      @default(0)
+  currency       String   @default("BRL")
+  note           String?
+  effectiveFrom  DateTime @default(now())
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Tenant — REQUIRED (denormalized for direct scoped queries).
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId, effectiveFrom])
+  @@index([organizationId])
+}
+
+/// Daily performance metrics per product (views, clicks, conversions, revenue).
+model ProductMetric {
+  id           String   @id @default(cuid())
+  date         DateTime @db.Date
+  views        Int      @default(0)
+  clicks       Int      @default(0)
+  conversions  Int      @default(0)
+  unitsSold    Int      @default(0)
+  revenueCents Int      @default(0)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Tenant — REQUIRED (denormalized for direct scoped queries).
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, date])
+  @@index([organizationId, date])
+}
+
+/// CRM profile of a creator (PR003 — Creator Discovery Engine).
+///
+/// Supersedes the PR000 `Creator` stub. Discovery imports, manual CRM
+/// entries, the score engine and the pipeline all read/write this model.
+/// The campaign/message/sale relations keep their original field names
+/// (`creatorId`) — only the referenced type changed.
+model CreatorProfile {
+  id          String  @id @default(cuid())
+  handle      String
+  displayName String
+  avatarUrl   String?
+  bio         String?
+  email       String?
+
+  followers      Int           @default(0)
+  /**
+   * Average views per post (denormalized for dashboard sorting).
+   */
+  avgViews       Int           @default(0)
+  /**
+   * Engagement rate in percent, e.g. 8.4 = 8.4%.
+   */
+  engagementRate Float         @default(0)
+  /**
+   * Content niche — one of `CREATOR_NICHES` (mock/CRM validated).
+   */
+  niche          String
+  /**
+   * Weighted 0–100 score (modules/creators/discovery/scorer.ts).
+   */
+  creatorScore   Int           @default(0)
+  /**
+   * CRM pipeline status.
+   */
+  status         CreatorStatus @default(NEW)
+  /**
+   * Origin of the profile (discovery source or MANUAL).
+   */
+  source         CreatorSource @default(MOCK)
+  /**
+   * Identifier on the source platform. `null` for MANUAL profiles.
+   */
+  externalId     String?
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  metrics CreatorMetric[]
+  tags    CreatorTag[]
+
+  campaigns        CampaignCreator[]
+  audiences        CampaignAudience[]
+  messages         Message[]          @relation("MessageCreator")
+  sales            Sale[]
+  outreachMessages OutreachMessage[]
+
+  aiGeneratedMessages AIGeneratedMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Tenant-scoped uniqueness: the handle is the CRM identity per workspace
+  // and (source, externalId) is the dedupe key for discovery imports.
+  @@unique([organizationId, handle])
+  @@unique([organizationId, source, externalId])
+  @@unique([organizationId, email])
+  @@index([status])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, creatorScore])
+  @@index([organizationId, niche])
+}
+
+/// Daily performance snapshot of a creator (PR003). One row per creator per
+/// day — the discovery scheduler upserts today's row on every run.
+model CreatorMetric {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  views     Int      @default(0)
+  likes     Int      @default(0)
+  shares    Int      @default(0)
+  followers Int      @default(0)
+
+  creatorProfileId String
+  creatorProfile   CreatorProfile @relation(fields: [creatorProfileId], references: [id], onDelete: Cascade)
+
+  // Tenant — REQUIRED (denormalized for direct scoped queries).
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([creatorProfileId, date])
+  @@index([organizationId])
+  @@index([organizationId, date])
+}
+
+/// Free-form label attached to a creator profile (PR003). Same tag may exist
+/// on many profiles; a profile cannot carry the same tag twice.
+model CreatorTag {
+  id   String @id @default(cuid())
+  name String
+
+  creatorProfileId String
+  creatorProfile   CreatorProfile @relation(fields: [creatorProfileId], references: [id], onDelete: Cascade)
+
+  // Tenant — REQUIRED (denormalized for direct scoped queries).
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([creatorProfileId, name])
+  @@index([organizationId])
+  @@index([organizationId, name])
+}
+
+model Campaign {
+  id           String               @id @default(cuid())
+  name         String
+  slug         String               @unique
+  description  String?
+  status       CampaignStatus       @default(DRAFT)
+  budgetCents  Int                  @default(0)
+  currency     String               @default("BRL")
+  startsAt     DateTime?
+  endsAt       DateTime?
+  audienceType CampaignAudienceType @default(SCORE)
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  ownerId String?
+  owner   User?   @relation("CampaignOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  products         CampaignProduct[]
+  creators         CampaignCreator[]
+  messages         Message[]
+  sales            Sale[]
+  outreachMessages OutreachMessage[]
+  audiences        CampaignAudience[]
+  rule             CampaignRule?
+
+  aiGeneratedMessages AIGeneratedMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([ownerId])
+  @@index([organizationId])
+}
+
+model Message {
+  id        String           @id @default(cuid())
+  body      String
+  direction MessageDirection @default(OUTBOUND)
+  channel   MessageChannel   @default(SYSTEM)
+  readAt    DateTime?
+
+  authorId String?
+  author   User?   @relation("MessageAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  creatorId String?
+  creator   CreatorProfile? @relation("MessageCreator", fields: [creatorId], references: [id], onDelete: SetNull)
+
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([campaignId])
+  @@index([creatorId])
+  @@index([authorId])
+}
+
+model Sale {
+  id          String     @id @default(cuid())
+  reference   String     @unique @default(cuid())
+  quantity    Int        @default(1)
+  amountCents Int        @default(0)
+  currency    String     @default("BRL")
+  status      SaleStatus @default(PENDING)
+  occurredAt  DateTime   @default(now())
+
+  // Tenant — REQUIRED. Fecha a lacuna de isolamento transitivo (ver PR011.1).
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  creatorId String?
+  creator   CreatorProfile? @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([productId])
+  @@index([creatorId])
+  @@index([campaignId])
+  @@index([organizationId])
+  @@index([organizationId, status])
+}
+
+// ------------------------------------------------------------------
+// Trend Hunter AI (PR002) · Multi-Source Data Architecture (PR002.1)
+// ------------------------------------------------------------------
+
+/// Daily trend snapshot produced by the Trend Hunter pipeline
+/// (`modules/trends`). One row per keyword per collection run — history is
+/// preserved so scores can be trended over time.
+///
+/// NO external API is wired yet: PR002 shipped a mock source and PR002.1
+/// prepared the multi-source architecture — every snapshot records its
+/// origin in `source` (`TrendSource`), and real providers (TikTok, Shopee,
+/// Instagram API) plug in behind the `TrendCollector` interface
+/// (`modules/trends/hunter/collectors/`) via `getCollector()` without a
+/// single caller change.
+model TrendSnapshot {
+  id         String      @id @default(cuid())
+  keyword    String
+  category   String
+  views      Int         @default(0)
+  likes      Int         @default(0)
+  shares     Int         @default(0)
+  /**
+   * Weighted 0–100 score from `modules/trends/hunter/scorer.ts`.
+   */
+  trendScore Int         @default(0)
+  /**
+   * Origin of the snapshot (PR002.1). Defaults to MOCK so pre-PR002.1 rows keep their meaning.
+   */
+  source     TrendSource @default(MOCK)
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, trendScore])
+  @@index([organizationId, category])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, source])
+}
+
+/// Aggregated keyword frequency across collection runs (tenant-scoped
+/// unique: two organizations may track the same keyword independently).
+model TrendKeyword {
+  id        String @id @default(cuid())
+  keyword   String
+  /**
+   * How many times the keyword has been seen across collection runs.
+   */
+  frequency Int    @default(1)
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, keyword])
+  @@index([organizationId, frequency])
+}
+
+/// Materialized per-category score (average of the latest collection run)
+/// powering the dashboard KPI cards and the category filter.
+model TrendCategory {
+  id    String @id @default(cuid())
+  name  String
+  score Int    @default(0)
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId, score])
+}
+
+// ------------------------------------------------------------------
+// Outreach AI & Sales Pipeline (PR004)
+// ------------------------------------------------------------------
+
+model MessageTemplate {
+  id      String       @id @default(cuid())
+  name    String
+  type    TemplateType
+  content String
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  messages          OutreachMessage[]
+  followUpSequences FollowUpSequence[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId, type])
+}
+
+model OutreachMessage {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  creatorId String
+  creator   CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  templateId String
+  template   MessageTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+
+  status        OutreachStatus @default(DRAFT)
+  generatedText String
+  scheduledFor  DateTime?
+  sentAt        DateTime?
+
+  createdById String?
+  createdBy   User?   @relation("OutreachAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, status])
+  @@index([organizationId, scheduledFor])
+  @@index([creatorId])
+  @@index([productId])
+  @@index([campaignId])
+  @@index([templateId])
+}
+
+model FollowUpSequence {
+  id        String  @id @default(cuid())
+  name      String
+  daysAfter Int
+  active    Boolean @default(true)
+
+  templateId String
+  template   MessageTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId, active, daysAfter])
+  @@index([templateId])
+}
+
+// ------------------------------------------------------------------
+// Connector Framework (PR005)
+// ------------------------------------------------------------------
+
+/// Per-tenant state of one platform connector (PR005 — Connector Framework).
+///
+/// One row per `(organizationId, platform)`: the workspace's view of the
+/// connector — is it enabled, when did it last sync, how did that run go and
+/// what are its cumulative counters (the dashboard KPIs).
+///
+/// NO real API is integrated in PR005. `MOCK` is the only implemented
+/// connector; TIKTOK/INSTAGRAM/SHOPEE are placeholders registered in the
+/// factory (`modules/connectors/core/connector.factory.ts`) that throw
+/// `Not implemented` on `fetchContent()`. Credentials are deliberately NOT
+/// modelled here — a future PR adds a secret reference, never a raw token.
+model ConnectorStatus {
+  id       String            @id @default(cuid())
+  platform ConnectorPlatform
+  state    ConnectorState    @default(IDLE)
+  /**
+   * Whether the workspace wants this connector to run at all (ADMIN toggle).
+   */
+  enabled  Boolean           @default(false)
+
+  lastSyncAt     DateTime?
+  lastError      String?
+  /**
+   * Cumulative counters across every sync run (KPI source of truth).
+   */
+  importedCount  Int       @default(0)
+  duplicateCount Int       @default(0)
+  failedCount    Int       @default(0)
+  /**
+   * How many sync runs have been executed for this connector.
+   */
+  syncCount      Int       @default(0)
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  contents ExternalContent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, platform])
+  @@index([organizationId])
+  @@index([organizationId, state])
+  @@index([organizationId, enabled])
+}
+
+/// One piece of content imported from an external platform (PR005).
+///
+/// Dedupe contract: `(organizationId, platform, externalId)` is unique, so a
+/// re-import of the same item is recorded as `DUPLICATE` instead of creating
+/// a second row. `FAILED` rows keep `errorReason` so the dashboard can
+/// explain a failure without a log dive.
+model ExternalContent {
+  id         String                @id @default(cuid())
+  platform   ConnectorPlatform
+  /**
+   * Stable id of the item on the origin platform (dedupe key).
+   */
+  externalId String
+  type       ExternalContentType   @default(VIDEO)
+  status     ExternalContentStatus @default(IMPORTED)
+
+  title        String
+  url          String?
+  thumbnailUrl String?
+  authorHandle String?
+  caption      String?
+
+  views  Int @default(0)
+  likes  Int @default(0)
+  shares Int @default(0)
+
+  /**
+   * When the item was published on the origin platform (not the import time).
+   */
+  publishedAt DateTime?
+  /**
+   * Why this row failed to import — only set when `status = FAILED`.
+   */
+  errorReason String?
+  /**
+   * Raw provider payload, kept verbatim for future re-processing.
+   */
+  raw         Json?
+
+  connectorStatusId String?
+  connectorStatus   ConnectorStatus? @relation(fields: [connectorStatusId], references: [id], onDelete: SetNull)
+
+  // Product Matching Engine (PR005.1).
+  productMatches ProductMatch[]
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, platform, externalId])
+  @@index([organizationId])
+  @@index([organizationId, platform])
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt])
+  @@index([connectorStatusId])
+}
+
+// ------------------------------------------------------------------
+// TikTok Shop Connector (PR009)
+// ------------------------------------------------------------------
+
+/// One authorized TikTok Shop seller account per workspace/shop. OAuth tokens
+/// are AES-256-GCM ciphertexts, never plaintext, and are never selected by
+/// dashboard DTOs or sent to the browser.
+model TikTokAccount {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// Globally unique provider shop identity. A shop may belong to one tenant
+  /// only, preventing an inbound webhook from ever resolving ambiguously.
+  shopId     String @unique
+  shopCipher String
+  shopName   String?
+  sellerId   String?
+
+  accessToken  String? @db.Text
+  refreshToken String? @db.Text
+  expiresAt    DateTime?
+  status       TikTokConnectionStatus @default(DISCONNECTED)
+  lastSync     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, shopId])
+  @@index([organizationId, status])
+}
+
+/// Short-lived, one-time server-side CSRF state for a TikTok OAuth redirect.
+/// Only a SHA-256 digest of the opaque state is persisted.
+model TikTokOAuthState {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  stateHash String @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, expiresAt])
+}
+
+/// Security and operational audit trail. Webhook event ids are unique inside a
+/// tenant so at-least-once provider deliveries are processed idempotently.
+model AuditLog {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  action         String
+  entityType     String
+  entityId       String?
+  externalEventId String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@unique([organizationId, externalEventId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, action])
+}
+
+// ------------------------------------------------------------------
+// Product Matching Engine (PR005.1)
+// ------------------------------------------------------------------
+
+/// The link between one imported external content and one internal product
+/// (PR005.1) — the answer to "este vídeo vende este produto?".
+///
+/// Deterministic by rules only: NO OpenAI, NO computer vision and NO
+/// embeddings are used anywhere in PR005.1. `confidence` is a 0.00–1.00
+/// float produced by the rules engine (`modules/campaigns/matching/`),
+/// never a client-supplied value.
+///
+/// One row per `(externalContentId, productId)` pair; deleting either
+/// endpoint deletes the match (Cascade), same contract as the join tables.
+model ProductMatch {
+  id String @id @default(cuid())
+
+  organizationId    String
+  externalContentId String
+  productId         String
+
+  /// Match strength, normalized to the 0.00–1.00 range by the score engine.
+  confidence Float
+
+  /// Who produced the match (see `MatchSource`).
+  matchedBy MatchSource
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  externalContent ExternalContent @relation(fields: [externalContentId], references: [id], onDelete: Cascade)
+  product         Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([externalContentId, productId])
+  @@index([organizationId])
+  @@index([confidence])
+}
+
+// ------------------------------------------------------------------
+// Campaign Engine & deterministic creator matching (PR006)
+// ------------------------------------------------------------------
+
+/// One creator/product recommendation generated for a campaign. Scores are
+/// deterministic snapshots and can therefore be audited and reproduced.
+model CampaignAudience {
+  id String @id @default(cuid())
+
+  organizationId String
+  campaignId     String
+  creatorId      String
+  productId      String
+  matchScore     Int
+  recommended    Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign     Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creator      CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  product      Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, creatorId, productId])
+  @@index([organizationId, matchScore])
+  @@index([campaignId, recommended])
+  @@index([creatorId])
+  @@index([productId])
+}
+
+/// Eligibility policy for one campaign. Margin uses basis points, matching
+/// Product.marginBps; all scores are integers in the 0–100 range.
+model CampaignRule {
+  id String @id @default(cuid())
+
+  organizationId       String
+  campaignId           String  @unique
+  minimumCreatorScore  Int     @default(0)
+  minimumTrendScore    Int     @default(0)
+  minimumProductMargin Int     @default(0)
+  preferredNiche       String?
+  active               Boolean @default(true)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign     Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, active])
+}
+
+// ------------------------------------------------------------------
+// AI Personalization Engine (PR007)
+// ------------------------------------------------------------------
+
+/// A versioned, cacheable commercial message generated by the OpenAI
+/// Responses API for one (creator, product, campaign, prompt version) tuple.
+///
+/// PR007 NEVER sends this content anywhere — it is generated and versioned
+/// only. Delivery remains the responsibility of the Outreach AI outbox
+/// (PR004), which is untouched by this model.
+model AIGeneratedMessage {
+  id String @id @default(cuid())
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// Team member who triggered the generation (nullable — the record must
+  /// survive user deletion for audit/versioning purposes).
+  creatorUserId String?
+  creatorUser   User?   @relation("AiMessageCreator", fields: [creatorUserId], references: [id], onDelete: SetNull)
+
+  /// The creator (influencer) the message was personalized for.
+  creatorProfileId String
+  creatorProfile   CreatorProfile @relation(fields: [creatorProfileId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  /// Persona/tone used to select the versioned prompt template.
+  tone AiMessageTone
+
+  /// Semver-like version stamp of the prompt template (see
+  /// `modules/ai/openai/prompts.ts`) — enables reproducibility and audit.
+  promptVersion String
+
+  /// Deterministic hash of (creator + product + campaign + promptVersion)
+  /// used as the cache key so the same context is never regenerated
+  /// (`modules/ai/personalization/message.service.ts`).
+  contextHash String
+
+  /// OpenAI model identifier used for this generation (e.g. "gpt-4o-mini").
+  model String
+
+  /// Sampling temperature used for this generation.
+  temperature Float @default(0.7)
+
+  inputTokens  Int @default(0)
+  outputTokens Int @default(0)
+
+  /// Structured generation output — { title, message, hashtags[], cta }.
+  /// Stored as JSON so the shape can evolve without a migration.
+  content Json
+
+  /// PR007.1 — AI Context Audit: complete snapshot of the structured
+  /// (creator + product + campaign + trend) context used to generate this
+  /// message (`modules/ai/personalization/context-builder.ts#serializeContext`).
+  /// Nullable purely for backwards compatibility: rows generated before
+  /// PR007.1 have no snapshot; every row generated from PR007.1 onwards
+  /// carries one. Never feeds the cache key — `contextHash` is unchanged.
+  contextSnapshot Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Cache contract: the same context (tenant + creator + product + campaign
+  // + prompt version) is never regenerated — see `contextHash` above.
+  @@unique([organizationId, contextHash])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, tone])
+  @@index([creatorProfileId])
+  @@index([productId])
+  @@index([campaignId])
+}
+
+// ------------------------------------------------------------------
+// Analytics & Attribution (PR008)
+// ------------------------------------------------------------------
+
+/// A materialized, deterministic analytics snapshot for one tenant over a
+/// half-open period `[from, to)`.
+///
+/// PR008 computes every metric from the tenant's own rows (Sale, Product,
+/// CreatorProfile, Campaign, AIGeneratedMessage) — no external tracking,
+/// no randomness, no network. Snapshots are recomputed lazily on first
+/// access or explicitly via the dashboard "Recalcular" action, and the
+/// UNIQUE key guarantees one snapshot per (tenant, period bucket).
+///
+/// `metrics` is JSON (versioned shape — see
+/// `modules/analytics/metrics/snapshot-builder.ts`) so the metric catalog
+/// can evolve additive­ly without migrations.
+model AnalyticsSnapshot {
+  id String @id @default(cuid())
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// Half-open period `[from, to)` in UTC (normalized to day boundaries).
+  from DateTime
+  to   DateTime
+
+  /// Deterministic, versioned metrics payload ({version:1, period, totals,
+  /// attribution, ai}).
+  metrics Json
+
+  /// When this snapshot was (re)computed — staleness is judged against
+  /// `to` at read time by readers, never trusted from the client.
+  computedAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, from, to])
+  @@index([organizationId, computedAt])
+}
+
+// ------------------------------------------------------------------
+// Omnichannel Delivery Engine (PR010)
+// ------------------------------------------------------------------
+
+/// One connected Meta messaging account per (tenant, channel, provider id):
+/// an Instagram Business account or a WhatsApp Business phone number.
+///
+/// SECURITY CONTRACT: tokens are AES-256-GCM ciphertexts produced with
+/// `META_ENCRYPTION_KEY` (`modules/delivery/core/crypto.service.ts`). The
+/// plaintext NEVER reaches a DTO, a Client Component or a webhook response.
+model DeliveryAccount {
+  id String @id @default(cuid())
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  channel DeliveryChannel
+
+  /// Globally unique provider identity — the Instagram Business Account id
+  /// or the WhatsApp Cloud API phone number id. Global uniqueness lets an
+  /// inbound webhook resolve exactly one tenant (no ambiguity, no leak).
+  accountId   String  @unique
+  accountName String?
+
+  /// AES-256-GCM ciphertexts (`v1.iv.tag.value`, base64url). Never plaintext.
+  encryptedAccessToken  String? @db.Text
+  encryptedRefreshToken String? @db.Text
+
+  /// Access-token expiry. `null` for non-expiring tokens (e.g. Meta System
+  /// User tokens where the provider reports `expires_in = 0`).
+  expiresAt DateTime?
+
+  status DeliveryAccountStatus @default(DISCONNECTED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, channel, accountId])
+  @@index([organizationId, channel, status])
+}
+
+/// One outbound (or provider-acknowledged) omnichannel message (PR010).
+///
+/// IDEMPOTENCY CONTRACT: `(organizationId, executionId, channel,
+/// recipientId)` is unique, so re-dispatching the same `CommerceExecution`
+/// can never create two provider sends for one recipient — the dispatcher
+/// upserts on this key instead of inserting blindly.
+model DeliveryMessage {
+  id String @id @default(cuid())
+
+  // Tenant — REQUIRED. No domain record may exist without an Organization.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// Id of the approved `CommerceExecution` that originated this message.
+  executionId String
+
+  channel DeliveryChannel
+
+  /// Provider-scoped recipient identity (Instagram-scoped id or E.164 phone)
+  /// plus a denormalized display name for the dashboard.
+  recipientId   String
+  recipientName String?
+
+  status DeliveryStatus @default(DRAFT)
+
+  /// Provider-side message id (Instagram `mid` / WhatsApp `wamid`) — the
+  /// join key used by delivery/read webhook receipts.
+  providerMessageId String?
+
+  /// Versioned outbound payload: message body/template + denormalized
+  /// execution context (campaign, creator) for rendering and filtering.
+  payload Json
+
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
+
+  /// Provider send attempts consumed by the retry engine (max 3 — see
+  /// `modules/delivery/queue/retry.service.ts`).
+  attempts Int @default(0)
+
+  /// Retry scheduling (see `nextAttemptAt` below) and the last sanitized
+  /// provider error for the dashboard. `updatedAt` powers stale-claim
+  /// recovery for messages interrupted while SENDING.
+  lastAttemptAt DateTime?
+  nextAttemptAt DateTime?
+  lastError     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, executionId, channel, recipientId])
+  @@index([organizationId, status])
+  @@index([organizationId, channel])
+  @@index([organizationId, providerMessageId])
+  @@index([organizationId, executionId])
+  @@index([status, nextAttemptAt])
+}
+
+/// Short-lived, one-time server-side CSRF state for a Meta OAuth redirect
+/// (Facebook Login for Instagram Business / WhatsApp Embedded Signup).
+/// Only a SHA-256 digest of the opaque state is persisted.
+model DeliveryOAuthState {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  channel   DeliveryChannel
+  stateHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, channel, expiresAt])
+}
+
+/// Immutable audit envelope for one OpenAI-backed executive analysis.
+/// The complete, tenant-scoped input and raw structured response are retained
+/// even when the response produces zero decisions.
+model AIDecisionRun {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  promptVersion String
+  model         String
+  temperature   Float  @default(0.3)
+  inputTokens   Int    @default(0)
+  outputTokens  Int    @default(0)
+  inputSnapshot Json
+  rawResponse   Json
+
+  decisions AIDecision[]
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, promptVersion])
+}
+
+/// An advisory executive decision. This record never dispatches a message,
+/// changes a campaign or mutates commerce data. EXECUTED only records that a
+/// human confirmed completion outside the AI CEO.
+model AIDecision {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  runId String
+  run   AIDecisionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String           @db.Text
+  reason      String           @db.Text
+  priority    DecisionPriority
+  status      DecisionStatus   @default(PENDING)
+  confidence  Float
+  category    String
+
+  /// Deterministic opportunity key and financial upside used by the dashboard.
+  sourceKey             String
+  potentialRevenueCents Int    @default(0)
+
+  createdAt  DateTime  @default(now())
+  approvedAt DateTime?
+  rejectedAt DateTime?
+  executedAt DateTime?
+  updatedAt  DateTime  @updatedAt
+
+  evidence DecisionEvidence[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, priority])
+  @@index([organizationId, createdAt])
+  @@index([runId])
+}
+
+/// Verifiable source behind one executive decision. Weights are normalized to
+/// 0..1 by the decision engine and never accepted from the browser.
+model DecisionEvidence {
+  id String @id @default(cuid())
+
+  decisionId String
+  decision   AIDecision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  sourceType String
+  sourceId   String
+  weight     Float
+  createdAt  DateTime @default(now())
+
+  @@index([decisionId])
+  @@index([sourceType, sourceId])
+}
+
+/// Daily executive narrative. Numeric KPIs always come from the deterministic
+/// analytics/context snapshot; OpenAI supplies only summary, risks and wording.
+/// Every regeneration is retained as a revision, preserving all responses.
+model ExecutiveReport {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  reportDate    DateTime @db.Date
+  summary       String   @db.Text
+  gmvCents      Int
+  roiBps        Int
+  creators      Int
+  products      Int
+  campaigns     Int
+  risks         Json
+  opportunities Json
+
+  promptVersion String
+  model         String
+  temperature   Float  @default(0.3)
+  inputTokens   Int    @default(0)
+  outputTokens  Int    @default(0)
+  inputSnapshot Json
+  rawResponse   Json
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, reportDate])
+  @@index([organizationId, createdAt])
+}
+
+/// Durable, tenant-scoped transactional outbox. Domain code writes this row in
+/// its own Prisma transaction; only the standalone worker can dispatch it.
+model OutboxEvent {
+  id             String           @id @default(cuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic          String
+  aggregateType  String
+  aggregateId    String
+  payload        Json
+  idempotencyKey String
+  status         OutboxEventStatus @default(PENDING)
+  attempts       Int              @default(0)
+  availableAt    DateTime         @default(now())
+  lockedAt       DateTime?
+  processedAt    DateTime?
+  lastError      String?          @db.Text
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([status, availableAt])
+  @@index([organizationId, status, availableAt])
+}
+
+/// Tenant-scoped audit envelope for one governed AI execution. Inputs and
+/// outputs are sanitised before persistence and no prompt is stored verbatim.
+model AgentRun {
+  id             String         @id @default(cuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestId      String
+  trigger        String
+  model          String
+  status         AgentRunStatus @default(RUNNING)
+  safeInput      Json?
+  safeOutput     Json?
+  inputTokens    Int            @default(0)
+  outputTokens   Int            @default(0)
+  costCents      Int            @default(0)
+  budgetCents    Int
+  startedAt      DateTime       @default(now())
+  completedAt    DateTime?
+  lastError      String?        @db.Text
+
+  toolCalls AgentToolCall[]
+
+  @@unique([organizationId, requestId])
+  @@index([organizationId, startedAt])
+  @@index([organizationId, status, startedAt])
+}
+
+model AgentToolCall {
+  id           String              @id @default(cuid())
+  agentRunId   String
+  agentRun     AgentRun            @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+  tool         String
+  status       AgentToolCallStatus @default(PENDING)
+  safeInput    Json?
+  safeOutput   Json?
+  durationMs   Int?
+  startedAt    DateTime            @default(now())
+  completedAt  DateTime?
+  lastError    String?             @db.Text
+
+  @@index([agentRunId, startedAt])
+}
+
+/// An explicit, tenant-scoped human approval gate for any external tool
+/// effect. A tool execution checks this row before it is allowed to proceed.
+model ApprovalRequest {
+  id             String                @id @default(cuid())
+  organizationId String
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agentRunId     String?
+  proposedAction String
+  risk           String
+  status         ApprovalRequestStatus @default(PENDING)
+  requestedById  String?
+  resolvedById   String?
+  requestedAt    DateTime              @default(now())
+  resolvedAt     DateTime?
+
+  @@index([organizationId, status, requestedAt])
+  @@index([organizationId, agentRunId])
+}
+
+// ------------------------------------------------------------------
+// Join Tables (many-to-many)
+// ------------------------------------------------------------------
+
+model CampaignProduct {
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  assignedAt DateTime @default(now())
+
+  @@id([campaignId, productId])
+  @@index([productId])
+}
+
+model CampaignCreator {
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  creatorId String
+  creator   CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  assignedAt DateTime @default(now())
+
+  @@id([campaignId, creatorId])
+  @@index([creatorId])
+}
+
+// ------------------------------------------------------------------
+// NextAuth v5 Adapter Models (Prisma adapter compatible)
+// ------------------------------------------------------------------
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ------------------------------------------------------------------
+// Enterprise Authentication & UX (PR010.2)
+// ------------------------------------------------------------------
+
+/// PR010.4 — the `AccessRequest` model was removed together with the
+/// "Solicitar acesso" flow. Self-signup (`/signup`) now provisions the
+/// Organization + ADMIN User + workspace defaults directly, so there is no
+/// queue of inert leads to review any more.
+
+/// A single-use invitation that provisions one `User` inside one tenant
+/// (PR010.2).
+///
+/// SECURITY CONTRACT
+/// -----------------
+/// - `tokenHash` stores a SHA-256 digest; the raw token exists only in the
+///   invite URL handed to the invitee and is never persisted or logged.
+/// - Single use: `acceptedAt` is set inside the same transaction that
+///   creates/updates the `User`, so a replayed link cannot create a second
+///   account.
+/// - The invited `role` is chosen by an ADMIN server-side; a client can
+///   never escalate it (the accept payload carries only a password).
+model Invitation {
+  id String @id @default(cuid())
+
+  // Tenant — REQUIRED. An invitation always targets exactly one workspace.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  email String
+  name  String?
+  role  UserRole @default(MEMBER)
+
+  /// SHA-256 of the raw token (hex). Globally unique — never the raw value.
+  tokenHash String   @unique
+  expiresAt DateTime
+
+  status     InvitationStatus @default(PENDING)
+  acceptedAt DateTime?
+  /// `User.id` of the ADMIN who issued the invitation. Intentionally NOT a
+  /// relation: the invitation must survive the inviter's deletion without
+  /// cascading away the invited member's provenance.
+  invitedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, email, status])
+  @@index([organizationId, status])
+  @@index([expiresAt])
+}
+
+/// A single-use password-reset token (PR010.2).
+///
+/// SECURITY CONTRACT
+/// -----------------
+/// - Only the SHA-256 digest is stored, so a database leak cannot be replayed
+///   as a reset link.
+/// - Expires in 30 minutes (`PASSWORD_RESET_TTL_MINUTES`) and is consumed
+///   atomically (`usedAt`) in the same transaction that rewrites the
+///   `User.passwordHash`.
+/// - Requesting a reset for an unknown email is indistinguishable from a
+///   known one (same response, same timing) — no user enumeration.
+model PasswordResetToken {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// SHA-256 of the raw token (hex). Globally unique — never the raw value.
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+}
+
+// ------------------------------------------------------------------
+// Rate Limiting (PR011.1 — Login Bruteforce Protection)
+// ------------------------------------------------------------------
+
+model RateLimit {
+  id        String   @id @default(cuid())
+  identifier String
+  type      String   @default("login")
+  attempts  Int      @default(0)
+  lockedAt  DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([identifier, type])
+  @@index([type, attempts])
+}
