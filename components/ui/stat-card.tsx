@@ -32,6 +32,7 @@ export interface StatCardProps {
   sparkline?: React.ReactNode;
   /** Optional supporting line rendered below everything else. */
   hint?: string;
+  badge?: React.ReactNode;
   className?: string;
 }
 
@@ -43,6 +44,7 @@ export function StatCard({
   icon: Icon,
   sparkline,
   hint,
+  badge,
   className,
 }: StatCardProps) {
   const { className: trendClass, Icon: TrendIcon, srLabel } = trendStyles[trend];
@@ -51,29 +53,37 @@ export function StatCard({
     <div
       className={cn(
         "glass-edge group relative overflow-hidden rounded-2xl border border-white/8",
-        "bg-surface-850 bg-gradient-to-b from-white/[0.045] to-transparent p-6",
+        "bg-surface-850/90 bg-gradient-to-b from-white/[0.045] to-transparent p-5",
         "shadow-[0_8px_24px_-8px_rgba(0,0,0,0.45)]",
         "transition-[border-color,box-shadow,transform] duration-200 ease-out",
         "hover:-translate-y-0.5 hover:border-white/15 hover:shadow-[0_16px_48px_-12px_rgba(0,0,0,0.55)]",
         className,
       )}
     >
-      {/* Decorative brand wash that warms up on hover. */}
       <div
         aria-hidden
         className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-brand-500/10 opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-100"
       />
 
-      <div className="relative flex items-start justify-between gap-4">
+      <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-medium uppercase tracking-wider text-white/50">
-            {label}
+          <div className="flex items-center justify-between gap-3">
+            <p className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-white/45">
+              {label}
+            </p>
+            {badge && <div className="flex shrink-0 items-center">{badge}</div>}
+          </div>
+
+          <p className="mt-3 truncate text-[1.9rem] font-semibold tracking-[-0.04em] text-white">
+            {value}
           </p>
-          <p className="mt-2 truncate text-2xl font-semibold tracking-tight text-white">{value}</p>
 
           {delta && (
             <p
-              className={cn("mt-2 inline-flex items-center gap-1 text-xs font-medium", trendClass)}
+              className={cn(
+                "mt-2 inline-flex items-center gap-1 rounded-full border border-white/8 bg-white/[0.02] px-2 py-1 text-[11px] font-medium",
+                trendClass,
+              )}
             >
               <TrendIcon aria-hidden className="h-3.5 w-3.5 shrink-0" />
               <span className="sr-only">{srLabel}</span>
@@ -85,7 +95,7 @@ export function StatCard({
         {Icon && (
           <div
             aria-hidden
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/8 bg-brand-500/12 text-brand-300"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/8 bg-brand-500/12 text-brand-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
           >
             <Icon className="h-5 w-5" />
           </div>

@@ -39,7 +39,7 @@ export function PageHeader({
   className,
 }: PageHeaderProps) {
   return (
-    <div className={cn("mb-6 lg:mb-8", className)}>
+    <div className={cn("mb-7 lg:mb-8", className)}>
       {breadcrumbs && breadcrumbs.length > 0 && (
         <nav aria-label="Trilha de navegação" className="mb-3">
           <ol className="flex flex-wrap items-center gap-1.5 text-xs text-white/40">
@@ -77,12 +77,12 @@ export function PageHeader({
             </p>
           )}
 
-          <h1 className="text-balance text-2xl font-semibold tracking-tight text-white lg:text-[1.75rem]">
+          <h1 className="text-balance text-[2rem] font-semibold tracking-[-0.04em] text-white lg:text-[2.2rem]">
             {title}
           </h1>
 
           {description && (
-            <p className="mt-2 max-w-3xl text-pretty text-sm leading-relaxed text-white/50">
+            <p className="mt-2 max-w-3xl text-pretty text-sm leading-relaxed text-white/55">
               {description}
             </p>
           )}

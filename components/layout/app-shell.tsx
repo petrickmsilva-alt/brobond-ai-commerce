@@ -47,7 +47,9 @@ export function AppShell({ children, user, workspace, tiktokStatus }: AppShellPr
   }, [closeMobile]);
 
   return (
-    <div className="bg-app-mesh min-h-screen">
+    <div className="bg-app-mesh relative min-h-screen overflow-x-hidden isolate">
+      <div aria-hidden className="pointer-events-none absolute inset-0 opacity-90" />
+
       <a href="#main-content" className="skip-link">
         Pular para o conteúdo
       </a>
@@ -64,7 +66,7 @@ export function AppShell({ children, user, workspace, tiktokStatus }: AppShellPr
         aria-hidden={mobileOpen ? true : undefined}
         inert={mobileOpen ? true : undefined}
         className={cn(
-          "flex min-h-screen flex-col transition-[padding] duration-200 ease-out",
+          "relative z-10 flex min-h-screen flex-col transition-[padding] duration-200 ease-out",
           collapsed ? "lg:pl-[76px]" : "lg:pl-[264px]",
         )}
       >
@@ -78,9 +80,14 @@ export function AppShell({ children, user, workspace, tiktokStatus }: AppShellPr
         <main
           id="main-content"
           tabIndex={-1}
-          className="flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 focus:outline-none"
+          className="focus:outline-none"
         >
-          <div className="mx-auto w-full max-w-[1600px]">{children}</div>
+          <div className="mx-auto w-full max-w-[1560px] px-4 pb-8 pt-5 sm:px-6 lg:px-8 lg:pt-8">
+            <div className="relative rounded-[24px] border border-white/8 bg-surface-950/35 p-0 shadow-[0_12px_40px_-18px_rgba(10,10,15,0.9)] backdrop-blur-sm">
+              <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/12 to-transparent" />
+              <div className="relative">{children}</div>
+            </div>
+          </div>
         </main>
       </div>
     </div>

@@ -61,8 +61,8 @@ export function Header({ onOpenMobile, mobileOpen, user, tiktokStatus = "unknown
     <>
       <header
         className={cn(
-          "sticky top-0 z-20 flex h-16 shrink-0 items-center gap-2 px-4 lg:px-6",
-          "border-b border-white/8 bg-surface-950/70 backdrop-blur-xl",
+          "sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 px-4 lg:px-6",
+          "border-b border-white/8 bg-surface-950/80 backdrop-blur-xl",
         )}
       >
         <button
@@ -72,8 +72,8 @@ export function Header({ onOpenMobile, mobileOpen, user, tiktokStatus = "unknown
           aria-controls="app-sidebar"
           aria-expanded={mobileOpen}
           className={cn(
-            "flex h-9 w-9 items-center justify-center rounded-xl text-white/60",
-            "transition-colors hover:bg-white/[0.07] hover:text-white lg:hidden",
+            "flex h-9 w-9 items-center justify-center rounded-xl border border-white/8 bg-white/[0.03] text-white/60",
+            "transition-colors duration-150 hover:border-white/12 hover:bg-white/[0.06] hover:text-white lg:hidden",
             focusRingRaised,
           )}
         >
@@ -86,8 +86,8 @@ export function Header({ onOpenMobile, mobileOpen, user, tiktokStatus = "unknown
           onClick={() => setPaletteOpen(true)}
           aria-haspopup="dialog"
           className={cn(
-            "group hidden h-9 max-w-sm flex-1 items-center gap-2.5 rounded-xl border border-white/8 bg-white/[0.03] px-3 text-left",
-            "transition-colors duration-150 hover:border-white/15 hover:bg-white/[0.06] md:flex",
+            "group hidden h-10 max-w-sm flex-1 items-center gap-2.5 rounded-xl border border-white/10 bg-surface-850/80 px-3 text-left shadow-[0_8px_28px_-18px_rgba(10,10,15,0.9)]",
+            "transition-[border-color,background-color,box-shadow] duration-150 hover:border-white/15 hover:bg-surface-800 md:flex",
             focusRingRaised,
           )}
         >
@@ -95,7 +95,7 @@ export function Header({ onOpenMobile, mobileOpen, user, tiktokStatus = "unknown
           <span className="flex-1 truncate text-sm text-white/40 group-hover:text-white/55">
             Buscar módulos, páginas e ações…
           </span>
-          <kbd className="shrink-0 rounded-md border border-white/12 bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-medium text-white/40">
+          <kbd className="shrink-0 rounded-lg border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-medium text-white/45">
             {isMac ? "⌘" : "Ctrl"} K
           </kbd>
         </button>
@@ -106,8 +106,8 @@ export function Header({ onOpenMobile, mobileOpen, user, tiktokStatus = "unknown
           onClick={() => setPaletteOpen(true)}
           aria-label="Abrir busca global"
           className={cn(
-            "flex h-9 w-9 items-center justify-center rounded-xl text-white/55",
-            "transition-colors hover:bg-white/[0.07] hover:text-white md:hidden",
+            "flex h-9 w-9 items-center justify-center rounded-xl border border-white/8 bg-white/[0.03] text-white/55",
+            "transition-colors duration-150 hover:border-white/12 hover:bg-white/[0.06] hover:text-white md:hidden",
             focusRingRaised,
           )}
         >
@@ -126,8 +126,8 @@ export function Header({ onOpenMobile, mobileOpen, user, tiktokStatus = "unknown
             href="/dashboard/campaigns"
             className={cn(
               "hidden h-9 items-center gap-2 rounded-xl px-3.5 text-sm font-medium text-white sm:inline-flex",
-              "bg-gradient-to-b from-brand-500 to-brand-600 shadow-[0_8px_24px_-10px_rgba(79,70,229,0.9)]",
-              "transition-[background,transform] duration-150 hover:from-brand-400 hover:to-brand-500 active:scale-[0.985]",
+              "bg-gradient-to-b from-brand-500 to-brand-600 shadow-[0_10px_30px_-12px_rgba(79,70,229,0.9)]",
+              "transition-[background,transform,box-shadow] duration-150 hover:from-brand-400 hover:to-brand-500 hover:shadow-[0_10px_30px_-10px_rgba(79,70,229,0.9)] active:scale-[0.985]",
               focusRingRaised,
             )}
           >
@@ -135,13 +135,12 @@ export function Header({ onOpenMobile, mobileOpen, user, tiktokStatus = "unknown
             Nova Campanha
           </Link>
 
-          {/* Icon-only CTA below the `sm` breakpoint. */}
           <Link
             href="/dashboard/campaigns"
             aria-label="Nova campanha"
             className={cn(
               "flex h-9 w-9 items-center justify-center rounded-xl text-white sm:hidden",
-              "bg-gradient-to-b from-brand-500 to-brand-600",
+              "bg-gradient-to-b from-brand-500 to-brand-600 shadow-[0_10px_28px_-14px_rgba(79,70,229,0.9)]",
               focusRingRaised,
             )}
           >
