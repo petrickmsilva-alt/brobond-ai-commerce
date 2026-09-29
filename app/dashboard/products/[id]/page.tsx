@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { UserRole } from "@prisma/client";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProductForm } from "@/components/products/product-form";
 import { ProductStatusBadge } from "@/components/products/product-status-badge";
@@ -53,30 +54,41 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         title={product.name}
         description={`/${product.slug}${product.sku ? ` · ${product.sku}` : ""}`}
         actions={
-          canDelete ? (
-            <DeleteProductButton
-              productId={product.id}
-              name={product.name}
-              redirectTo="/dashboard/products"
-            />
-          ) : undefined
+          <div className="flex items-center gap-2">
+            <Badge tone="brand" size="sm" className="inline-flex items-center gap-1.5">
+              <Sparkles className="h-3 w-3" />
+              Product detail
+            </Badge>
+            {canDelete ? (
+              <DeleteProductButton
+                productId={product.id}
+                name={product.name}
+                redirectTo="/dashboard/products"
+              />
+            ) : undefined}
+          </div>
         }
       />
 
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <ProductStatusBadge status={product.status} />
-        <span className="text-sm tabular-nums text-white/70">
-          {formatCurrency(product.priceCents, product.currency)}
-        </span>
-        <span className="text-xs text-white/40">
-          custo{" "}
-          {product.currentCostCents > 0
-            ? formatCurrency(product.currentCostCents, product.currency)
-            : "—"}
-        </span>
-        <MarginBadge bps={product.marginBps} />
-        <span className="text-xs text-white/40">estoque {product.stockQuantity}</span>
-      </div>
+      <Card className="mb-6 border-white/8 bg-surface-850/80" variant="glass">
+        <div className="flex flex-col gap-3 border-b border-white/8 px-4 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/45">
+              Resumo do produto
+            </p>
+            <h3 className="mt-1 text-base font-semibold text-white">
+              {formatCurrency(product.priceCents, product.currency)} · {product.stockQuantity} unidades
+            </h3>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-white/60">
+            <ProductStatusBadge status={product.status} />
+            <MarginBadge bps={product.marginBps} />
+            <Badge tone="neutral" size="sm">
+              custo {product.currentCostCents > 0 ? formatCurrency(product.currentCostCents, product.currency) : "—"}
+            </Badge>
+          </div>
+        </div>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">

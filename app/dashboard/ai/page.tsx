@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Coins, Hash, MessageSquareText, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { AiWorkbench } from "@/components/ai/ai-workbench";
 import { requireOrganization, requireUser } from "@/lib/session";
@@ -49,6 +51,12 @@ export default async function AiPage() {
       <PageHeader
         title="IA — Personalização"
         description="Geração de conteúdo comercial personalizado via OpenAI Responses API — apenas geração e versionamento, sem envio."
+        actions={
+          <Badge tone="brand" size="sm" className="inline-flex items-center gap-1.5">
+            <Sparkles className="h-3 w-3" />
+            AI workflow
+          </Badge>
+        }
       />
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
@@ -68,6 +76,28 @@ export default async function AiPage() {
         />
         <KpiCard label="Prompt version" value={latestPromptVersion} icon={Sparkles} />
       </div>
+
+      <Card className="mb-4 border-white/8 bg-surface-850/80" variant="glass">
+        <div className="flex flex-col gap-3 border-b border-white/8 px-4 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/45">
+              Taxa de geração
+            </p>
+            <h3 className="mt-1 text-base font-semibold text-white">
+              {kpis.totalMessages} mensagens com custo estimado de {formatEstimatedCost(estimatedCostUsdCents)}
+            </h3>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-white/60">
+            <Badge tone="success" size="sm">
+              {latestPromptVersion}
+            </Badge>
+            <Badge tone="info" size="sm">
+              {kpis.totalInputTokens + kpis.totalOutputTokens} tokens
+            </Badge>
+          </div>
+        </div>
+      </Card>
+
       <AiWorkbench
         messages={listing.items.map((item) => ({
           id: item.id,

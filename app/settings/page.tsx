@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Building2, Plug, UserRound } from "lucide-react";
+import { Building2, Plug, Sparkles, UserRound } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionCard } from "@/components/ui/section-card";
 import { Input } from "@/components/ui/input";
@@ -73,6 +73,12 @@ export default async function SettingsPage() {
         title="Configurações"
         description="Gerencie sua conta, workspace e integrações."
         breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: "Configurações" }]}
+        actions={
+          <Badge tone="brand" size="sm" className="inline-flex items-center gap-1.5">
+            <Sparkles className="h-3 w-3" />
+            Workspace control
+          </Badge>
+        }
       />
 
       <div className="grid max-w-4xl gap-4">
