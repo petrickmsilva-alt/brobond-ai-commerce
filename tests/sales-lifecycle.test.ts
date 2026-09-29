@@ -53,18 +53,15 @@ describe("sales lifecycle — checkout and payment settlement", () => {
   });
 
   it("supports refund planning without exceeding the original sale amount", () => {
-    const plan = createRefundPlan(
-      { amountCents: 50_000, status: SaleStatus.PAID },
-      75_000,
-    );
+    const plan = createRefundPlan({ amountCents: 50_000, status: SaleStatus.PAID }, 75_000);
 
     expect(plan.refundAmountCents).toBe(50_000);
     expect(plan.status).toBe(SaleStatus.REFUNDED);
   });
 
   it("blocks refunding a non-paid sale", () => {
-    expect(() => createRefundPlan({ amountCents: 10_000, status: SaleStatus.PENDING }, 10_000)).toThrow(
-      /Refund só pode ser gerado/i,
-    );
+    expect(() =>
+      createRefundPlan({ amountCents: 10_000, status: SaleStatus.PENDING }, 10_000),
+    ).toThrow(/Refund só pode ser gerado/i);
   });
 });

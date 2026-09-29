@@ -96,7 +96,11 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
           value={formatCurrency(orders.length ? totalRevenue / orders.length : 0)}
           icon={Wallet}
         />
-        <KpiCard label="Itens" value={String(orders.reduce((sum, order) => sum + order.quantity, 0))} icon={Package} />
+        <KpiCard
+          label="Itens"
+          value={String(orders.reduce((sum, order) => sum + order.quantity, 0))}
+          icon={Package}
+        />
         <KpiCard
           label="Conversão"
           value={`${conversionRate.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`}
@@ -122,7 +126,9 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
             </div>
           </div>
           <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
-            <div className="text-[11px] uppercase tracking-[0.12em] text-white/45">Webhook Stripe</div>
+            <div className="text-[11px] uppercase tracking-[0.12em] text-white/45">
+              Webhook Stripe
+            </div>
             <div className="mt-2 text-lg font-semibold text-white">
               {health.webhookConfigured ? "Configurado" : "Não configurado"}
             </div>
@@ -133,7 +139,11 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
           <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
             <div className="text-[11px] uppercase tracking-[0.12em] text-white/45">Status</div>
             <div className="mt-2 text-lg font-semibold text-white">
-              {health.status === "healthy" ? "Healthy" : health.status === "warning" ? "Warning" : "Critical"}
+              {health.status === "healthy"
+                ? "Healthy"
+                : health.status === "warning"
+                  ? "Warning"
+                  : "Critical"}
             </div>
             <div className="mt-2 text-xs text-white/55">
               {health.recommendations[0] ?? "Fluxo está sendo processado normalmente."}
@@ -181,7 +191,9 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                         <Badge tone={statusBadgeTone[order.status] ?? "neutral"}>
                           {statusLabel[order.status] ?? order.status}
                         </Badge>
-                        {canManageOrders && <OrderStatusActions orderId={order.id} status={order.status} />}
+                        {canManageOrders && (
+                          <OrderStatusActions orderId={order.id} status={order.status} />
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-white/80">{formatCurrency(order.amountCents)}</td>

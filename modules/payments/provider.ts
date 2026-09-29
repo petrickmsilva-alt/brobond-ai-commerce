@@ -118,7 +118,9 @@ export class StripePaymentProvider implements PaymentProvider {
   }
 }
 
-export function resolvePaymentProviderName(env: NodeJS.ProcessEnv = process.env): PaymentProviderName {
+export function resolvePaymentProviderName(
+  env: NodeJS.ProcessEnv = process.env,
+): PaymentProviderName {
   const provider = env.PAYMENT_PROVIDER?.trim().toLowerCase();
   if (provider === "stripe") return "stripe";
   if (provider === "mock") return "mock";

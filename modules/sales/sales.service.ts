@@ -225,9 +225,7 @@ export const salesService = {
 
     if (!current) return null;
     if (!canTransitionSaleStatus(current.status, nextStatus)) {
-      throw new Error(
-        `Transição inválida de status da venda: ${current.status} -> ${nextStatus}`,
-      );
+      throw new Error(`Transição inválida de status da venda: ${current.status} -> ${nextStatus}`);
     }
 
     return prisma.sale.update({

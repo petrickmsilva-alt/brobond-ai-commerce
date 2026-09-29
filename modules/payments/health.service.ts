@@ -25,13 +25,17 @@ export function evaluateCommerceHealth(
   const recommendations: string[] = [];
 
   if (provider === "mock") {
-    recommendations.push("Ative PAYMENT_PROVIDER=stripe e configure STRIPE_SECRET_KEY para pagamentos reais.");
+    recommendations.push(
+      "Ative PAYMENT_PROVIDER=stripe e configure STRIPE_SECRET_KEY para pagamentos reais.",
+    );
   }
   if (provider === "stripe" && !providerConfigured) {
     recommendations.push("Configure STRIPE_SECRET_KEY para criar sessões de checkout reais.");
   }
   if (provider === "stripe" && !webhookConfigured) {
-    recommendations.push("Configure STRIPE_WEBHOOK_SECRET para confirmar pagamentos automaticamente.");
+    recommendations.push(
+      "Configure STRIPE_WEBHOOK_SECRET para confirmar pagamentos automaticamente.",
+    );
   }
   if (!hasRecentOrders) {
     recommendations.push("Gere o primeiro checkout para validar o end-to-end do fluxo comercial.");
@@ -48,9 +52,12 @@ export function evaluateCommerceHealth(
   return { status, recommendations, stripeReady };
 }
 
-export async function getCommerceHealthSnapshot(organizationId: string): Promise<CommerceHealthSnapshot> {
+export async function getCommerceHealthSnapshot(
+  organizationId: string,
+): Promise<CommerceHealthSnapshot> {
   const provider = resolvePaymentProviderName();
-  const providerConfigured = provider === "stripe" ? Boolean(process.env.STRIPE_SECRET_KEY?.trim()) : true;
+  const providerConfigured =
+    provider === "stripe" ? Boolean(process.env.STRIPE_SECRET_KEY?.trim()) : true;
   const webhookConfigured = Boolean(process.env.STRIPE_WEBHOOK_SECRET?.trim());
 
   const [summary, recentOrders] = await Promise.all([
