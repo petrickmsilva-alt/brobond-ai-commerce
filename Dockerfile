@@ -8,7 +8,9 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 RUN apk add --no-cache libc6-compat openssl
 COPY package.json package-lock.json* ./
-RUN npm ci
+COPY prisma ./prisma
+COPY prisma.config.ts ./prisma.config.ts
+RUN npm ci --omit=dev
 
 # --- Stage 2: build -----------------------------------------------
 FROM node:20-alpine AS builder
