@@ -90,7 +90,7 @@ export default async function ConnectorsPage({
     <>
       <PageHeader
         title="Conectores"
-        description="Connector Framework — arquitetura multi-plataforma para importar conteúdo externo. Mock implementado; TikTok, Instagram e Shopee são placeholders (nenhuma API real integrada)."
+        description="Connector Framework — arquitetura multi-plataforma para importar conteúdo externo. O TikTok Shop usa o fluxo OAuth oficial do workspace; Instagram e Shopee continuam placeholders de arquitetura."
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
