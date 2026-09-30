@@ -91,7 +91,7 @@ export default function GlobalError({
                 padding: "0 20px",
                 borderRadius: "16px",
                 border: "none",
-                background: "linear-gradient(to bottom, #6366f1, #4f46e5)",
+                background: "linear-gradient(to bottom, #d2a84a, #b78326)",
                 color: "#fff",
                 fontSize: "0.875rem",
                 fontWeight: 500,
