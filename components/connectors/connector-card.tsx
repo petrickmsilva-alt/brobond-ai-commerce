@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import {
   CircleAlert,
   CircleCheck,
+  Link2,
   Loader2,
   Plug,
   Power,
@@ -20,6 +21,8 @@ import {
   testConnectorAction,
   toggleConnectorAction,
 } from "@/app/dashboard/connectors/actions";
+
+const CONNECT_TIKTOK_PATH = "/dashboard/tiktok";
 
 /**
  * One connector card: platform, state, counters and the ADMIN affordances
@@ -143,6 +146,20 @@ export function ConnectorCard({ connector, canManage }: ConnectorCardProps) {
 
         {canManage ? (
           <div className="mt-auto flex flex-wrap gap-2">
+            {connector.platform === "TIKTOK" && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  setFeedback(null);
+                  window.location.assign(CONNECT_TIKTOK_PATH);
+                }}
+                disabled={isPending}
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                Conectar
+              </Button>
+            )}
             <Button size="sm" onClick={runSync} disabled={isPending}>
               {isPending ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
