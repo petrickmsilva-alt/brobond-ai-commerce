@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Table,
   TableBody,
@@ -25,7 +26,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { TableEmptyState } from "@/components/ui/table-empty-state";
 import { Badge } from "@/components/ui/badge";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { ConnectorsGrid } from "@/components/dashboard/connectors-grid";
@@ -48,12 +48,19 @@ import { salesService } from "@/modules/sales/sales.service";
 /**
  * Isolated connector detail screen (PR014 — Hub Multicanal).
  *
- * `/dashboard/connectors/[slug]` renders EXACTLY ONE platform — its
+ * `/dashboard/connectors/[provider]` renders EXACTLY ONE platform — its
  * connection card (credentials, status, ADMIN actions), its sync + revenue
  * KPIs, its recent webhook inbox events and its channel sales — never the
  * stacked list of every provider. The slug registry
  * (`connectorProviderFromSlug`) is the single source of truth shared with
- * the sidebar links and the OAuth callbacks.
+ * the sidebar links and the OAuth callbacks: `mercado-livre`, `shopee`,
+ * `mercado-pago`, `tiktok` and `instagram` all resolve here; anything else
+ * renders the 404 page (`notFound()`).
+ *
+ * PR015 — this screen is a pure Server Component: every child that needs
+ * interactivity receives only serializable props. Icons (function
+ * references) may NEVER be passed into a Client Component from here — that
+ * boundary violation is what produced the global error screen.
  *
  * RBAC mirrors the hub: ADMIN manages, everyone authenticated reads (the
  * server actions re-check `requireAdmin()` on every mutation).
@@ -224,10 +231,19 @@ export default async function ConnectorProviderPage({
               </Link>
             </div>
             {recentSales.length === 0 ? (
-              <TableEmptyState
+              /* PR015 — server-rendered `EmptyState`, NOT `TableEmptyState`:
+               * that one is a Client Component (it reads `useSearchParams`)
+               * and a Server Component may never pass a lucide icon — a
+               * function reference — across the server→client boundary. Doing
+               * so crashed the whole route with "Functions cannot be passed
+               * directly to Client Components" (the global error screen).
+               * `EmptyState` renders on the server with identical visuals. */
+              <EmptyState
+                size="md"
+                bordered={false}
+                icon={Wallet}
                 title="Nenhuma venda registrada"
                 description={`Assim que um pedido ou pagamento de ${CONNECTOR_PROVIDER_LABELS[provider]} for confirmado, a venda aparece aqui — ingerida pelo worker financeiro.`}
-                icon={Wallet}
               />
             ) : (
               <Table>
@@ -273,10 +289,12 @@ export default async function ConnectorProviderPage({
               </span>
             </div>
             {recentEvents.length === 0 ? (
-              <TableEmptyState
+              <EmptyState
+                size="md"
+                bordered={false}
+                icon={Inbox}
                 title="Nenhum evento recebido"
                 description="Cadastre a URL de notificação da plataforma. Entregas são verificadas, resolvidas por tenant e processadas em segundo plano pelo worker."
-                icon={Inbox}
               />
             ) : (
               <Table>

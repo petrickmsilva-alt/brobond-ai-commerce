@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { CornerDownLeft, Search } from "lucide-react";
-import { navigationGroups, settingsNavItem, type NavItem } from "@/lib/navigation";
+import { navigationGroups, settingsNavItem, isNavDisclosure, type NavItem } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { duration, easing } from "@/components/ui/design-system/tokens";
 
@@ -33,8 +33,13 @@ interface Entry extends NavItem {
 const EASE = [...easing.standard] as [number, number, number, number];
 
 const ALL_ENTRIES: Entry[] = [
+  // PR015 — accordion disclosures contribute their children: the individual
+  // connectors are the navigable units, so the palette can send the operator
+  // straight to each platform's isolated screen.
   ...navigationGroups.flatMap((group) =>
-    group.items.map((item) => ({ ...item, group: group.label })),
+    group.items
+      .flatMap((entry) => (isNavDisclosure(entry) ? entry.children : [entry]))
+      .map((item) => ({ ...item, group: group.label })),
   ),
   { ...settingsNavItem, group: "Utilitários" },
 ];

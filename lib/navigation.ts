@@ -27,6 +27,8 @@ import {
 import { connectorProviderPath } from "@/modules/marketplace/core/providers";
 
 export interface NavItem {
+  /** Discriminator slot — `undefined` for links, `"disclosure"` for accordions. */
+  type?: undefined;
   label: string;
   href: string;
   icon: LucideIcon;
@@ -38,34 +40,69 @@ export interface NavItem {
   badge?: { label: string; tone: "brand" | "neutral" | "success" | "warning" | "accent" };
 }
 
+/**
+ * A collapsible (accordion) sidebar entry (PR015).
+ *
+ * A NavDisclosure is a TOGGLE, never a link: clicking it only expands or
+ * collapses the list of its `children` right below it in the sidebar. The
+ * individual destinations are the children themselves — each one keeps its
+ * own `active` state when its route is open.
+ */
+export interface NavDisclosure {
+  /** Discriminator — a NavDisclosure toggles a sublist, it never navigates. */
+  type: "disclosure";
+  /** Stable key used for the collapse-state store. */
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  /** Short description shown in the global command palette. */
+  description?: string;
+  /**
+   * Routes that keep the disclosure marked as "contains the current page"
+   * even though they are not rendered as links — e.g. the connectors hub,
+   * which remains a routed page (contextual back-link) but is no longer a
+   * primary sidebar destination.
+   */
+  matchHrefs?: string[];
+  /** The individual destinations revealed by the disclosure. */
+  children: NavItem[];
+}
+
+/** Anything that can live inside a navigation group. */
+export type NavEntry = NavItem | NavDisclosure;
+
 export interface NavGroup {
   /** Stable key used for the collapse-state store. */
   id: string;
   label: string;
   icon: LucideIcon;
-  items: NavItem[];
+  items: NavEntry[];
+}
+
+/** Type guard: is this group entry an accordion disclosure (not a link)? */
+export function isNavDisclosure(entry: NavEntry): entry is NavDisclosure {
+  return entry.type === "disclosure";
 }
 
 /**
  * Primary sidebar navigation (PR010.1 · reorganised in PR013 for the Hub
- * Multicanal de Vendas · isolated per-platform routes in PR014).
+ * Multicanal de Vendas · isolated per-platform routes in PR014 · collapsible
+ * connectors menu in PR015).
  *
  * Five focused module groups — Overview · Canais de Venda · Commerce ·
  * Creators · Campaigns — mirror how the Brobond Wear operator uses the
  * multichannel hub. Configurações is intentionally kept out of this tree and
  * pinned to the sidebar footer, where it remains available without consuming
- * the daily-navigation area. "Canais de Venda" is pinned right after Overview:
- * it is the fastest path to every revenue-generating connector (Mercado
- * Livre, Shopee, TikTok Shop, Mercado Pago, Instagram) and the only group
- * whose items double as the day-to-day operational hub for Brobond's
- * outside-marketplace sales.
+ * the daily-navigation area.
  *
- * PR014 — Isolamento de telas: every platform link now points at its own
- * route under `/dashboard/connectors/[slug]` (e.g.
- * `/dashboard/connectors/mercado-livre`), so clicking a connector in the
- * menu renders ONLY that platform's card — connection, credentials, status,
- * webhook events and channel sales — instead of the stacked list of every
- * provider. The slugs come from the client-safe provider registry
+ * PR015 — Menu "Conectores" colapsável: the "Canais de Venda" group no longer
+ * stacks the hub link plus five platform links. Its single entry is a
+ * `NavDisclosure` named "Conectores" that ONLY expands/collapses the list of
+ * the individual connectors right below it — clicking it never navigates and
+ * never opens the full stacked-cards hub page. Each child keeps its own
+ * isolated route under `/dashboard/connectors/[slug]` (e.g.
+ * `/dashboard/connectors/mercado-livre`) and its own active highlight. The
+ * slugs come from the client-safe provider registry
  * (`modules/marketplace/core/providers.ts`), the single source of truth
  * shared with the dynamic route.
  */
@@ -102,40 +139,48 @@ export const navigationGroups: NavGroup[] = [
     icon: Cable,
     items: [
       {
+        type: "disclosure",
+        id: "connectors",
         label: "Conectores",
-        href: "/dashboard/connectors",
         icon: Plug,
-        description: "Hub multicanal — status, sincronização e OAuth das 5 plataformas",
-      },
-      {
-        label: "Mercado Livre",
-        href: connectorProviderPath("MERCADOLIVRE"),
-        icon: Store,
-        description: "Conta, credenciais, pedidos e vendas do Mercado Livre",
-      },
-      {
-        label: "Shopee",
-        href: connectorProviderPath("SHOPEE"),
-        icon: ShoppingBasket,
-        description: "Conta, credenciais, catálogo e vendas da Shopee",
-      },
-      {
-        label: "TikTok Shop",
-        href: connectorProviderPath("TIKTOK"),
-        icon: Music2,
-        description: "Conta, credenciais e vendas do TikTok Shop",
-      },
-      {
-        label: "Mercado Pago",
-        href: connectorProviderPath("MERCADOPAGO"),
-        icon: Wallet,
-        description: "Credenciais, checkout e conciliação via Mercado Pago",
-      },
-      {
-        label: "Instagram Shopping",
-        href: connectorProviderPath("INSTAGRAM"),
-        icon: Instagram,
-        description: "Conta, credenciais e catálogo do Instagram Shopping",
+        description:
+          "Expandir os canais de venda — Mercado Livre, Shopee, TikTok Shop, Mercado Pago e Instagram",
+        // The stacked hub stays a routed page (contextual "Voltar ao hub"
+        // link on each connector screen) but is no longer a sidebar
+        // destination: clicking "Conectores" only toggles the list below.
+        matchHrefs: ["/dashboard/connectors"],
+        children: [
+          {
+            label: "Mercado Livre",
+            href: connectorProviderPath("MERCADOLIVRE"),
+            icon: Store,
+            description: "Conta, credenciais, pedidos e vendas do Mercado Livre",
+          },
+          {
+            label: "Shopee",
+            href: connectorProviderPath("SHOPEE"),
+            icon: ShoppingBasket,
+            description: "Conta, credenciais, catálogo e vendas da Shopee",
+          },
+          {
+            label: "TikTok Shop",
+            href: connectorProviderPath("TIKTOK"),
+            icon: Music2,
+            description: "Conta, credenciais e vendas do TikTok Shop",
+          },
+          {
+            label: "Mercado Pago",
+            href: connectorProviderPath("MERCADOPAGO"),
+            icon: Wallet,
+            description: "Credenciais, checkout e conciliação via Mercado Pago",
+          },
+          {
+            label: "Instagram Shopping",
+            href: connectorProviderPath("INSTAGRAM"),
+            icon: Instagram,
+            description: "Conta, credenciais e catálogo do Instagram Shopping",
+          },
+        ],
       },
     ],
   },
@@ -228,9 +273,16 @@ export const settingsNavItem: NavItem = {
 /**
  * Flat list of every navigable item — consumed by the global command palette.
  * The footer destination is included so keyboard navigation remains complete.
+ *
+ * PR015 — accordion disclosures contribute their CHILDREN: the individual
+ * connectors are the navigable units now, and the stacked hub page is
+ * deliberately not a palette destination (it remains reachable through the
+ * contextual back-link on each connector screen).
  */
 export const sidebarNav: NavItem[] = [
-  ...navigationGroups.flatMap((group) => group.items),
+  ...navigationGroups.flatMap((group) =>
+    group.items.flatMap((entry) => (isNavDisclosure(entry) ? entry.children : [entry])),
+  ),
   settingsNavItem,
 ];
 
@@ -251,8 +303,8 @@ export function isNavItemActive(pathname: string, href: string): boolean {
  *
  * An exact href match always wins over a prefix match: on
  * `/dashboard/connectors/mercado-livre` the "Mercado Livre" item is
- * highlighted while the parent "Conectores" hub link is not — both would
- * pass `isNavItemActive`, which would leave two rows highlighted at once.
+ * highlighted while no other row is — `isNavItemActive` alone would light up
+ * every ancestor prefix at once.
  */
 export function isNavItemSelected(
   pathname: string,
@@ -264,11 +316,28 @@ export function isNavItemSelected(
   return isNavItemActive(pathname, item.href);
 }
 
+/**
+ * Whether a disclosure contains the current route (PR015) — one of its
+ * children is active, or the route lives under one of its `matchHrefs`
+ * (e.g. the connectors hub). Drives the highlighted-but-not-active header
+ * style and the auto-expand behaviour in the sidebar.
+ */
+export function isNavDisclosureActive(pathname: string, disclosure: NavDisclosure): boolean {
+  return (
+    disclosure.children.some((child) => isNavItemActive(pathname, child.href)) ||
+    (disclosure.matchHrefs ?? []).some((href) => isNavItemActive(pathname, href))
+  );
+}
+
 /** The group containing the active route, or `null`. */
 export function findActiveGroup(pathname: string): NavGroup | null {
   return (
     navigationGroups.find((group) =>
-      group.items.some((item) => isNavItemActive(pathname, item.href)),
+      group.items.some((entry) =>
+        isNavDisclosure(entry)
+          ? isNavDisclosureActive(pathname, entry)
+          : isNavItemActive(pathname, entry.href),
+      ),
     ) ?? null
   );
 }

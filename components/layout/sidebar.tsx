@@ -10,7 +10,11 @@ import {
   settingsNavItem,
   isNavItemActive,
   isNavItemSelected,
+  isNavDisclosure,
+  isNavDisclosureActive,
   findActiveGroup,
+  type NavDisclosure,
+  type NavItem,
 } from "@/lib/navigation";
 import { Badge } from "@/components/ui/badge";
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -21,9 +25,13 @@ import { duration, easing } from "@/components/ui/design-system/tokens";
 /**
  * Sidebar (PR010.1) — grouped, collapsible enterprise navigation rail.
  *
- * - Six module groups (Overview · Commerce · Creators · Campaigns ·
- *   Integrations · System), each independently expandable with an animated
- *   height transition.
+ * - Five module groups (Overview · Canais de Venda · Commerce · Creators ·
+ *   Campaigns), each independently expandable with an animated height
+ *   transition.
+ * - PR015 — group entries can be links or accordion disclosures: the
+ *   "Conectores" row toggles the list of individual connectors below it
+ *   (`aria-expanded` + animated sublist) and never navigates; each connector
+ *   child keeps its own individual active highlight.
  * - Icon-only collapsed mode (76px) with accessible tooltips.
  * - Official Brobond Wear monogram and wordmark in the brand slot.
  * - Per-item badges (e.g. "IA", counts).
@@ -94,6 +102,196 @@ const FOCUSABLE_SELECTOR = [
   "textarea:not([disabled])",
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
+
+interface NavLinkItemProps {
+  item: NavItem;
+  /** Whether this exact row is the highlighted nav entry for the route. */
+  active: boolean;
+  railCollapsed: boolean;
+  onCloseMobile: () => void;
+  /** Indent the row — set when nested inside a disclosure (expanded rail). */
+  nested?: boolean;
+}
+
+/** One sidebar destination row — shared by group items and disclosure children. */
+function NavLinkItem({
+  item,
+  active,
+  railCollapsed,
+  onCloseMobile,
+  nested = false,
+}: NavLinkItemProps) {
+  const Icon = item.icon;
+
+  return (
+    <Link
+      href={item.href}
+      onClick={onCloseMobile}
+      aria-current={active ? "page" : undefined}
+      title={railCollapsed ? item.label : undefined}
+      className={cn(
+        "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
+        "transition-[background-color,color,box-shadow] duration-150",
+        active
+          ? "bg-gradient-to-r from-brand-500/14 to-transparent text-white shadow-[inset_1px_0_0_rgba(192,130,42,0.75)]"
+          : "text-ink-400 hover:bg-white/[0.06] hover:text-white",
+        nested && !railCollapsed && "py-2 pl-8 text-[13px]",
+        railCollapsed && "justify-center px-0",
+        focusRingRaised,
+      )}
+    >
+      {/* Active indicator rail */}
+      {active && (
+        <span aria-hidden className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-brand-400" />
+      )}
+
+      <Icon
+        aria-hidden
+        className={cn(
+          "h-[18px] w-[18px] shrink-0 transition-colors",
+          nested && !railCollapsed && "h-4 w-4",
+          active ? "text-brand-300" : "text-ink-400 group-hover:text-white/80",
+        )}
+      />
+
+      {!railCollapsed && (
+        <>
+          <span className="truncate">{item.label}</span>
+          {item.badge && (
+            <Badge tone={item.badge.tone} className="ml-auto">
+              {item.badge.label}
+            </Badge>
+          )}
+          {!item.badge && item.planned && (
+            <Badge tone="neutral" className="ml-auto">
+              em breve
+            </Badge>
+          )}
+        </>
+      )}
+
+      {railCollapsed && (item.badge || item.planned) && (
+        <span
+          aria-hidden
+          className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-brand-400"
+        />
+      )}
+    </Link>
+  );
+}
+
+interface NavDisclosureItemProps {
+  disclosure: NavDisclosure;
+  /** Whether the sublist is currently expanded. */
+  open: boolean;
+  onToggle: (id: string) => void;
+  pathname: string;
+  railCollapsed: boolean;
+  onCloseMobile: () => void;
+  /** From `useReducedMotion()` — `null` until the media query resolves. */
+  reducedMotion: boolean | null;
+}
+
+/**
+ * PR015 — collapsible "Conectores" accordion.
+ *
+ * The header is a `<button>` (never a link): clicking it ONLY expands or
+ * collapses the list of the individual connectors right below it. When one of
+ * its routes is open, the header shows the highlighted (contains-active) tone
+ * and each child keeps its own individual `active` state.
+ */
+function NavDisclosureItem({
+  disclosure,
+  open,
+  onToggle,
+  pathname,
+  railCollapsed,
+  onCloseMobile,
+  reducedMotion,
+}: NavDisclosureItemProps) {
+  const containsActive = isNavDisclosureActive(pathname, disclosure);
+  const Icon = disclosure.icon;
+  const listId = `nav-disclosure-${disclosure.id}`;
+
+  return (
+    <div className="space-y-0.5">
+      <button
+        type="button"
+        onClick={() => onToggle(disclosure.id)}
+        aria-expanded={open}
+        aria-controls={listId}
+        title={railCollapsed ? disclosure.label : undefined}
+        className={cn(
+          "group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
+          "transition-[background-color,color,box-shadow] duration-150",
+          containsActive ? "text-ink-300" : "text-ink-400 hover:bg-white/[0.06] hover:text-white",
+          railCollapsed && "justify-center px-0",
+          focusRingRaised,
+        )}
+      >
+        {containsActive && (
+          <span
+            aria-hidden
+            className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-brand-400/60"
+          />
+        )}
+
+        <Icon
+          aria-hidden
+          className={cn(
+            "h-[18px] w-[18px] shrink-0 transition-colors",
+            containsActive ? "text-brand-300" : "text-ink-400 group-hover:text-white/80",
+          )}
+        />
+
+        {!railCollapsed && (
+          <>
+            <span className="flex-1 truncate text-left">{disclosure.label}</span>
+            <ChevronDown
+              aria-hidden
+              className={cn(
+                "h-3.5 w-3.5 shrink-0 text-ink-500 transition-transform duration-200",
+                open ? "rotate-0" : "-rotate-90",
+              )}
+            />
+          </>
+        )}
+
+        {railCollapsed && containsActive && (
+          <span
+            aria-hidden
+            className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-brand-400"
+          />
+        )}
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.ul
+            id={listId}
+            initial={reducedMotion ? false : { height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={reducedMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
+            transition={{ duration: duration.normal, ease: EASE }}
+            className="overflow-hidden"
+          >
+            {disclosure.children.map((child) => (
+              <li key={child.href} className="pb-0.5 last:pb-0">
+                <NavLinkItem
+                  item={child}
+                  active={isNavItemSelected(pathname, child)}
+                  railCollapsed={railCollapsed}
+                  onCloseMobile={onCloseMobile}
+                  nested
+                />
+              </li>
+            ))}
+          </motion.ul>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 export function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
@@ -174,6 +372,46 @@ export function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCloseMobil
     setOpenGroups((previous) => ({ ...previous, [id]: !previous[id] }));
   }, []);
 
+  // PR015 — accordion disclosures ("Conectores") start collapsed and are
+  // purely local UI state: toggling never navigates anywhere. A disclosure
+  // whose routes include the active page starts (and is force kept) open —
+  // the same "current page is always reachable" rule the groups follow — so
+  // each connector keeps its own visible, individually highlighted row. The
+  // initial state derives from the first render's pathname, so SSR and
+  // hydration agree and there is no flash of the collapsed state.
+  const activeDisclosureIds = React.useMemo(
+    () =>
+      navigationGroups.flatMap((group) =>
+        group.items
+          .filter(
+            (entry): entry is NavDisclosure =>
+              isNavDisclosure(entry) && isNavDisclosureActive(pathname, entry),
+          )
+          .map((entry) => entry.id),
+      ),
+    [pathname],
+  );
+
+  const [openDisclosures, setOpenDisclosures] = React.useState<Record<string, boolean>>(() =>
+    Object.fromEntries(activeDisclosureIds.map((id) => [id, true])),
+  );
+
+  const toggleDisclosure = React.useCallback((id: string) => {
+    setOpenDisclosures((previous) => ({ ...previous, [id]: !previous[id] }));
+  }, []);
+
+  React.useEffect(() => {
+    if (activeDisclosureIds.length === 0) return;
+    setOpenDisclosures((previous) =>
+      activeDisclosureIds.every((id) => previous[id])
+        ? previous
+        : {
+            ...previous,
+            ...Object.fromEntries(activeDisclosureIds.map((id) => [id, true])),
+          },
+    );
+  }, [activeDisclosureIds]);
+
   return (
     <>
       {/* Mobile scrim */}
@@ -249,7 +487,11 @@ export function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCloseMobil
         >
           {navigationGroups.map((group) => {
             const expanded = openGroups[group.id] ?? true;
-            const groupHasActive = group.items.some((item) => isNavItemActive(pathname, item.href));
+            const groupHasActive = group.items.some((entry) =>
+              isNavDisclosure(entry)
+                ? isNavDisclosureActive(pathname, entry)
+                : isNavItemActive(pathname, entry.href),
+            );
 
             return (
               <div key={group.id} className="pb-1">
@@ -297,73 +539,28 @@ export function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCloseMobil
                       className="overflow-hidden"
                     >
                       <li className={cn("space-y-0.5", !railCollapsed && "pt-1")}>
-                        {group.items.map((item) => {
-                          // PR014 — an exact href match wins over a prefix
-                          // match, so the isolated provider screen highlights
-                          // only its own link (not the parent hub as well).
-                          const active = isNavItemSelected(pathname, item);
-                          const Icon = item.icon;
-
-                          return (
-                            <Link
-                              key={item.href}
-                              href={item.href}
-                              onClick={onCloseMobile}
-                              aria-current={active ? "page" : undefined}
-                              title={railCollapsed ? item.label : undefined}
-                              className={cn(
-                                "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
-                                "transition-[background-color,color,box-shadow] duration-150",
-                                active
-                                  ? "bg-gradient-to-r from-brand-500/14 to-transparent text-white shadow-[inset_1px_0_0_rgba(192,130,42,0.75)]"
-                                  : "text-ink-400 hover:bg-white/[0.06] hover:text-white",
-                                railCollapsed && "justify-center px-0",
-                                focusRingRaised,
-                              )}
-                            >
-                              {/* Active indicator rail */}
-                              {active && (
-                                <span
-                                  aria-hidden
-                                  className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-brand-400"
-                                />
-                              )}
-
-                              <Icon
-                                aria-hidden
-                                className={cn(
-                                  "h-[18px] w-[18px] shrink-0 transition-colors",
-                                  active
-                                    ? "text-brand-300"
-                                    : "text-ink-400 group-hover:text-white/80",
-                                )}
-                              />
-
-                              {!railCollapsed && (
-                                <>
-                                  <span className="truncate">{item.label}</span>
-                                  {item.badge && (
-                                    <Badge tone={item.badge.tone} className="ml-auto">
-                                      {item.badge.label}
-                                    </Badge>
-                                  )}
-                                  {!item.badge && item.planned && (
-                                    <Badge tone="neutral" className="ml-auto">
-                                      em breve
-                                    </Badge>
-                                  )}
-                                </>
-                              )}
-
-                              {railCollapsed && (item.badge || item.planned) && (
-                                <span
-                                  aria-hidden
-                                  className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-brand-400"
-                                />
-                              )}
-                            </Link>
-                          );
-                        })}
+                        {group.items.map((entry) =>
+                          isNavDisclosure(entry) ? (
+                            <NavDisclosureItem
+                              key={entry.id}
+                              disclosure={entry}
+                              open={openDisclosures[entry.id] ?? false}
+                              onToggle={toggleDisclosure}
+                              pathname={pathname}
+                              railCollapsed={railCollapsed}
+                              onCloseMobile={onCloseMobile}
+                              reducedMotion={reducedMotion}
+                            />
+                          ) : (
+                            <NavLinkItem
+                              key={entry.href}
+                              item={entry}
+                              active={isNavItemSelected(pathname, entry)}
+                              railCollapsed={railCollapsed}
+                              onCloseMobile={onCloseMobile}
+                            />
+                          ),
+                        )}
                       </li>
                     </motion.ul>
                   )}
