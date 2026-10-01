@@ -91,6 +91,22 @@ enum SaleStatus {
   CANCELLED
 }
 
+/// Sales Channel — Hub Multicanal (PR013). Origin platform of one `Sale`'s
+/// revenue. `BROBOND` is the direct store (own checkout, Stripe/Mercado
+/// Pago as the payment rail); the remaining values mirror
+/// `ConnectorProvider` one-to-one so every marketplace order synced through
+/// a connector can be tagged with the exact platform it was sold on —
+/// required for Orders/Analytics to split revenue "Brobond × Mercado Livre
+/// × Shopee × TikTok Shop × Mercado Pago × Instagram" without ambiguity.
+enum SaleChannel {
+  BROBOND
+  TIKTOK
+  INSTAGRAM
+  SHOPEE
+  MERCADOLIVRE
+  MERCADOPAGO
+}
+
 enum ProductMediaType {
   IMAGE
   VIDEO
@@ -840,6 +856,16 @@ model Sale {
   status      SaleStatus @default(PENDING)
   occurredAt  DateTime   @default(now())
 
+  /// Origin platform of this revenue (PR013 — Hub Multicanal de Vendas).
+  /// Defaults to `BROBOND` (the own store checkout) so every pre-PR013 row
+  /// keeps its meaning; marketplace order sync tags the real platform.
+  channel SaleChannel @default(BROBOND)
+
+  /// Order id on the origin platform (Mercado Livre pack/order id, Shopee
+  /// order sn, TikTok Shop order id…). `null` for Brobond's own checkout,
+  /// where `reference` already is the canonical id.
+  externalOrderId String?
+
   // Tenant — REQUIRED. Fecha a lacuna de isolamento transitivo (ver PR011.1).
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -862,6 +888,7 @@ model Sale {
   @@index([campaignId])
   @@index([organizationId])
   @@index([organizationId, status])
+  @@index([organizationId, channel])
 }
 
 // ------------------------------------------------------------------

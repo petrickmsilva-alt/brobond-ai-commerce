@@ -26,7 +26,27 @@ export interface SeedSaleDraft {
   productId: string;
   creatorId: string | null;
   campaignId: string | null;
+  /**
+   * Origin platform (PR013 — Hub Multicanal de Vendas). Deterministic
+   * round-robin over the real channels so every demo/analytics run shows
+   * revenue split across Brobond, Mercado Livre, Shopee, TikTok Shop,
+   * Mercado Pago and Instagram instead of everything landing on BROBOND.
+   */
+  channel: "BROBOND" | "TIKTOK" | "INSTAGRAM" | "SHOPEE" | "MERCADOLIVRE" | "MERCADOPAGO";
 }
+
+/** Deterministic channel rotation — Brobond gets a heavier weight, matching a
+ * real own-store-first operation that is now expanding into marketplaces. */
+const SEED_CHANNEL_ROTATION: SeedSaleDraft["channel"][] = [
+  "BROBOND",
+  "BROBOND",
+  "MERCADOLIVRE",
+  "BROBOND",
+  "SHOPEE",
+  "TIKTOK",
+  "BROBOND",
+  "MERCADOPAGO",
+];
 
 /** Total number of generated sales. */
 export const SEED_SALE_COUNT = 40;
@@ -80,6 +100,7 @@ export function buildSeedSales(
       productId: product.id,
       creatorId: creators.length > 0 ? creators[index % creators.length]!.id : null,
       campaignId: campaigns.length > 0 ? campaigns[index % campaigns.length]!.id : null,
+      channel: SEED_CHANNEL_ROTATION[index % SEED_CHANNEL_ROTATION.length]!,
     };
   });
 }

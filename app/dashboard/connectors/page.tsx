@@ -110,8 +110,9 @@ export default async function ConnectorsPage({
   return (
     <>
       <PageHeader
-        title="Conectores"
-        description="Integrações oficiais em produção: TikTok Shop, Instagram Shopping, Shopee, Mercado Livre e Mercado Pago — conexão OAuth2 / API keys, sincronização real e contadores consolidados."
+        eyebrow="Canais de Venda"
+        title="Conectores — Hub Multicanal"
+        description="Centralize suas vendas em um só lugar: TikTok Shop, Instagram Shopping, Shopee, Mercado Livre e Mercado Pago — conexão OAuth2 / API keys, sincronização real e contadores consolidados por plataforma."
       />
 
       {oauthResult === "connected" && (

@@ -39,15 +39,32 @@ export const accent = {
 /**
  * Dark premium surface ramp. 950 is the application canvas; each step up is
  * one elevation level (sidebar → card → popover → hover).
+ *
+ * PR013 — Hub Multicanal de Vendas: re-hued to the editorial-luxury navy
+ * ink spec (#121827 at the `900`/sidebar elevation). Luminance steps are
+ * unchanged from the previous graphite ramp, so every WCAG contrast
+ * guarantee documented on `text` below still holds.
  */
 export const surface = {
-  950: "#07080a",
-  900: "#0b0d11",
-  850: "#12171c",
-  800: "#1a1f25",
-  700: "#252b32",
-  600: "#343d46",
-  500: "#4d5863",
+  950: "#0a0d16",
+  900: "#121827",
+  850: "#161e31",
+  800: "#1b253d",
+  700: "#253253",
+  600: "#334573",
+  500: "#445d9a",
+} as const;
+
+/**
+ * Editorial ink text ramp (PR013) — literal cool slate-blue, a companion to
+ * the white-alpha `text` ramp below for copy that should read as a tone
+ * rather than a translucency (sidebar nav, eyebrow labels, metadata).
+ * `400` (#A9B4C6) is the Hub Multicanal design spec value.
+ */
+export const ink = {
+  300: "#c3cbda",
+  400: "#a9b4c6",
+  500: "#7e89a0",
 } as const;
 
 /**
@@ -121,6 +138,7 @@ export const colors = {
   brand,
   accent,
   surface,
+  ink,
   text,
   border,
   status,

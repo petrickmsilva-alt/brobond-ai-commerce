@@ -20,6 +20,9 @@ import {
   Rocket,
   Cable,
   SlidersHorizontal,
+  Store,
+  ShoppingBasket,
+  Wallet,
 } from "lucide-react";
 
 export interface NavItem {
@@ -43,14 +46,20 @@ export interface NavGroup {
 }
 
 /**
- * Primary sidebar navigation (PR010.1).
+ * Primary sidebar navigation (PR010.1 · reorganised in PR013 for the Hub
+ * Multicanal de Vendas).
  *
- * The flat PR000 list is now organised into six enterprise module groups —
- * Overview · Commerce · Creators · Campaigns · Integrations · System — which
- * mirrors how operators actually think about the product and keeps each group
- * under the ~7-item limit that keeps a rail scannable.
+ * Six module groups — Overview · Canais de Venda · Commerce · Creators ·
+ * Campaigns · System — mirror how an operator running a
+ * multi-platform sales hub actually thinks about the product. "Canais de
+ * Venda" is pinned right after Overview (PR013 §2): it is the fastest path
+ * to every revenue-generating connector (Mercado Livre, Shopee, TikTok
+ * Shop, Mercado Pago, Instagram) and the only group whose items double as
+ * the day-to-day operational hub for Brobond's outside-marketplace sales.
  *
- * Routes are unchanged: this is purely an information-architecture change.
+ * Deep links into `/dashboard/connectors` reuse its existing `?platform=`
+ * URL-state filter (see `components/connectors/content-toolbar.tsx`) — no
+ * new route, no new backend surface, zero risk to the connector framework.
  */
 export const navigationGroups: NavGroup[] = [
   {
@@ -68,7 +77,7 @@ export const navigationGroups: NavGroup[] = [
         label: "Analytics",
         href: "/dashboard/analytics",
         icon: BarChart3,
-        description: "Receita, margem e atribuição por dimensão",
+        description: "Receita, margem e atribuição por canal, produto, creator e campanha",
       },
       {
         label: "AI CEO",
@@ -76,6 +85,43 @@ export const navigationGroups: NavGroup[] = [
         icon: Crown,
         description: "Decisões executivas auditáveis e oportunidades autônomas",
         badge: { label: "CEO", tone: "brand" },
+      },
+    ],
+  },
+  {
+    id: "sales-channels",
+    label: "Canais de Venda",
+    icon: Cable,
+    items: [
+      {
+        label: "Conectores",
+        href: "/dashboard/connectors",
+        icon: Plug,
+        description: "Hub multicanal — status, sincronização e OAuth das 5 plataformas",
+      },
+      {
+        label: "Mercado Livre",
+        href: "/dashboard/connectors?platform=MERCADOLIVRE",
+        icon: Store,
+        description: "Conta, catálogo e pedidos do Mercado Livre",
+      },
+      {
+        label: "Shopee",
+        href: "/dashboard/connectors?platform=SHOPEE",
+        icon: ShoppingBasket,
+        description: "Conta, catálogo e pedidos da Shopee",
+      },
+      {
+        label: "TikTok Shop",
+        href: "/dashboard/tiktok",
+        icon: Music2,
+        description: "Conta, produtos, creators e sincronização",
+      },
+      {
+        label: "Mercado Pago",
+        href: "/dashboard/connectors?platform=MERCADOPAGO",
+        icon: Wallet,
+        description: "Checkout e conciliação via Mercado Pago",
       },
     ],
   },
@@ -94,7 +140,7 @@ export const navigationGroups: NavGroup[] = [
         label: "Pedidos",
         href: "/dashboard/orders",
         icon: ShoppingBag,
-        description: "Checkout, pagamentos e ciclo de ordem",
+        description: "Checkout, pagamentos e ciclo de ordem — por canal de venda",
       },
       {
         label: "Trends",
@@ -152,25 +198,6 @@ export const navigationGroups: NavGroup[] = [
         icon: Sparkles,
         description: "Geração de mensagens personalizadas",
         badge: { label: "IA", tone: "accent" },
-      },
-    ],
-  },
-  {
-    id: "integrations",
-    label: "Integrations",
-    icon: Cable,
-    items: [
-      {
-        label: "Conectores",
-        href: "/dashboard/connectors",
-        icon: Plug,
-        description: "Importação de conteúdo externo por plataforma",
-      },
-      {
-        label: "TikTok Shop",
-        href: "/dashboard/tiktok",
-        icon: Music2,
-        description: "Conta, produtos, creators e sincronização",
       },
     ],
   },

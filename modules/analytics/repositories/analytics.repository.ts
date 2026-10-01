@@ -8,6 +8,7 @@ import type {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { assertOrganizationId, tenantWhere } from "@/lib/tenant";
+import { SALE_CHANNEL_LABELS, type SaleChannelName } from "@/modules/sales/sales-channel";
 import {
   ZERO_DELIVERY_USAGE,
   type AiUsageInput,
@@ -55,6 +56,8 @@ const salePeriodSelect = {
   productId: true,
   creatorId: true,
   campaignId: true,
+  // PR013 — Hub Multicanal de Vendas: origin platform of the revenue.
+  channel: true,
   product: { select: { name: true, currentCostCents: true } },
   creator: { select: { displayName: true } },
   campaign: { select: { name: true } },
@@ -85,19 +88,26 @@ export function createAnalyticsRepository(db: AnalyticsDatabase) {
         orderBy: [{ occurredAt: "asc" }, { id: "asc" }],
       });
 
-      return rows.map((row) => ({
-        quantity: row.quantity,
-        amountCents: row.amountCents,
-        status: row.status as SaleStatus | string,
-        occurredAt: row.occurredAt.toISOString(),
-        productId: row.productId,
-        productName: row.product?.name ?? null,
-        productCostCents: row.product?.currentCostCents ?? null,
-        creatorId: row.creatorId,
-        creatorName: row.creator?.displayName ?? null,
-        campaignId: row.campaignId,
-        campaignName: row.campaign?.name ?? null,
-      }));
+      return rows.map((row) => {
+        const channel = row.channel as SaleChannelName;
+        return {
+          quantity: row.quantity,
+          amountCents: row.amountCents,
+          status: row.status as SaleStatus | string,
+          occurredAt: row.occurredAt.toISOString(),
+          productId: row.productId,
+          productName: row.product?.name ?? null,
+          productCostCents: row.product?.currentCostCents ?? null,
+          creatorId: row.creatorId,
+          creatorName: row.creator?.displayName ?? null,
+          campaignId: row.campaignId,
+          campaignName: row.campaign?.name ?? null,
+          // PR013 — every sale always has a channel (DB default BROBOND), so
+          // this is never null/unattributed like the other dimensions.
+          channel,
+          channelLabel: SALE_CHANNEL_LABELS[channel] ?? channel,
+        };
+      });
     },
 
     /**

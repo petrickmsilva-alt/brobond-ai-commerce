@@ -15,6 +15,11 @@ export async function createCheckoutSession(input: CreateCheckoutSessionInput) {
     quantity: input.quantity ?? 1,
     currency: input.currency ?? "BRL",
     status: SaleStatus.PENDING,
+    // This checkout is always the Brobond own-store flow (PR013 — Hub
+    // Multicanal de Vendas). Marketplace orders (Mercado Livre, Shopee,
+    // TikTok Shop, Mercado Pago) are tagged at sync/ingestion time with
+    // their real `channel` via `salesService.upsertByReference`.
+    channel: "BROBOND",
     reference: input.reference ?? `checkout-${Date.now()}`,
     productId: input.productId ?? undefined,
     creatorId: input.creatorId ?? undefined,

@@ -2,10 +2,13 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { assertOrganizationId } from "@/lib/tenant";
-import { SaleStatus } from "@prisma/client";
+import { SaleChannel, SaleStatus } from "@prisma/client";
+import { DEFAULT_SALE_CHANNEL, isSaleChannelName } from "./sales-channel";
 
 export interface SaleListOptions {
   status?: SaleStatus | string;
+  /** Filter by origin platform (PR013 — Hub Multicanal de Vendas). */
+  channel?: SaleChannel | string;
   take?: number;
 }
 
@@ -15,6 +18,13 @@ export interface SaleCreateInput {
   quantity?: number;
   currency?: string;
   status?: SaleStatus | string;
+  /**
+   * Origin platform of this revenue. Defaults to `BROBOND` (own store
+   * checkout) — see `modules/sales/sales-channel.ts`.
+   */
+  channel?: SaleChannel | string;
+  /** Order id on the origin platform (`null`/omitted for Brobond). */
+  externalOrderId?: string | null;
   occurredAt?: Date | string;
   reference?: string;
   productId?: string | null;
@@ -41,6 +51,18 @@ export function normalizeSaleStatus(input: SaleStatus | string | null | undefine
     return value as SaleStatus;
   }
   throw new Error(`Status de venda inválido: ${input}`);
+}
+
+/**
+ * Normalize a sale's origin channel (PR013 — Hub Multicanal de Vendas).
+ * Unknown/empty input defaults to `BROBOND` — the own-store checkout —
+ * instead of throwing, so every pre-PR013 call site keeps working untouched.
+ */
+export function normalizeSaleChannel(input: SaleChannel | string | null | undefined): SaleChannel {
+  const value = input?.toString().trim().toUpperCase();
+  if (!value) return SaleChannel[DEFAULT_SALE_CHANNEL];
+  if (isSaleChannelName(value)) return SaleChannel[value];
+  throw new Error(`Canal de venda inválido: ${input}`);
 }
 
 export function canTransitionSaleStatus(
@@ -179,6 +201,7 @@ export const salesService = {
       where: {
         organizationId: scope,
         ...(options.status ? { status: normalizeSaleStatus(options.status) } : {}),
+        ...(options.channel ? { channel: normalizeSaleChannel(options.channel) } : {}),
       },
       orderBy: { occurredAt: "desc" },
       take: options.take ?? 50,
@@ -197,6 +220,7 @@ export const salesService = {
     const quantity = Math.max(1, Math.trunc(Number(input.quantity ?? 1)) || 1);
     const amountCents = Math.max(0, Math.trunc(Number(input.amountCents ?? 0)) || 0);
     const status = normalizeSaleStatus(input.status ?? SaleStatus.PENDING);
+    const channel = normalizeSaleChannel(input.channel);
     const currency = input.currency ?? "BRL";
 
     return prisma.sale.create({
@@ -206,6 +230,8 @@ export const salesService = {
         quantity,
         currency,
         status,
+        channel,
+        externalOrderId: input.externalOrderId ?? undefined,
         occurredAt: input.occurredAt ? new Date(input.occurredAt) : undefined,
         reference: input.reference ?? undefined,
         productId: input.productId ?? undefined,
@@ -263,6 +289,8 @@ export const salesService = {
         ...data,
         organizationId: scope,
         status: normalizeSaleStatus(data.status ?? SaleStatus.PENDING),
+        channel: normalizeSaleChannel(data.channel),
+        externalOrderId: data.externalOrderId ?? undefined,
         quantity: Math.max(1, Math.trunc(Number(data.quantity ?? 1)) || 1),
         amountCents: Math.max(0, Math.trunc(Number(data.amountCents ?? 0)) || 0),
         currency: data.currency ?? "BRL",
@@ -277,6 +305,8 @@ export const salesService = {
         quantity: Math.max(1, Math.trunc(Number(data.quantity ?? 1)) || 1),
         currency: data.currency ?? undefined,
         status: normalizeSaleStatus(data.status ?? SaleStatus.PENDING),
+        channel: normalizeSaleChannel(data.channel),
+        externalOrderId: data.externalOrderId ?? undefined,
         occurredAt: data.occurredAt ? new Date(data.occurredAt) : undefined,
         productId: data.productId ?? undefined,
         creatorId: data.creatorId ?? undefined,
@@ -352,5 +382,60 @@ export const salesService = {
   count(organizationId: string) {
     const scope = assertOrganizationId(organizationId);
     return prisma.sale.count({ where: { organizationId: scope } });
+  },
+
+  /**
+   * Revenue/orders grouped by origin platform (PR013 — Hub Multicanal de
+   * Vendas). PAID-only revenue, mirroring `summary()`'s revenue convention;
+   * `salesCount` covers every status so Pedidos can show channel volume
+   * even before a sale settles.
+   */
+  async summaryByChannel(organizationId: string): Promise<
+    Array<{
+      channel: SaleChannel;
+      revenueCents: number;
+      paidCount: number;
+      salesCount: number;
+    }>
+  > {
+    const scope = assertOrganizationId(organizationId);
+    const [revenueByChannel, countByChannel] = await Promise.all([
+      prisma.sale.groupBy({
+        by: ["channel"],
+        where: { organizationId: scope, status: SaleStatus.PAID },
+        _sum: { amountCents: true },
+        _count: { _all: true },
+      }),
+      prisma.sale.groupBy({
+        by: ["channel"],
+        where: { organizationId: scope },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const salesCountByChannel = new Map(
+      countByChannel.map((row) => [row.channel, row._count._all]),
+    );
+    const revenueRowByChannel = new Map(revenueByChannel.map((row) => [row.channel, row]));
+
+    // Union of both group-bys: a channel with only PENDING/REFUNDED sales
+    // (e.g. a freshly connected marketplace with no settled revenue yet)
+    // must still show its order volume, not disappear from the breakdown.
+    const allChannels = new Set<SaleChannel>([
+      ...revenueByChannel.map((row) => row.channel),
+      ...countByChannel.map((row) => row.channel),
+    ]);
+
+    return [...allChannels]
+      .map((channel) => {
+        const revenueRow = revenueRowByChannel.get(channel);
+        return {
+          channel,
+          revenueCents: revenueRow?._sum.amountCents ?? 0,
+          paidCount: revenueRow?._count._all ?? 0,
+          salesCount: salesCountByChannel.get(channel) ?? 0,
+        };
+      })
+      .sort((a, b) => b.revenueCents - a.revenueCents);
   },
 };

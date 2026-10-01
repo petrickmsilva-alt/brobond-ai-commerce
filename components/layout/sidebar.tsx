@@ -156,9 +156,10 @@ export function Sidebar({
         inert={!sidebarAvailable ? true : undefined}
         className={cn(
           "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-white/8 shadow-[0_20px_60px_-22px_rgba(0,0,0,0.8)]",
-          "bg-surface-900/90 backdrop-blur-2xl",
+          // PR013 — editorial-luxury rail: solid navy-ink #121827 (surface-900).
+          "bg-surface-900/95 backdrop-blur-2xl",
           "transition-[width,transform] duration-200 ease-out",
-          railCollapsed ? "w-[76px]" : "w-[min(320px,calc(100vw-24px))] lg:w-[264px]",
+          railCollapsed ? "w-[72px]" : "w-[min(320px,calc(100vw-24px))] lg:w-[220px]",
           mobileOpen
             ? "translate-x-0"
             : "pointer-events-none -translate-x-full lg:pointer-events-auto",
@@ -216,12 +217,12 @@ export function Sidebar({
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em]",
                       "transition-colors duration-150 hover:bg-white/[0.04]",
-                      groupHasActive ? "text-white/60" : "text-white/35 hover:text-white/55",
+                      groupHasActive ? "text-ink-300" : "text-ink-500 hover:text-ink-400",
                       focusRingRaised,
                     )}
                   >
                     <span className="flex h-5 w-5 items-center justify-center rounded-md border border-white/8 bg-white/[0.02]">
-                      <group.icon aria-hidden className="h-2.5 w-2.5 text-white/55" />
+                      <group.icon aria-hidden className="h-2.5 w-2.5 text-ink-400" />
                     </span>
                     <span className="flex-1 text-left">{group.label}</span>
                     <ChevronDown
@@ -267,7 +268,7 @@ export function Sidebar({
                                 "transition-[background-color,color,box-shadow] duration-150",
                                 active
                                   ? "bg-gradient-to-r from-brand-500/14 to-transparent text-white shadow-[inset_1px_0_0_rgba(129,140,248,0.65)]"
-                                  : "text-white/60 hover:bg-white/[0.06] hover:text-white",
+                                  : "text-ink-400 hover:bg-white/[0.06] hover:text-white",
                                 railCollapsed && "justify-center px-0",
                                 focusRingRaised,
                               )}
@@ -286,7 +287,7 @@ export function Sidebar({
                                   "h-[18px] w-[18px] shrink-0 transition-colors",
                                   active
                                     ? "text-brand-300"
-                                    : "text-white/45 group-hover:text-white/80",
+                                    : "text-ink-400 group-hover:text-white/80",
                                 )}
                               />
 
@@ -332,7 +333,7 @@ export function Sidebar({
             aria-expanded={!railCollapsed}
             aria-controls="app-sidebar"
             className={cn(
-              "hidden w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/45",
+              "hidden w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-400",
               "transition-colors duration-150 hover:bg-white/[0.06] hover:text-white lg:flex",
               railCollapsed && "justify-center px-0",
               focusRingRaised,

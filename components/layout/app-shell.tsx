@@ -12,9 +12,10 @@ import { cn } from "@/lib/utils";
 /**
  * AppShell (PR010.1) — authenticated application frame.
  *
- * Grid: fixed navigation rail (264px / 76px collapsed) + sticky header +
- * fluid content column capped at 1600px so an ultrawide monitor doesn't
- * stretch tables into unreadable lines.
+ * Grid: fixed navigation rail (220px / 72px collapsed — PR013
+ * editorial-luxury spec) + sticky header + fluid content column capped at
+ * 1600px so an ultrawide monitor doesn't stretch tables into unreadable
+ * lines.
  *
  * Every prop is already-sanitised, non-secret session data resolved by the
  * Server Component layout (`app/dashboard/layout.tsx`): this client component
@@ -67,7 +68,7 @@ export function AppShell({ children, user, workspace, tiktokStatus }: AppShellPr
         inert={mobileOpen ? true : undefined}
         className={cn(
           "relative z-10 flex min-h-screen flex-col transition-[padding] duration-200 ease-out",
-          collapsed ? "lg:pl-[76px]" : "lg:pl-[264px]",
+          collapsed ? "lg:pl-[72px]" : "lg:pl-[220px]",
         )}
       >
         <Header

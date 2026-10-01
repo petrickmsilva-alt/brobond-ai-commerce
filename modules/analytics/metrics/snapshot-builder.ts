@@ -14,9 +14,17 @@
 import { computeSalesTotals, type SalesTotals } from "./sales-metrics";
 import { attributeRevenue, projectDimension, type AttributionRow } from "./attribution";
 import { estimateCostUsdCents } from "@/modules/ai/openai/pricing";
+import { DEFAULT_SALE_CHANNEL, SALE_CHANNEL_LABELS } from "@/modules/sales/sales-channel";
 
-/** Bump only on a breaking change of the metrics payload shape. */
-export const ANALYTICS_SNAPSHOT_VERSION = 1;
+/**
+ * Bump only on a breaking change of the metrics payload shape.
+ *
+ * v2 (PR013 — Hub Multicanal de Vendas): adds `attribution.byChannel`.
+ * Snapshots persisted before PR013 carry `version: 1` and are rejected by
+ * `readAnalyticsMetrics`, which makes the caller recompute them on next
+ * read — there is no in-place migration of historical JSON blobs.
+ */
+export const ANALYTICS_SNAPSHOT_VERSION = 2;
 
 export interface AnalyticsPeriod {
   /** Half-open period `[from, to)` (UTC ISO strings, day-normalized). */
@@ -39,6 +47,13 @@ export interface SnapshotSaleInput {
   creatorName: string | null;
   campaignId: string | null;
   campaignName: string | null;
+  /**
+   * Origin platform of the revenue (PR013 — Hub Multicanal de Vendas).
+   * Optional/nullable so every pre-PR013 caller and fixture keeps compiling
+   * — a missing channel is treated as `BROBOND`, the own-store default.
+   */
+  channel?: string | null;
+  channelLabel?: string | null;
 }
 
 /** AI usage aggregate for the same period (from `AIGeneratedMessage`). */
@@ -122,6 +137,8 @@ export interface AnalyticsMetrics {
     byProduct: AttributionRow[];
     byCreator: AttributionRow[];
     byCampaign: AttributionRow[];
+    /** PR013 — revenue split by origin platform (Brobond × marketplaces). */
+    byChannel: AttributionRow[];
   };
   ai: AiUsageMetrics;
   /** Omnichannel delivery funnel (PR010). Additive: absent in pre-PR010
@@ -182,6 +199,20 @@ export function buildAnalyticsMetrics(
           key: sale.campaignId,
           label: sale.campaignName,
         })),
+      ),
+      // PR013 — every sale always has a channel (BROBOND by default), so
+      // this dimension never falls into the synthetic un-attributed bucket.
+      byChannel: attributeRevenue(
+        projectDimension(sales, (sale) => {
+          const channel = sale.channel ?? DEFAULT_SALE_CHANNEL;
+          return {
+            key: channel,
+            label:
+              sale.channelLabel ??
+              SALE_CHANNEL_LABELS[channel as keyof typeof SALE_CHANNEL_LABELS] ??
+              channel,
+          };
+        }),
       ),
     },
     ai: {
