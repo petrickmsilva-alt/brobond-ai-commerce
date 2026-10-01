@@ -41,14 +41,23 @@
   --color-accent-600: #697788;
   --color-accent-700: #455261;
 
-  /* Dark surface palette (elevation ladder) */
-  --color-surface-950: #07080a;
-  --color-surface-900: #0b0d11;
-  --color-surface-850: #12171c;
-  --color-surface-800: #1a1f25;
-  --color-surface-700: #252b32;
-  --color-surface-600: #343d46;
-  --color-surface-500: #4d5863;
+  /* Dark surface palette (elevation ladder) — PR013 editorial-luxury navy ink,
+     anchored on the Hub Multicanal spec (#121827 @ surface-900/sidebar). */
+  --color-surface-950: #0a0d16;
+  --color-surface-900: #121827;
+  --color-surface-850: #161e31;
+  --color-surface-800: #1b253d;
+  --color-surface-700: #253253;
+  --color-surface-600: #334573;
+  --color-surface-500: #445d9a;
+
+  /* Editorial ink text ramp — PR013 (#A9B4C6 muted body/nav copy). Cool
+     slate-blue companion to the white-alpha text ramp, used where a
+     literal (non-alpha) tone reads better against the navy-ink surfaces:
+     sidebar labels, eyebrow copy, secondary metadata. */
+  --color-ink-300: #c3cbda;
+  --color-ink-400: #a9b4c6;
+  --color-ink-500: #7e89a0;
 
   /* Radius scale — 16px (--radius-2xl) is the signature product corner */
   --radius-xs: 6px;
@@ -66,8 +75,9 @@
 :root {
   color-scheme: dark;
   --brobond-header-height: 64px;
-  --brobond-sidebar-width: 264px;
-  --brobond-sidebar-collapsed-width: 76px;
+  /* PR013 — editorial-luxury rail width (Hub Multicanal spec: 220px). */
+  --brobond-sidebar-width: 220px;
+  --brobond-sidebar-collapsed-width: 72px;
 }
 
 html,
@@ -244,4 +254,18 @@ body {
 .recharts-wrapper:focus,
 .recharts-surface:focus {
   outline: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* Editorial-luxury icon language (PR013)                              */
+/* ------------------------------------------------------------------ */
+
+/* Every lucide icon renders with a fine 1.2 stroke by default — the CSS
+   `stroke-width` property always wins over the `stroke-width` presentation
+   attribute Lucide sets inline, per the SVG/CSS cascade, so this applies
+   app-wide with no per-icon prop threading. Call sites may still opt out
+   with an explicit inline `style={{ strokeWidth: … }}`, which outranks a
+   plain element-selector rule. */
+svg.lucide {
+  stroke-width: 1.2;
 }

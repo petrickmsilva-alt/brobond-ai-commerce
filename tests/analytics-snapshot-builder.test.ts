@@ -73,6 +73,9 @@ describe("buildAnalyticsMetrics() — PR008", () => {
     expect(metrics.attribution.byProduct).toHaveLength(2);
     expect(metrics.attribution.byCreator).toHaveLength(2); // Ana + un-attributed
     expect(metrics.attribution.byCampaign).toHaveLength(1);
+    expect(metrics.attribution.byChannel).toEqual([
+      expect.objectContaining({ key: "BROBOND", revenueCents: 59_800 + 9900 }),
+    ]);
     expect(metrics.ai).toEqual({
       totalMessages: 0,
       inputTokens: 0,
@@ -136,6 +139,42 @@ describe("buildAnalyticsMetrics() — PR008", () => {
     expect(metrics.totals.revenueCents).toBe(1000);
     expect(metrics.attribution.byProduct[0]?.key).toBe("__unattributed__");
     expect(metrics.totals.revenueWithUnknownCostCents).toBe(1000);
+  });
+
+  it("attributes revenue by sales channel, defaulting to BROBOND (PR013)", () => {
+    const metrics = buildAnalyticsMetrics(
+      [
+        ...sales,
+        {
+          quantity: 1,
+          amountCents: 15_000,
+          status: "PAID",
+          occurredAt: "2026-09-21T11:00:00.000Z",
+          productId: "p3",
+          productName: "Moletom",
+          productCostCents: 6000,
+          creatorId: null,
+          creatorName: null,
+          campaignId: null,
+          campaignName: null,
+          channel: "MERCADOLIVRE",
+          channelLabel: "Mercado Livre",
+        },
+      ],
+      emptyAi,
+      period,
+    );
+
+    // The two original fixture sales omit `channel` → default BROBOND.
+    const brobond = metrics.attribution.byChannel.find((row) => row.key === "BROBOND");
+    const meli = metrics.attribution.byChannel.find((row) => row.key === "MERCADOLIVRE");
+    expect(brobond).toMatchObject({ key: "BROBOND", revenueCents: 59_800 + 9900 });
+    expect(meli).toMatchObject({
+      key: "MERCADOLIVRE",
+      label: "Mercado Livre",
+      revenueCents: 15_000,
+    });
+    expect(metrics.attribution.byChannel).toHaveLength(2);
   });
 
   it("handles the empty-period case without NaN or division errors", () => {

@@ -3,14 +3,24 @@ import { navigationGroups, sidebarNav, isNavItemActive, findActiveGroup } from "
 
 /**
  * PR010.1 — Navigation information-architecture tests.
+ * Re-pinned in PR013 (Hub Multicanal de Vendas): "Integrations" was folded
+ * into a dedicated, higher-priority "Canais de Venda" group that fronts
+ * every revenue-generating connector (Mercado Livre, Shopee, TikTok Shop,
+ * Mercado Pago).
  *
- * The sidebar was regrouped into six enterprise modules. These tests pin the
- * contract the redesign promised: the six groups exist, no route was lost or
- * duplicated in the regrouping, and active-route resolution behaves for both
- * the dashboard root and nested detail pages.
+ * These tests pin the contract the redesign promised: the six groups exist,
+ * no route was lost or duplicated in the regrouping, and active-route
+ * resolution behaves for both the dashboard root and nested detail pages.
  */
 
-const EXPECTED_GROUPS = ["Overview", "Commerce", "Creators", "Campaigns", "Integrations", "System"];
+const EXPECTED_GROUPS = [
+  "Overview",
+  "Canais de Venda",
+  "Commerce",
+  "Creators",
+  "Campaigns",
+  "System",
+];
 
 /** Routes that existed in the flat PR000 nav and must all survive. */
 const LEGACY_ROUTES = [
@@ -111,7 +121,7 @@ describe("navigation — active route resolution", () => {
     expect(findActiveGroup("/dashboard/products/abc")?.label).toBe("Commerce");
     expect(findActiveGroup("/dashboard/matches")?.label).toBe("Creators");
     expect(findActiveGroup("/dashboard/delivery")?.label).toBe("Campaigns");
-    expect(findActiveGroup("/dashboard/tiktok")?.label).toBe("Integrations");
+    expect(findActiveGroup("/dashboard/tiktok")?.label).toBe("Canais de Venda");
     expect(findActiveGroup("/settings")?.label).toBe("System");
   });
 

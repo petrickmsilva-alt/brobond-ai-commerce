@@ -19,6 +19,14 @@ import { formatCurrency } from "@/lib/utils";
 import { getCommerceHealthSnapshot } from "@/modules/payments/health.service";
 import { salesService } from "@/modules/sales/sales.service";
 import { SaleStatus } from "@prisma/client";
+import {
+  SALE_CHANNELS,
+  SALE_CHANNEL_BADGE_TONE,
+  SALE_CHANNEL_LABELS,
+  SALE_CHANNEL_SHORT_LABELS,
+  isSaleChannelName,
+  type SaleChannelName,
+} from "@/modules/sales/sales-channel";
 
 export const metadata: Metadata = {
   title: "Pedidos",
@@ -45,12 +53,18 @@ const statusLabel: Record<string, string> = {
 export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const user = await requireUser();
   const organizationId = await requireOrganization();
-  const [orders, summary, health] = await Promise.all([
-    salesService.list(organizationId, { take: 50 }),
+  const params = await searchParams;
+  const rawChannel = typeof params.channel === "string" ? params.channel.toUpperCase() : "";
+  const channelFilter: SaleChannelName | undefined = isSaleChannelName(rawChannel)
+    ? rawChannel
+    : undefined;
+
+  const [orders, summary, channelBreakdown, health] = await Promise.all([
+    salesService.list(organizationId, { take: 50, channel: channelFilter }),
     salesService.summary(organizationId),
+    salesService.summaryByChannel(organizationId),
     getCommerceHealthSnapshot(organizationId),
   ]);
-  const params = await searchParams;
   const checkoutStatus =
     params.checkout && typeof params.checkout === "string" ? params.checkout : undefined;
 
@@ -60,6 +74,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const pendingCount = summary.pendingCount;
   const refundedCount = summary.refundedCount;
   const conversionRate = orders.length > 0 ? (paidCount / orders.length) * 100 : 0;
+  const channelRevenueById = new Map(channelBreakdown.map((row) => [row.channel, row]));
 
   return (
     <>
@@ -163,14 +178,61 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         </CardContent>
       </Card>
 
+      <Card className="mb-6" variant="glass">
+        <CardHeader>
+          <div>
+            <CardTitle>Vendas por canal</CardTitle>
+            <CardDescription>
+              Hub multicanal — receita paga consolidada por plataforma de origem (Brobond, Mercado
+              Livre, Shopee, TikTok Shop, Mercado Pago, Instagram).
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          {SALE_CHANNELS.map((channel) => {
+            const row = channelRevenueById.get(channel);
+            return (
+              <a
+                key={channel}
+                href={`/dashboard/orders?channel=${channel}`}
+                className={`rounded-2xl border p-4 transition-colors ${
+                  channelFilter === channel
+                    ? "border-brand-400/50 bg-brand-500/10"
+                    : "border-white/8 bg-surface-900/65 hover:border-white/20"
+                }`}
+              >
+                <Badge tone={SALE_CHANNEL_BADGE_TONE[channel]} size="sm">
+                  {SALE_CHANNEL_SHORT_LABELS[channel]}
+                </Badge>
+                <div className="mt-2 text-lg font-semibold text-white">
+                  {formatCurrency(row?.revenueCents ?? 0)}
+                </div>
+                <div className="mt-1 text-xs text-white/50">
+                  {row?.salesCount ?? 0} pedido(s) · {row?.paidCount ?? 0} pago(s)
+                </div>
+              </a>
+            );
+          })}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <div>
             <CardTitle>Últimos pedidos</CardTitle>
             <CardDescription>
               Fluxo comercial do workspace, com status visível e rastreio por referência.
+              {channelFilter && ` Filtrado por ${SALE_CHANNEL_LABELS[channelFilter]}.`}
             </CardDescription>
           </div>
+          {channelFilter && (
+            <a
+              href="/dashboard/orders"
+              className="text-xs font-medium text-white/50 underline-offset-4 hover:text-white hover:underline"
+            >
+              Limpar filtro de canal
+            </a>
+          )}
         </CardHeader>
 
         <CardContent className="overflow-x-auto p-0">
@@ -183,6 +245,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
               <thead className="border-b border-white/8 bg-white/[0.02] text-white/55">
                 <tr>
                   <th className="px-6 py-3 font-medium">Pedido</th>
+                  <th className="px-6 py-3 font-medium">Canal</th>
                   <th className="px-6 py-3 font-medium">Status</th>
                   <th className="px-6 py-3 font-medium">Valor</th>
                   <th className="px-6 py-3 font-medium">Qtde.</th>
@@ -196,6 +259,17 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                     <td className="px-6 py-4">
                       <div className="font-medium text-white/90">{order.reference}</div>
                       <div className="mt-1 text-xs text-white/45">#{order.id.slice(0, 8)}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <Badge tone={SALE_CHANNEL_BADGE_TONE[order.channel as SaleChannelName]}>
+                        {SALE_CHANNEL_SHORT_LABELS[order.channel as SaleChannelName] ??
+                          order.channel}
+                      </Badge>
+                      {order.externalOrderId && (
+                        <div className="mt-1 text-[11px] text-white/35">
+                          #{order.externalOrderId}
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <div className="space-y-2">

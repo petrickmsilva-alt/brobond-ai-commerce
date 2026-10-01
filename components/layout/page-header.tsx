@@ -82,7 +82,7 @@ export function PageHeader({
           </h1>
 
           {description && (
-            <p className="mt-2 max-w-3xl text-pretty text-sm leading-relaxed text-white/55">
+            <p className="mt-2 max-w-3xl text-pretty text-sm leading-relaxed text-ink-400">
               {description}
             </p>
           )}

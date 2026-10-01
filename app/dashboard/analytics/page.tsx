@@ -52,7 +52,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps) {
     <>
       <PageHeader
         title="Analytics & Atribuição"
-        description="Pipeline de métricas determinístico — receita, margem e atribuição por produto, creator e campanha."
+        description="Pipeline de métricas determinístico — receita, margem e atribuição por canal de venda, produto, creator e campanha."
         actions={
           <Badge tone="brand" size="sm" className="inline-flex items-center gap-1.5">
             <TrendingUp className="h-3 w-3" />
@@ -163,6 +163,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps) {
           byProduct: attribution.byProduct,
           byCreator: attribution.byCreator,
           byCampaign: attribution.byCampaign,
+          byChannel: attribution.byChannel,
         }}
       />
     </>

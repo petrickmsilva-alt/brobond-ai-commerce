@@ -23,6 +23,8 @@ interface Props {
     byProduct: AttributionRowDto[];
     byCreator: AttributionRowDto[];
     byCampaign: AttributionRowDto[];
+    /** PR013 — Hub Multicanal de Vendas: receita por plataforma de venda. */
+    byChannel: AttributionRowDto[];
   };
 }
 
@@ -142,7 +144,8 @@ export function AnalyticsDashboard(props: Props) {
         </p>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <AttributionTable title="Receita por canal de venda" rows={props.attribution.byChannel} />
         <AttributionTable title="Atribuição por produto" rows={props.attribution.byProduct} />
         <AttributionTable title="Atribuição por creator" rows={props.attribution.byCreator} />
         <AttributionTable title="Atribuição por campanha" rows={props.attribution.byCampaign} />

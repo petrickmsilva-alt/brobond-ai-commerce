@@ -79,4 +79,16 @@ describe("buildSeedSales() — PR008", () => {
   it("returns an empty list when the workspace has no products", () => {
     expect(buildSeedSales(ORG, [], creators, campaigns, NOW)).toEqual([]);
   });
+
+  it("rotates sales across multiple channels, defaulting to a real enum value (PR013)", () => {
+    const rows = buildSeedSales(ORG, products, creators, campaigns, NOW);
+    const channels = new Set(rows.map((row) => row.channel));
+    expect(channels.has("BROBOND")).toBe(true);
+    expect(channels.size).toBeGreaterThan(1);
+    for (const row of rows) {
+      expect(["BROBOND", "TIKTOK", "INSTAGRAM", "SHOPEE", "MERCADOLIVRE", "MERCADOPAGO"]).toContain(
+        row.channel,
+      );
+    }
+  });
 });
