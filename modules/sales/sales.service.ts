@@ -2,7 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { assertOrganizationId } from "@/lib/tenant";
-import { SaleChannel, SaleStatus } from "@prisma/client";
+import { SaleChannel, SaleStatus, type Sale } from "@prisma/client";
 import { DEFAULT_SALE_CHANNEL, isSaleChannelName } from "./sales-channel";
 
 export interface SaleListOptions {
@@ -270,6 +270,108 @@ export const salesService = {
 
   markCancelled(organizationId: string, saleId: string) {
     return this.updateStatus(organizationId, saleId, SaleStatus.CANCELLED);
+  },
+
+  /**
+   * Idempotent ingestion upsert (PR014 — Motor Financeiro Unificado).
+   *
+   * Marketplace webhooks (Mercado Livre orders, Mercado Pago payments) are
+   * delivered at-least-once; this method lands on the tenant-scoped unique
+   * key `(organizationId, channel, externalOrderId)` so a replayed delivery
+   * can never double-count revenue:
+   *
+   *   - no existing row  → `created`, but only for `PAID` events — a
+   *     `PENDING`/`REFUNDED`/`CANCELLED` notification for a never-seen order
+   *     returns `ignored` (nothing to settle or refund);
+   *   - existing row     → status transitions obey `canTransitionSaleStatus`
+   *     (a terminal sale is never downgraded) and paid amounts are refreshed;
+   *     identical replays return `unchanged`.
+   *
+   * The returned `outcome` drives the connector counters: `created`/`updated`
+   * count as imported, `unchanged` as duplicated.
+   */
+  async upsertIngestedSale(
+    organizationId: string,
+    input: {
+      channel: SaleChannel | string;
+      externalOrderId: string;
+      amountCents: number;
+      currency?: string | null;
+      status: SaleStatus | string;
+      quantity?: number;
+      occurredAt?: Date | string | null;
+    },
+  ): Promise<{
+    sale: Sale | null;
+    outcome: "created" | "updated" | "unchanged" | "ignored";
+  }> {
+    const scope = assertOrganizationId(organizationId);
+    const channel = normalizeSaleChannel(input.channel);
+    const externalOrderId = input.externalOrderId.trim();
+    if (!externalOrderId) {
+      throw new Error("O identificador externo da venda é obrigatório.");
+    }
+    const amountCents = Math.max(0, Math.trunc(Number(input.amountCents ?? 0)) || 0);
+    const quantity = Math.max(1, Math.trunc(Number(input.quantity ?? 1)) || 1);
+    const currency = normalizeSaleCurrency(input.currency);
+    const status = normalizeSaleStatus(input.status);
+    const occurredAt = input.occurredAt ? new Date(input.occurredAt) : new Date();
+
+    const existing = await prisma.sale.findUnique({
+      where: {
+        organizationId_channel_externalOrderId: {
+          organizationId: scope,
+          channel,
+          externalOrderId,
+        },
+      },
+    });
+
+    if (!existing) {
+      if (status !== SaleStatus.PAID) {
+        // Nothing was ever sold under this id — a pending/refunded
+        // notification for an unknown order must not create revenue noise.
+        return { sale: null, outcome: "ignored" };
+      }
+      const sale = await prisma.sale.create({
+        data: {
+          organizationId: scope,
+          amountCents,
+          quantity,
+          currency,
+          status,
+          channel,
+          externalOrderId,
+          occurredAt,
+        },
+      });
+      return { sale, outcome: "created" };
+    }
+
+    const sameStatus = existing.status === status;
+    const sameAmount = existing.amountCents === amountCents;
+    if (sameStatus && sameAmount) return { sale: existing, outcome: "unchanged" };
+    if (!canTransitionSaleStatus(existing.status, status)) {
+      // e.g. a REFUNDED sale receiving a replayed PAID notification.
+      return { sale: existing, outcome: "unchanged" };
+    }
+
+    const sale = await prisma.sale.update({
+      where: { id: existing.id },
+      data: {
+        status,
+        amountCents,
+        quantity,
+        currency,
+        // Keep the first-seen moment; refresh the settlement timestamp when
+        // the order settles (PENDING → PAID).
+        occurredAt:
+          status === SaleStatus.PAID && existing.status === SaleStatus.PENDING
+            ? occurredAt
+            : existing.occurredAt,
+      },
+    });
+    return { sale, outcome: "updated" };
   },
 
   async upsertByReference(

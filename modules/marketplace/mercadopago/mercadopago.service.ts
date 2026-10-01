@@ -146,6 +146,105 @@ export async function fetchMercadoPagoPayments(
     }));
 }
 
+// ------------------------------------------------------------------
+// Single payment — webhook sale ingestion (PR014 — Motor Financeiro)
+// ------------------------------------------------------------------
+
+/** Parse a decimal amount into integer cents, clamping malformed input. */
+function toAmountCents(amount: number | null | undefined): number {
+  const value = Number(amount ?? 0);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.round(value * 100);
+}
+
+export interface MercadoPagoPayment {
+  id: string;
+  /** approved · pending · in_process · rejected · refunded · charged_back · cancelled · in_mediation */
+  status: string;
+  statusDetail: string | null;
+  amountCents: number;
+  currencyId: string;
+  dateCreated: Date;
+  dateApproved: Date | null;
+  /** External order reference reported by Mercado Pago (`order.id`), if any. */
+  externalOrderId: string;
+  payerEmail: string | null;
+}
+
+interface MpPaymentResponse {
+  id?: number;
+  status?: string;
+  status_detail?: string;
+  transaction_amount?: number;
+  transaction_amount_refunded?: number;
+  currency_id?: string;
+  date_created?: string;
+  date_approved?: string | null;
+  order?: { id?: string | number; type?: string };
+  payer?: { email?: string };
+  message?: string;
+}
+
+/**
+ * Fetch one payment by id (`GET /v1/payments/{id}`) — the `data.id`
+ * referenced by `payment` webhook notifications. The access token must
+ * belong to the collector account (tenant credential or the protected
+ * environment pair).
+ */
+export async function fetchMercadoPagoPayment(
+  accessToken: string,
+  paymentId: string,
+): Promise<MercadoPagoPayment> {
+  let response: Response;
+  try {
+    response = await fetch(new URL(`/v1/payments/${encodeURIComponent(paymentId)}`, apiBaseUrl()), {
+      headers: { accept: "application/json", authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+  } catch {
+    throw new ProviderApiError("Falha de rede ao contatar o Mercado Pago.", 503, PROVIDER);
+  }
+  const payload = (await response.json().catch(() => undefined)) as MpPaymentResponse | undefined;
+  if (!response.ok || payload?.id === undefined) {
+    throw new ProviderApiError(
+      payload?.message || `Não foi possível obter o pagamento ${paymentId} do Mercado Pago.`,
+      response.status || 502,
+      PROVIDER,
+    );
+  }
+
+  return {
+    id: String(payload.id),
+    status: payload.status ?? "unknown",
+    statusDetail: payload.status_detail ?? null,
+    amountCents: toAmountCents(payload.transaction_amount),
+    currencyId: payload.currency_id ?? "BRL",
+    dateCreated: payload.date_created ? new Date(payload.date_created) : new Date(),
+    dateApproved: payload.date_approved ? new Date(payload.date_approved) : null,
+    externalOrderId:
+      payload.order?.id !== undefined ? String(payload.order.id) : String(payload.id),
+    payerEmail: payload.payer?.email ?? null,
+  };
+}
+
+/** Map a Mercado Pago payment status onto the `Sale` lifecycle. */
+export function mercadoPagoStatusToSaleStatus(
+  status: string,
+): "PAID" | "PENDING" | "REFUNDED" | "CANCELLED" {
+  switch (status) {
+    case "approved":
+      return "PAID";
+    case "refunded":
+    case "charged_back":
+      return "REFUNDED";
+    case "cancelled":
+      return "CANCELLED";
+    default:
+      // pending · in_process · in_mediation · rejected · …
+      return "PENDING";
+  }
+}
+
 /**
  * Official Mercado Pago webhook signature verification.
  *

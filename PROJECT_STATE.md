@@ -1,5 +1,61 @@
 # PROJECT STATE — Brobond AI Commerce OS
 
+### PR014 — Motor Financeiro Unificado do Hub Multicanal (2026-10-01) — implemented
+
+- **Isolamento de telas de conectores.** Nova rota dinâmica
+  `/dashboard/connectors/[provider]` (`tiktok`, `instagram`, `shopee`,
+  `mercado-livre`, `mercado-pago`): clicar num conector do menu lateral
+  renderiza APENAS o card daquela plataforma — conexão, credenciais
+  (mascaradas), status, métricas de sincronização, KPIs de receita do canal,
+  eventos recentes de webhook e vendas do canal — nunca a lista empilhada de
+  todos os provedores. O registry de slugs
+  (`modules/marketplace/core/providers.ts`) é a fonte única de verdade
+  compartilhada entre rota, sidebar e callbacks OAuth.
+- **Sidebar.** Os itens Mercado Livre, Shopee, TikTok Shop, Mercado Pago (e o
+  novo Instagram Shopping) apontam para as rotas isoladas em vez do filtro
+  `?platform=`; `isNavItemSelected()` garante que a correspondência exata
+  vence a de prefixo (o hub "Conectores" não fica destacado junto). O
+  dashboard rico do TikTok (`/dashboard/tiktok`) continua existindo e é
+  linkado a partir da tela isolada do TikTok.
+- **Callbacks OAuth.** Os callbacks do Mercado Livre e da Shopee agora
+  aterrissam o vendedor na tela isolada da própria plataforma (com o banner
+  `?oauth=connected|error`).
+- **Webhooks → BullMQ.** `handleProviderWebhook` (`modules/marketplace/webhooks/handlers.ts`)
+  continua verificando assinatura, resolvendo o tenant pelo `shopId` e
+  gravando o evento no inbox idempotente `ConnectorEvent`; entregas de
+  venda (ML `orders`/`orders_v2`, MP `payment`) são entregues à nova fila
+  `sale-ingestion` (`lib/async/queue.ts`) para processamento em segundo
+  plano — o provedor sempre recebe um 200 rápido. Se o Redis estiver fora, o
+  evento fica pendente (`processedAt = null`) e o scanner do worker o
+  reenfileira quando a infraestrutura volta (grace de 60s, dead-letter de
+  7 dias).
+- **Worker (`npm run worker`).** `scripts/worker.ts` agora sobe, ao lado do
+  poller do outbox: (1) o `Worker` BullMQ da fila `sale-ingestion`
+  (`modules/marketplace/ingestion/sale-ingestion.worker.ts`) e (2) o scanner
+  periódico de eventos pendentes.
+- **Processamento idempotente.** `processSaleIngestionEvent()`
+  (`modules/marketplace/ingestion/sale-ingestion.service.ts`) relê o evento
+  durável, busca o pedido/pagamento AUTORITATIVO na API oficial (ML:
+  `GET /orders/{id}` com token do tenant, renovado via
+  `MERCADOLIVRE_CLIENT_SECRET`; MP: `GET /v1/payments/{id}` com a credencial
+  do tenant ou `MERCADOPAGO_ACCESS_TOKEN`) e faz o upsert em `Sale` através
+  de `salesService.upsertIngestedSale()` — canal de origem (`provider`),
+  `externalOrderId`, valor em centavos (BRL) e `occurredAt`. Índice único
+  novo `(organizationId, channel, externalOrderId)`
+  (`20261001120000_sale_external_order_ingestion_key`) garante que replays
+  at-least-once nunca dupliquem receita; vendas terminais nunca são
+  rebaixadas; contadores de ingestão são consolidados nos dois repositórios
+  (Connector e ConnectorStatus) sem contaminar os contadores de sync.
+- **Analytics dinâmico.** `analyticsService.getDashboard()` recomputa e
+  regrava o snapshot inline quando ele está stale (vendas mudaram após o
+  cálculo — ex.: webhook acabou de ingerir um pedido pago), então a tabela
+  "Receita por canal de venda" e os gráficos sempre refletem o que entrou
+  por cada plataforma ativa (`source: "refreshed"`).
+- **Tests.** 39 testes novos (ingestão de venda, idempotência do upsert,
+  handoff webhook→fila, scanner self-healing, registry de slugs, navegação
+  PR014); contratos de redirect do callback ML e do analytics re-pinnados
+  para o novo comportamento. 2.918 passando.
+
 ### PR010.4.9 — Render P3009 outreach migration recovery (2026-09-28) — implemented
 
 - **Symptom.** After PR #36 fixed the bad `CreatorProfile` forward reference in

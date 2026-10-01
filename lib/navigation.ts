@@ -22,7 +22,9 @@ import {
   Store,
   ShoppingBasket,
   Wallet,
+  Instagram,
 } from "lucide-react";
+import { connectorProviderPath } from "@/modules/marketplace/core/providers";
 
 export interface NavItem {
   label: string;
@@ -46,21 +48,26 @@ export interface NavGroup {
 
 /**
  * Primary sidebar navigation (PR010.1 · reorganised in PR013 for the Hub
- * Multicanal de Vendas).
+ * Multicanal de Vendas · isolated per-platform routes in PR014).
  *
  * Five focused module groups — Overview · Canais de Venda · Commerce ·
  * Creators · Campaigns — mirror how the Brobond Wear operator uses the
  * multichannel hub. Configurações is intentionally kept out of this tree and
  * pinned to the sidebar footer, where it remains available without consuming
  * the daily-navigation area. "Canais de Venda" is pinned right after Overview:
- * it is the fastest path
- * to every revenue-generating connector (Mercado Livre, Shopee, TikTok
- * Shop, Mercado Pago, Instagram) and the only group whose items double as
- * the day-to-day operational hub for Brobond's outside-marketplace sales.
+ * it is the fastest path to every revenue-generating connector (Mercado
+ * Livre, Shopee, TikTok Shop, Mercado Pago, Instagram) and the only group
+ * whose items double as the day-to-day operational hub for Brobond's
+ * outside-marketplace sales.
  *
- * Deep links into `/dashboard/connectors` reuse its existing `?platform=`
- * URL-state filter (see `components/connectors/content-toolbar.tsx`) — no
- * new route, no new backend surface, zero risk to the connector framework.
+ * PR014 — Isolamento de telas: every platform link now points at its own
+ * route under `/dashboard/connectors/[slug]` (e.g.
+ * `/dashboard/connectors/mercado-livre`), so clicking a connector in the
+ * menu renders ONLY that platform's card — connection, credentials, status,
+ * webhook events and channel sales — instead of the stacked list of every
+ * provider. The slugs come from the client-safe provider registry
+ * (`modules/marketplace/core/providers.ts`), the single source of truth
+ * shared with the dynamic route.
  */
 export const navigationGroups: NavGroup[] = [
   {
@@ -102,27 +109,33 @@ export const navigationGroups: NavGroup[] = [
       },
       {
         label: "Mercado Livre",
-        href: "/dashboard/connectors?platform=MERCADOLIVRE",
+        href: connectorProviderPath("MERCADOLIVRE"),
         icon: Store,
-        description: "Conta, catálogo e pedidos do Mercado Livre",
+        description: "Conta, credenciais, pedidos e vendas do Mercado Livre",
       },
       {
         label: "Shopee",
-        href: "/dashboard/connectors?platform=SHOPEE",
+        href: connectorProviderPath("SHOPEE"),
         icon: ShoppingBasket,
-        description: "Conta, catálogo e pedidos da Shopee",
+        description: "Conta, credenciais, catálogo e vendas da Shopee",
       },
       {
         label: "TikTok Shop",
-        href: "/dashboard/tiktok",
+        href: connectorProviderPath("TIKTOK"),
         icon: Music2,
-        description: "Conta, produtos, creators e sincronização",
+        description: "Conta, credenciais e vendas do TikTok Shop",
       },
       {
         label: "Mercado Pago",
-        href: "/dashboard/connectors?platform=MERCADOPAGO",
+        href: connectorProviderPath("MERCADOPAGO"),
         icon: Wallet,
-        description: "Checkout e conciliação via Mercado Pago",
+        description: "Credenciais, checkout e conciliação via Mercado Pago",
+      },
+      {
+        label: "Instagram Shopping",
+        href: connectorProviderPath("INSTAGRAM"),
+        icon: Instagram,
+        description: "Conta, credenciais e catálogo do Instagram Shopping",
       },
     ],
   },
@@ -231,6 +244,24 @@ export const sidebarNav: NavItem[] = [
 export function isNavItemActive(pathname: string, href: string): boolean {
   if (href === "/dashboard") return pathname === "/dashboard";
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/**
+ * Whether `item` is THE highlighted nav entry for `pathname` (PR014).
+ *
+ * An exact href match always wins over a prefix match: on
+ * `/dashboard/connectors/mercado-livre` the "Mercado Livre" item is
+ * highlighted while the parent "Conectores" hub link is not — both would
+ * pass `isNavItemActive`, which would leave two rows highlighted at once.
+ */
+export function isNavItemSelected(
+  pathname: string,
+  item: NavItem,
+  items: readonly NavItem[] = sidebarNav,
+): boolean {
+  const hasExactMatch = items.some((candidate) => candidate.href === pathname);
+  if (hasExactMatch) return item.href === pathname;
+  return isNavItemActive(pathname, item.href);
 }
 
 /** The group containing the active route, or `null`. */

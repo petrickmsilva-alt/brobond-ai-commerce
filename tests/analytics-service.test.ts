@@ -127,7 +127,7 @@ describe("analytics service — PR008", () => {
     expect(dashboard.metrics).toEqual(prebuilt);
   });
 
-  it("flags stale=true when sales were updated after the snapshot", async () => {
+  it("recomputes a stale snapshot inline (PR014 — dynamic attribution)", async () => {
     const { db, dbRaw } = fakeDb();
     const prebuilt = buildAnalyticsMetrics(
       [saleRow],
@@ -148,7 +148,13 @@ describe("analytics service — PR008", () => {
 
     const service = createAnalyticsService(db);
     const dashboard = await service.getDashboard("org_a", { days: 30, now: NOW });
-    expect(dashboard.stale).toBe(true);
+    // A sale landed after the snapshot was computed (e.g. a webhook just
+    // ingested a paid marketplace order): the dashboard must serve the
+    // recomputed attribution, never a stale payload.
+    expect(dashboard.stale).toBe(false);
+    expect(dashboard.source).toBe("refreshed");
+    expect(dbRaw.sale.findMany).toHaveBeenCalledTimes(1);
+    expect(dbRaw.analyticsSnapshot.upsert).toHaveBeenCalledTimes(1);
   });
 
   it("falls back to recompute when a stored snapshot fails the version guard", async () => {
@@ -164,7 +170,9 @@ describe("analytics service — PR008", () => {
 
     const service = createAnalyticsService(db);
     const dashboard = await service.getDashboard("org_a", { days: 30, now: NOW });
-    expect(dashboard.source).toBe("computed");
+    // PR014 — a snapshot ROW existed but was unusable, so the recompute
+    // replaces it ("refreshed"), rather than computing from nothing.
+    expect(dashboard.source).toBe("refreshed");
     expect(dbRaw.analyticsSnapshot.upsert).toHaveBeenCalledTimes(1);
   });
 

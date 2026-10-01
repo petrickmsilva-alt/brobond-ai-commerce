@@ -889,6 +889,14 @@ model Sale {
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([organizationId, channel])
+
+  /// Idempotency key of the marketplace ingestion pipeline (PR014 — Motor
+  /// Financeiro Unificado): one row per (tenant, channel, external order).
+  /// Webhook deliveries are at-least-once, so `upsertIngestedSale()` lands on
+  /// this key instead of inserting blindly. `externalOrderId` is `null` for
+  /// the own-store checkout (where `reference` is the canonical id) — Postgres
+  /// treats NULLs as distinct in unique indexes, so those rows are exempt.
+  @@unique([organizationId, channel, externalOrderId])
 }
 
 // ------------------------------------------------------------------

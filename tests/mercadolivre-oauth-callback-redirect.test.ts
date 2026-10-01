@@ -128,7 +128,7 @@ describe("GET /api/mercadolivre/callback", () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe(
-      "https://brobond-ai-commerce.onrender.com/dashboard/connectors?oauth=connected&provider=mercadolivre",
+      "https://brobond-ai-commerce.onrender.com/dashboard/connectors/mercado-livre?oauth=connected",
     );
     expect(handleMercadoLivreCallback).toHaveBeenCalledWith({ code: "TG-abc", state: OAUTH_STATE });
   });
@@ -141,7 +141,7 @@ describe("GET /api/mercadolivre/callback", () => {
     );
 
     expect(response.headers.get("location")).toBe(
-      "https://brobond-ai-commerce.onrender.com/dashboard/connectors?oauth=error&provider=mercadolivre",
+      "https://brobond-ai-commerce.onrender.com/dashboard/connectors/mercado-livre?oauth=error",
     );
     expect(handleMercadoLivreCallback).not.toHaveBeenCalled();
   });
@@ -154,7 +154,7 @@ describe("GET /api/mercadolivre/callback", () => {
     const response = await GET(new Request(RENDER_REQUEST_URL));
 
     expect(response.headers.get("location")).toBe(
-      "https://brobond-ai-commerce.onrender.com/dashboard/connectors?oauth=error&provider=mercadolivre",
+      "https://brobond-ai-commerce.onrender.com/dashboard/connectors/mercado-livre?oauth=error",
     );
     // The provider's message must never reach the browser — only the log.
     expect(response.headers.get("location")).not.toContain("invalid_grant");
@@ -169,7 +169,7 @@ describe("GET /api/mercadolivre/callback", () => {
     const response = await GET(new Request(RENDER_REQUEST_URL));
 
     expect(response.headers.get("location")).toBe(
-      "https://app.brobond.ai/dashboard/connectors?oauth=connected&provider=mercadolivre",
+      "https://app.brobond.ai/dashboard/connectors/mercado-livre?oauth=connected",
     );
   });
 });

@@ -18,10 +18,11 @@ import { scopedWhere, tenantWhere } from "@/lib/tenant";
  *
  * TENANT ISOLATION CONTRACT: every function takes `organizationId` as its
  * FIRST argument and builds its `where` through `tenantWhere`/`scopedWhere`,
- * so no query can ever run without an organization scope. The single
- * exception is `findByShopId`, used by inbound webhooks that arrive without
- * a tenant: it resolves exactly one candidate row and the CALLER must then
- * re-scope every subsequent query to that row's `organizationId`.
+ * so no query can ever run without an organization scope. The exceptions are
+ * `findByShopId` (inbound webhooks — resolves exactly one candidate row and
+ * the CALLER must re-scope everything to that row's `organizationId`) and
+ * `listPendingSaleEvents` (the PR014 worker scanner — returns delivery keys
+ * only; the processing worker re-scopes every query to the row's tenant).
  *
  * `createMarketplaceRepository(db)` is a factory so the tenant-safety of
  * every query can be unit-tested against an in-memory database without a
@@ -117,6 +118,40 @@ export interface MarketplaceRepository {
     provider: ConnectorProvider,
     externalEventId: string,
   ): Promise<void>;
+  /** One inbox event by its delivery key, or `null` (PR014 ingestion). */
+  findEvent(
+    organizationId: string,
+    provider: ConnectorProvider,
+    externalEventId: string,
+  ): Promise<ConnectorEvent | null>;
+  /** Latest inbox events of one provider (PR014 detail screen). */
+  listRecentEvents(
+    organizationId: string,
+    provider: ConnectorProvider,
+    limit: number,
+  ): Promise<ConnectorEvent[]>;
+  /**
+   * Worker scanner (PR014) — NOT tenant-scoped by design: it returns the
+   * delivery keys (`organizationId` + `provider` + `externalEventId`) of
+   * webhook events still awaiting sale ingestion. The caller re-scopes all
+   * processing to each row's tenant. `after` dead-letters ancient rows.
+   */
+  listPendingSaleEvents(input: {
+    providers: ConnectorProvider[];
+    before: Date;
+    after?: Date;
+    limit: number;
+  }): Promise<Array<Pick<ConnectorEvent, "organizationId" | "provider" | "externalEventId">>>;
+  /**
+   * Increment the ingestion counters of one provider WITHOUT touching the
+   * sync counters (`syncCount`/`lastSyncAt`) — a webhook sale is not a sync
+   * run (PR014).
+   */
+  incrementIngestionCounters(
+    organizationId: string,
+    provider: ConnectorProvider,
+    counters: { imported?: number; duplicated?: number; failed?: number },
+  ): Promise<Connector | null>;
 }
 
 export function createMarketplaceRepository(db: MarketplaceDatabase): MarketplaceRepository {
@@ -247,6 +282,60 @@ export function createMarketplaceRepository(db: MarketplaceDatabase): Marketplac
         where: scopedWhere(organizationId, { provider, externalEventId }),
         data: { processedAt: new Date() },
       });
+    },
+
+    async findEvent(organizationId, provider, externalEventId) {
+      return db.connectorEvent.findFirst({
+        where: scopedWhere(organizationId, { provider, externalEventId }),
+      });
+    },
+
+    async listRecentEvents(organizationId, provider, limit) {
+      return db.connectorEvent.findMany({
+        where: scopedWhere(organizationId, { provider }),
+        orderBy: { createdAt: "desc" },
+        take: Math.min(Math.max(limit, 1), 50),
+        select: {
+          id: true,
+          organizationId: true,
+          connectorId: true,
+          provider: true,
+          externalEventId: true,
+          topic: true,
+          payload: true,
+          processedAt: true,
+          createdAt: true,
+        },
+      });
+    },
+
+    async listPendingSaleEvents({ providers, before, after, limit }) {
+      return db.connectorEvent.findMany({
+        where: {
+          provider: { in: providers },
+          processedAt: null,
+          createdAt: {
+            lt: before,
+            ...(after ? { gte: after } : {}),
+          },
+        },
+        orderBy: { createdAt: "asc" },
+        take: Math.min(Math.max(limit, 1), 100),
+        select: { organizationId: true, provider: true, externalEventId: true },
+      });
+    },
+
+    async incrementIngestionCounters(organizationId, provider, counters) {
+      const { count } = await db.connector.updateMany({
+        where: scopedWhere(organizationId, { provider }),
+        data: {
+          importedCount: { increment: Math.max(0, counters.imported ?? 0) },
+          duplicatedCount: { increment: Math.max(0, counters.duplicated ?? 0) },
+          failedCount: { increment: Math.max(0, counters.failed ?? 0) },
+        },
+      });
+      if (count === 0) return null;
+      return db.connector.findFirst({ where: scopedWhere(organizationId, { provider }) });
     },
   };
 }

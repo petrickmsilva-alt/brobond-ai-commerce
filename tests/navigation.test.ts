@@ -4,6 +4,7 @@ import {
   settingsNavItem,
   sidebarNav,
   isNavItemActive,
+  isNavItemSelected,
   findActiveGroup,
 } from "@/lib/navigation";
 
@@ -13,6 +14,13 @@ import {
  * into a dedicated, higher-priority "Canais de Venda" group that fronts
  * every revenue-generating connector (Mercado Livre, Shopee, TikTok Shop,
  * Mercado Pago).
+ *
+ * Re-pinned in PR014 (isolated connector screens): every platform link now
+ * targets its own route under `/dashboard/connectors/[slug]` instead of the
+ * `?platform=` URL-state filter, so clicking a connector in the sidebar
+ * renders ONLY that platform's card. `/dashboard/tiktok` (the rich TikTok
+ * dashboard) left the sidebar in favour of `/dashboard/connectors/tiktok` —
+ * the page survives and stays linked from the TikTok connector screen.
  *
  * These tests pin the contract the redesign promised: five daily-use groups
  * plus a minimal settings footer exist, no route was lost or duplicated, and active-route
@@ -30,7 +38,6 @@ const LEGACY_ROUTES = [
   "/dashboard/outreach",
   "/dashboard/ai",
   "/dashboard/connectors",
-  "/dashboard/tiktok",
   "/dashboard/matches",
   "/dashboard/campaigns",
   "/dashboard/delivery",
@@ -121,12 +128,15 @@ describe("navigation — active route resolution", () => {
     expect(findActiveGroup("/dashboard/products/abc")?.label).toBe("Commerce");
     expect(findActiveGroup("/dashboard/matches")?.label).toBe("Creators");
     expect(findActiveGroup("/dashboard/delivery")?.label).toBe("Campaigns");
-    expect(findActiveGroup("/dashboard/tiktok")?.label).toBe("Canais de Venda");
+    expect(findActiveGroup("/dashboard/connectors")?.label).toBe("Canais de Venda");
+    expect(findActiveGroup("/dashboard/connectors/mercado-livre")?.label).toBe("Canais de Venda");
     expect(findActiveGroup("/settings")).toBeNull();
   });
 
   it("returns null for a route outside the navigation", () => {
     expect(findActiveGroup("/login")).toBeNull();
+    // PR014 — the rich TikTok dashboard is a page, no longer a nav item.
+    expect(findActiveGroup("/dashboard/tiktok")).toBeNull();
   });
 });
 
@@ -166,5 +176,50 @@ describe("navigation — PR010.4 removes the access-approval route", () => {
   it("/signup is a public auth screen, never a nav destination", () => {
     expect(sidebarNav.map((entry) => entry.href)).not.toContain("/signup");
     expect(findActiveGroup("/signup")).toBeNull();
+  });
+});
+
+// ------------------------------------------------------------------
+// PR014 — isolated connector screens (one platform per route)
+// ------------------------------------------------------------------
+
+describe("navigation — PR014 isolated connector routes", () => {
+  const salesChannels = navigationGroups.find((group) => group.id === "sales-channels");
+
+  it("links every platform to its own isolated screen, not the stacked hub", () => {
+    expect(salesChannels).toBeDefined();
+    const hrefs = salesChannels!.items.map((item) => item.href);
+    expect(hrefs).toContain("/dashboard/connectors/mercado-livre");
+    expect(hrefs).toContain("/dashboard/connectors/shopee");
+    expect(hrefs).toContain("/dashboard/connectors/tiktok");
+    expect(hrefs).toContain("/dashboard/connectors/mercado-pago");
+    expect(hrefs).toContain("/dashboard/connectors/instagram");
+  });
+
+  it("keeps the hub as the group's overview entry point", () => {
+    expect(salesChannels!.items[0]?.href).toBe("/dashboard/connectors");
+  });
+
+  it("never deep-links through the legacy ?platform= filter", () => {
+    for (const item of salesChannels!.items) {
+      expect(item.href).not.toMatch(/platform=/);
+    }
+  });
+
+  it("highlights exactly one item on an isolated connector screen", () => {
+    const pathname = "/dashboard/connectors/mercado-livre";
+    const active = sidebarNav.filter((item) => isNavItemSelected(pathname, item));
+    expect(active.map((item) => item.label)).toEqual(["Mercado Livre"]);
+  });
+
+  it("an exact href match beats a prefix match (hub link stays dim)", () => {
+    const pathname = "/dashboard/connectors/shopee";
+    const hub = sidebarNav.find((item) => item.href === "/dashboard/connectors")!;
+    const shopee = sidebarNav.find((item) => item.href === "/dashboard/connectors/shopee")!;
+    expect(isNavItemSelected(pathname, shopee)).toBe(true);
+    expect(isNavItemSelected(pathname, hub)).toBe(false);
+    // The low-level predicate still matches both — that is WHY the
+    // exact-match precedence exists.
+    expect(isNavItemActive(pathname, hub.href)).toBe(true);
   });
 });

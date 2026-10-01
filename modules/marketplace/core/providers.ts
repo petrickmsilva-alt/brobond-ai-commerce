@@ -45,6 +45,40 @@ export const CONNECTOR_PROVIDER_DESCRIPTIONS: Record<ConnectorProviderName, stri
 };
 
 // ------------------------------------------------------------------
+// Detail routes (PR014 — isolated connector screens)
+// ------------------------------------------------------------------
+
+/**
+ * URL slug of each provider's isolated detail route under
+ * `/dashboard/connectors/[slug]` (PR014). One screen per platform — status,
+ * credentials, sync metrics, webhook events and channel sales — instead of
+ * the stacked list of every provider.
+ */
+export const CONNECTOR_PROVIDER_SLUGS: Record<ConnectorProviderName, string> = {
+  TIKTOK: "tiktok",
+  INSTAGRAM: "instagram",
+  SHOPEE: "shopee",
+  MERCADOLIVRE: "mercado-livre",
+  MERCADOPAGO: "mercado-pago",
+};
+
+/** The detail-route path of one provider (sidebar links, hub cards). */
+export function connectorProviderPath(provider: ConnectorProviderName): string {
+  return `/dashboard/connectors/${CONNECTOR_PROVIDER_SLUGS[provider]}`;
+}
+
+/**
+ * Resolve a `/dashboard/connectors/[slug]` segment back to its provider.
+ * `null` for unknown slugs — the route then renders the 404 page.
+ */
+export function connectorProviderFromSlug(slug: string): ConnectorProviderName | null {
+  for (const [provider, providerSlug] of Object.entries(CONNECTOR_PROVIDER_SLUGS)) {
+    if (providerSlug === slug) return provider as ConnectorProviderName;
+  }
+  return null;
+}
+
+// ------------------------------------------------------------------
 // Authentication model
 // ------------------------------------------------------------------
 

@@ -3,10 +3,13 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { ConnectorProvider, Prisma } from "@prisma/client";
 import { verifyTikTokWebhookSignature } from "@/modules/connectors/tiktok/webhooks/verifier";
+import { enqueueSaleIngestion } from "@/lib/async/queue";
+import { log } from "@/lib/observability/logger";
 import { marketplaceRepository } from "../core/connector.repository";
 import { WebhookSignatureError } from "../core/errors";
 import { verifyShopeeWebhookSignature } from "../shopee/shopee.service";
 import { verifyMercadoPagoWebhookSignature } from "../mercadopago/mercadopago.service";
+import { isSaleIngestionEvent } from "../ingestion/sale-ingestion.service";
 
 /**
  * Unified provider webhook handlers (PR012) — verification, normalization
@@ -185,6 +188,10 @@ const PARSERS: Record<
  * Verify, normalize and ingest one provider webhook. NEVER throws provider
  * payloads; only `WebhookSignatureError` propagates (mapped to 401 by the
  * route handler).
+ *
+ * Sale-relevant deliveries (PR014) are enqueued to the BullMQ worker
+ * instead of being stamped processed — `processedAt` is only written by the
+ * ingestion worker once the `Sale` upsert reaches a terminal outcome.
  */
 export async function handleProviderWebhook(
   provider: ConnectorProvider,
@@ -217,6 +224,32 @@ export async function handleProviderWebhook(
     topic: event.topic,
     payload: event.payload as Prisma.InputJsonValue,
   });
+
+  // PR014 — Motor Financeiro: sale-relevant deliveries (Mercado Livre
+  // orders, Mercado Pago payments) are handed to the BullMQ/Redis worker
+  // for background processing — the provider always gets a fast 200 once
+  // the event is durably stored. Everything else (catalog pushes, non-sale
+  // topics) is terminal here and stamped processed immediately.
+  if (isSaleIngestionEvent(provider, event.topic)) {
+    try {
+      await enqueueSaleIngestion({
+        organizationId,
+        provider,
+        externalEventId: event.externalEventId,
+      });
+    } catch (error) {
+      // Redis unavailable: the event is durable in the inbox with
+      // processedAt = null — the worker's pending-event scanner re-enqueues
+      // it once the infrastructure is back. Never fail the provider.
+      log({
+        event: "SALE_WEBHOOK_ENQUEUE_DEFERRED",
+        level: "error",
+        context: { provider, externalEventId: event.externalEventId, error },
+      });
+    }
+    return { received: true };
+  }
+
   await marketplaceRepository.markEventProcessed(organizationId, provider, event.externalEventId);
   return { received: true };
 }

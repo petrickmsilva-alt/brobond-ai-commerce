@@ -180,6 +180,111 @@ interface MeliItemSearchResponse {
   results?: string[];
 }
 
+// ------------------------------------------------------------------
+// Orders — webhook sale ingestion (PR014 — Motor Financeiro Unificado)
+// ------------------------------------------------------------------
+
+export interface MeliOrder {
+  id: string;
+  /** Meli order status: payment_required · payment_in_process · paid · … */
+  status: string;
+  /** Order grand total in currency units (decimal, e.g. 189.9). */
+  totalAmountCents: number;
+  currencyId: string;
+  dateCreated: Date;
+  dateClosed: Date | null;
+  buyerNickname: string | null;
+  itemCount: number;
+}
+
+interface MeliOrderResponse {
+  id?: number;
+  status?: string;
+  order_status?: string;
+  total_amount?: number;
+  currency_id?: string;
+  date_created?: string;
+  date_closed?: string | null;
+  item_count?: number;
+  buyer?: { nickname?: string };
+  payments?: Array<{
+    status?: string;
+    transaction_amount?: number;
+  }>;
+}
+
+/** Parse a decimal amount into integer cents, clamping malformed input. */
+function toCents(amount: number | null | undefined): number {
+  const value = Number(amount ?? 0);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.round(value * 100);
+}
+
+/**
+ * Fetch one order by id (`GET /orders/{id}`) — the resource referenced by
+ * `orders` / `orders_v2` webhook notifications. The tenant's access token
+ * must belong to the seller of the order (resolved by the ingestion worker).
+ */
+export async function fetchMercadoLivreOrder(
+  accessToken: string,
+  orderId: string,
+  config: MercadoLivreConfig = getMercadoLivreConfig(),
+): Promise<MeliOrder> {
+  const url = new URL(`/orders/${encodeURIComponent(orderId)}`, config.apiBaseUrl);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: { accept: "application/json", authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+  } catch {
+    throw new ProviderApiError("Falha de rede ao contatar o Mercado Livre.", 503, PROVIDER);
+  }
+  const payload = (await response.json().catch(() => undefined)) as
+    (MeliOrderResponse & { message?: string }) | undefined;
+  if (!response.ok || payload?.id === undefined) {
+    throw new ProviderApiError(
+      payload?.message || `Não foi possível obter o pedido ${orderId} do Mercado Livre.`,
+      response.status || 502,
+      PROVIDER,
+    );
+  }
+
+  // A partially paid order already carries approved Meli payments; revenue
+  // attribution uses the effective paid amount, never the pending total.
+  const approvedPaymentsTotal = (payload.payments ?? [])
+    .filter((payment) => payment.status === "approved")
+    .reduce((sum, payment) => sum + toCents(payment.transaction_amount), 0);
+  const orderTotalCents = toCents(payload.total_amount);
+
+  return {
+    id: String(payload.id),
+    status: payload.status ?? "unknown",
+    totalAmountCents: approvedPaymentsTotal > 0 ? approvedPaymentsTotal : orderTotalCents,
+    currencyId: payload.currency_id ?? "BRL",
+    dateCreated: payload.date_created ? new Date(payload.date_created) : new Date(),
+    dateClosed: payload.date_closed ? new Date(payload.date_closed) : null,
+    buyerNickname: payload.buyer?.nickname ?? null,
+    itemCount: Math.max(1, Math.trunc(Number(payload.item_count ?? 1)) || 1),
+  };
+}
+
+/** Map a Meli order status onto the `Sale` lifecycle. */
+export function meliOrderStatusToSaleStatus(status: string): "PAID" | "PENDING" | "CANCELLED" {
+  switch (status) {
+    case "paid":
+    case "partially_paid":
+    case "shipped":
+    case "delivered":
+      return "PAID";
+    case "cancelled":
+      return "CANCELLED";
+    default:
+      // payment_required · payment_in_process · confirmed · …
+      return "PENDING";
+  }
+}
+
 interface MeliItemsBatchEntry {
   code?: number;
   body?: {

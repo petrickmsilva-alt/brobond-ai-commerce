@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import { resolveRedirectBaseUrl } from "@/lib/app-url";
 import { marketplaceService } from "@/modules/marketplace/core/connector.service";
 import { mercadoLivreCallbackSchema } from "@/modules/marketplace/core/connector.validator";
+import { connectorProviderPath } from "@/modules/marketplace/core/providers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Where the seller lands once Meli hands control back to us. */
-const DASHBOARD_PATH = "/dashboard/connectors";
+/**
+ * Where the seller lands once Meli hands control back to us — the isolated
+ * Mercado Livre connector screen (PR014), not the stacked hub list.
+ */
+const DASHBOARD_PATH = connectorProviderPath("MERCADOLIVRE");
 
 /**
  * Final hop of the OAuth dance — a navigation the *browser* performs, so the
@@ -24,7 +28,6 @@ const DASHBOARD_PATH = "/dashboard/connectors";
 function redirectToDashboard(request: Request, result: "connected" | "error") {
   const url = new URL(`${resolveRedirectBaseUrl(request)}${DASHBOARD_PATH}`);
   url.searchParams.set("oauth", result);
-  url.searchParams.set("provider", "mercadolivre");
   return NextResponse.redirect(url);
 }
 

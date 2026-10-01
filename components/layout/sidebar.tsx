@@ -9,6 +9,7 @@ import {
   navigationGroups,
   settingsNavItem,
   isNavItemActive,
+  isNavItemSelected,
   findActiveGroup,
 } from "@/lib/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -297,7 +298,10 @@ export function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCloseMobil
                     >
                       <li className={cn("space-y-0.5", !railCollapsed && "pt-1")}>
                         {group.items.map((item) => {
-                          const active = isNavItemActive(pathname, item.href);
+                          // PR014 — an exact href match wins over a prefix
+                          // match, so the isolated provider screen highlights
+                          // only its own link (not the parent hub as well).
+                          const active = isNavItemSelected(pathname, item);
                           const Icon = item.icon;
 
                           return (

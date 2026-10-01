@@ -2,14 +2,15 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/session";
 import { marketplaceService } from "@/modules/marketplace/core/connector.service";
 import { shopeeCallbackSchema } from "@/modules/marketplace/core/connector.validator";
+import { connectorProviderPath } from "@/modules/marketplace/core/providers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/** Sellers land on the isolated Shopee connector screen (PR014). */
 function redirectToDashboard(request: Request, result: "connected" | "error") {
-  const url = new URL("/dashboard/connectors", request.url);
+  const url = new URL(connectorProviderPath("SHOPEE"), request.url);
   url.searchParams.set("oauth", result);
-  url.searchParams.set("provider", "shopee");
   return NextResponse.redirect(url);
 }
 

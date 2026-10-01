@@ -79,6 +79,13 @@ export function createAnalyticsService(db: AnalyticsDatabase) {
     /**
      * Serve the dashboard: snapshot-first, computing + persisting lazily
      * when no usable snapshot exists for the (tenant, period) key.
+     *
+     * PR014 — Motor Financeiro: when the stored snapshot is STALE (tenant
+     * sales changed after it was computed — e.g. a webhook just ingested a
+     * Mercado Livre order or a Mercado Pago payment), it is recomputed and
+     * re-persisted inline, so the attribution tables (including "Receita
+     * por canal de venda") always reflect the money that actually entered
+     * through each active platform.
      */
     async getDashboard(
       organizationId: string,
@@ -95,12 +102,15 @@ export function createAnalyticsService(db: AnalyticsDatabase) {
       ]);
 
       const metrics = snapshot ? readAnalyticsMetrics(snapshot.metrics) : null;
-      if (snapshot && metrics) {
+      const stale = snapshot
+        ? maxSaleUpdatedAt !== null && maxSaleUpdatedAt > snapshot.computedAt
+        : false;
+      if (snapshot && metrics && !stale) {
         return {
           period: metrics.period,
           metrics,
           computedAt: snapshot.computedAt.toISOString(),
-          stale: maxSaleUpdatedAt !== null && maxSaleUpdatedAt > snapshot.computedAt,
+          stale: false,
           source: "snapshot",
         };
       }
@@ -118,7 +128,7 @@ export function createAnalyticsService(db: AnalyticsDatabase) {
         metrics: computed.metrics,
         computedAt: persisted.computedAt.toISOString(),
         stale: false,
-        source: "computed",
+        source: snapshot ? "refreshed" : "computed",
       };
     },
 

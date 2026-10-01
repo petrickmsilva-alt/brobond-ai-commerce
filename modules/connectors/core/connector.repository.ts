@@ -65,6 +65,17 @@ export interface ConnectorRepository {
       syncedAt?: Date;
     },
   ): Promise<ConnectorStatus>;
+  /**
+   * Increment the webhook-ingestion counters of one platform WITHOUT the
+   * sync-run semantics (PR014 — Motor Financeiro): a sale captured by a
+   * webhook is real imported data, but it is not a `syncCount` run and must
+   * not stamp `lastSyncAt`.
+   */
+  recordIngestionCounters(
+    organizationId: string,
+    platform: ConnectorPlatform,
+    counters: { imported?: number; duplicates?: number; failed?: number },
+  ): Promise<ConnectorStatus>;
   /** Persist one imported/duplicate/failed content row. */
   createContent(organizationId: string, data: CreateExternalContentDTO): Promise<ExternalContent>;
   /** Tenant-checked dedupe lookup on `(platform, externalId)`. */
@@ -158,6 +169,35 @@ export function createConnectorRepository(db: ConnectorDatabase): ConnectorRepos
           duplicateCount: counters.duplicates,
           failedCount: counters.failed,
           syncCount: 1,
+        },
+      });
+    },
+
+    /**
+     * Increment the webhook-ingestion counters of one platform WITHOUT the
+     * sync-run semantics (PR014 — Motor Financeiro): a sale captured by a
+     * webhook is real imported data, but it is not a `syncCount` run and must
+     * not stamp `lastSyncAt`.
+     */
+    async recordIngestionCounters(
+      organizationId: string,
+      platform: ConnectorPlatform,
+      counters: { imported?: number; duplicates?: number; failed?: number },
+    ) {
+      const { organizationId: org } = tenantWhere(organizationId);
+      return db.connectorStatus.upsert({
+        where: { organizationId_platform: { organizationId: org, platform } },
+        update: {
+          importedCount: { increment: Math.max(0, counters.imported ?? 0) },
+          duplicateCount: { increment: Math.max(0, counters.duplicates ?? 0) },
+          failedCount: { increment: Math.max(0, counters.failed ?? 0) },
+        },
+        create: {
+          platform,
+          organizationId: org,
+          importedCount: Math.max(0, counters.imported ?? 0),
+          duplicateCount: Math.max(0, counters.duplicates ?? 0),
+          failedCount: Math.max(0, counters.failed ?? 0),
         },
       });
     },

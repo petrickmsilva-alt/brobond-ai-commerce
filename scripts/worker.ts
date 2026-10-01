@@ -7,6 +7,10 @@ import { log } from "@/lib/observability/logger";
 import { reportError } from "@/lib/observability/error-reporter";
 import { getPrisma } from "@/lib/prisma";
 import { createTransactionalOutboxRepository } from "@/modules/async-outbox/outbox.repository";
+import {
+  startSaleIngestionWorker,
+  startPendingSaleEventScanner,
+} from "@/modules/marketplace/ingestion/sale-ingestion.worker";
 
 const POLL_INTERVAL_MS = 1_000;
 const RETRY_DELAY_MS = 30_000;
@@ -34,11 +38,23 @@ async function dispatchOnce() {
 
 async function run() {
   await assertAsyncReady();
+
+  // PR014 — Motor Financeiro Unificado: alongside the outbox poller, run the
+  // BullMQ worker that drains the `sale-ingestion` queue (Mercado Livre
+  // orders + Mercado Pago payments captured by the webhook routes) and the
+  // self-healing sweep that re-enqueues deliveries recorded while the
+  // infrastructure was unavailable.
+  const saleWorker = startSaleIngestionWorker();
+  const stopSaleScanner = startPendingSaleEventScanner();
+
   log({ event: "ASYNC_WORKER_READY", level: "info" });
   while (!stopping) {
     const dispatched = await dispatchOnce();
     if (!dispatched) await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
+
+  stopSaleScanner();
+  await saleWorker.close();
 }
 
 async function shutdown(signal: string) {

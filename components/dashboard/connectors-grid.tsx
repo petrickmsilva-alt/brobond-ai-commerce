@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import {
+  ArrowRight,
   CircleAlert,
   CircleCheck,
   Instagram,
@@ -21,6 +23,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { ConnectorCardDTO } from "@/modules/marketplace/core/connector.dto";
 import type { ConnectionStatus } from "@/modules/marketplace/core/providers";
+import { connectorProviderPath } from "@/modules/marketplace/core/providers";
 import {
   connectMercadoPagoAction,
   disconnectProviderAction,
@@ -79,6 +82,11 @@ function formatDateTime(iso: string | null): string {
 interface ConnectorsGridProps {
   connectors: ConnectorCardDTO[];
   canManage: boolean;
+  /**
+   * PR014 — the isolated detail screen passes exactly one connector and
+   * `false` here, so the card never links to the page it is already on.
+   */
+  detailLinks?: boolean;
 }
 
 interface ConnectorsStatusResponse {
@@ -95,10 +103,13 @@ function MarketplaceCard({
   connector,
   canManage,
   refreshStatuses,
+  showDetailLink = true,
 }: {
   connector: ConnectorCardDTO;
   canManage: boolean;
   refreshStatuses: () => Promise<void>;
+  /** PR014 — hide on the isolated detail screen (it would self-link). */
+  showDetailLink?: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -411,12 +422,22 @@ function MarketplaceCard({
             {feedback.message}
           </p>
         )}
+
+        {showDetailLink && (
+          <Link
+            href={connectorProviderPath(connector.provider)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-brand-300 transition-colors hover:text-brand-200"
+          >
+            Detalhes, credenciais e vendas do canal
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+          </Link>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-export function ConnectorsGrid({ connectors, canManage }: ConnectorsGridProps) {
+export function ConnectorsGrid({ connectors, canManage, detailLinks = true }: ConnectorsGridProps) {
   const [resolvedConnectors, setResolvedConnectors] = useState(connectors);
 
   useEffect(() => {
@@ -433,26 +454,43 @@ export function ConnectorsGrid({ connectors, canManage }: ConnectorsGridProps) {
       if (!response.ok) return;
       const payload = (await response.json()) as ConnectorsStatusResponse;
       if (payload.ok && Array.isArray(payload.connectors)) {
-        setResolvedConnectors(payload.connectors);
+        // Keep the grid scoped to the providers it was rendered with: the
+        // status endpoint resolves every connector of the tenant, but an
+        // isolated detail screen (PR014) must only ever show its own.
+        const renderedProviders = new Set(connectors.map((connector) => connector.provider));
+        setResolvedConnectors(
+          payload.connectors.filter((connector) => renderedProviders.has(connector.provider)),
+        );
       }
     } catch {
       // Keep the server-rendered state when the refresh is temporarily
       // unavailable. A later action or page load retries the safe endpoint.
     }
-  }, []);
+  }, [connectors]);
 
   useEffect(() => {
     void refreshStatuses();
   }, [refreshStatuses]);
 
+  // PR014 — an isolated detail screen passes exactly one connector: render
+  // it as a single wide panel instead of a lost cell in a three-column grid.
+  const isSingleConnector = resolvedConnectors.length === 1;
+
   return (
-    <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <div
+      className={
+        isSingleConnector
+          ? "mb-8 grid gap-4 lg:grid-cols-2"
+          : "mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+      }
+    >
       {resolvedConnectors.map((connector) => (
         <MarketplaceCard
           key={connector.provider}
           connector={connector}
           canManage={canManage}
           refreshStatuses={refreshStatuses}
+          showDetailLink={detailLinks}
         />
       ))}
     </div>
