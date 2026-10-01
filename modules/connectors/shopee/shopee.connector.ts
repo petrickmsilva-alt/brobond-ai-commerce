@@ -1,21 +1,4 @@
-/**
- * Shopee Connector — PLACEHOLDER (PR005).
- *
- * Reserved for the real Shopee source (a future PR): Open Platform /
- * Affiliate API. The contract is already pinned here and tested, so wiring
- * the real implementation must not touch any caller —
- * `getConnector(ConnectorPlatform.SHOPEE)` keeps resolving to this class
- * until then.
- *
- * NO network access, NO SDK, NO credentials are used in PR005 — by design.
- * When the real adapter lands it must:
- *   1. read its secret through a server-only secret reference (never a raw
- *      token in the database, never in the client bundle);
- *   2. map the provider payload onto `NormalizedContent` inside this file,
- *      so nothing downstream learns the provider's shape;
- *   3. flip `implemented` to `true` — the dashboard and the sync service
- *      key off that flag, not off try/catch.
- */
+import "server-only";
 
 import { ConnectorPlatform } from "@prisma/client";
 import type {
@@ -24,19 +7,50 @@ import type {
   FetchContentOptions,
   NormalizedContent,
 } from "../core/connector.interface";
-import { ConnectorNotImplementedError, placeholderHealth } from "../core/connector.interface";
 
+export class ShopeeConnectionRequiredError extends Error {
+  constructor(message = "Connect a Shopee shop before synchronizing this connector.") {
+    super(message);
+    this.name = "ShopeeConnectionRequiredError";
+  }
+}
+
+/**
+ * Shopee adapter backed exclusively by the official Open Platform v2
+ * (PR012) — HMAC-SHA256 signed requests, OAuth2 tokens persisted encrypted
+ * on the unified Connector model and rotated transparently before expiry.
+ */
 export class ShopeeConnector implements Connector {
   readonly platform: ConnectorPlatform = ConnectorPlatform.SHOPEE;
-  readonly name = "Shopee Connector";
-  readonly implemented = false;
+  readonly name = "Shopee";
+  readonly implemented = true;
 
-  async fetchContent(_options: FetchContentOptions = {}): Promise<NormalizedContent[]> {
-    void _options;
-    throw new ConnectorNotImplementedError(this.platform);
+  async fetchContent(options: FetchContentOptions = {}): Promise<NormalizedContent[]> {
+    if (!options.organizationId) {
+      throw new ShopeeConnectionRequiredError("Shopee sync requires an organization scope.");
+    }
+    // Lazy imports keep Prisma out of any browser-adjacent module graph.
+    const [{ marketplaceService }, { fetchShopeeProducts }] = await Promise.all([
+      import("@/modules/marketplace/core/connector.service"),
+      import("@/modules/marketplace/shopee/shopee.service"),
+    ]);
+    const { accessToken, shopId } = await marketplaceService.getValidAccessToken(
+      options.organizationId,
+      "SHOPEE",
+    );
+    if (!shopId) throw new ShopeeConnectionRequiredError();
+    return fetchShopeeProducts(accessToken, shopId, options.limit ?? 50);
   }
 
   async testConnection(): Promise<ConnectorHealth> {
-    return placeholderHealth(this.platform, this.name);
+    const configured = Boolean(process.env.SHOPEE_PARTNER_ID && process.env.SHOPEE_PARTNER_KEY);
+    return {
+      platform: this.platform,
+      ok: configured,
+      implemented: true,
+      message: configured
+        ? "Integração oficial pronta. Conecte uma loja Shopee para validar as permissões."
+        : "Configure SHOPEE_PARTNER_ID e SHOPEE_PARTNER_KEY no servidor para conectar uma loja.",
+    };
   }
 }
