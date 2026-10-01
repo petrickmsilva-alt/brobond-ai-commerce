@@ -114,8 +114,7 @@ export async function fetchMercadoPagoPayments(
     throw new ProviderApiError("Falha de rede ao contatar o Mercado Pago.", 503, PROVIDER);
   }
   const payload = (await response.json().catch(() => undefined)) as
-    | (MpPaymentsSearchResponse & { message?: string })
-    | undefined;
+    (MpPaymentsSearchResponse & { message?: string }) | undefined;
   if (!response.ok) {
     throw new ProviderApiError(
       payload?.message || "Não foi possível consultar os pagamentos do Mercado Pago.",

@@ -77,14 +77,18 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
               Resumo do produto
             </p>
             <h3 className="mt-1 text-base font-semibold text-white">
-              {formatCurrency(product.priceCents, product.currency)} · {product.stockQuantity} unidades
+              {formatCurrency(product.priceCents, product.currency)} · {product.stockQuantity}{" "}
+              unidades
             </h3>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-white/60">
             <ProductStatusBadge status={product.status} />
             <MarginBadge bps={product.marginBps} />
             <Badge tone="neutral" size="sm">
-              custo {product.currentCostCents > 0 ? formatCurrency(product.currentCostCents, product.currency) : "—"}
+              custo{" "}
+              {product.currentCostCents > 0
+                ? formatCurrency(product.currentCostCents, product.currency)
+                : "—"}
             </Badge>
           </div>
         </div>

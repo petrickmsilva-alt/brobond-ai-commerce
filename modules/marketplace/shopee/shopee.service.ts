@@ -128,8 +128,7 @@ async function shopeePost<T>(
   }
   // Never propagate raw provider payloads — they may embed seller data.
   const payload = (await response.json().catch(() => undefined)) as
-    | (T & { error?: string; message?: string })
-    | undefined;
+    (T & { error?: string; message?: string }) | undefined;
   if (!response.ok || (payload && typeof payload.error === "string" && payload.error !== "")) {
     throw new ProviderApiError(
       payload?.message || "A Shopee Open Platform rejeitou a requisição.",
@@ -152,11 +151,7 @@ export async function exchangeShopeeCode(
     partner_id: config.partnerId,
   });
   if (!data.access_token || !data.refresh_token || !data.expire_in) {
-    throw new ProviderApiError(
-      "A Shopee não retornou um par de tokens válido.",
-      502,
-      PROVIDER,
-    );
+    throw new ProviderApiError("A Shopee não retornou um par de tokens válido.", 502, PROVIDER);
   }
   return {
     accessToken: data.access_token,
@@ -218,8 +213,7 @@ export async function fetchShopeeShopInfo(
   url.searchParams.set("sign", shopeeSign(config, path, timestamp, { accessToken, shopId }));
   const response = await fetch(url, { headers: { accept: "application/json" }, cache: "no-store" });
   const payload = (await response.json().catch(() => undefined)) as
-    | { response?: { shop_name?: string } }
-    | undefined;
+    { response?: { shop_name?: string } } | undefined;
   if (!response.ok) return { shopName: null };
   return { shopName: payload?.response?.shop_name ?? null };
 }
@@ -255,8 +249,7 @@ export async function fetchShopeeProducts(
     cache: "no-store",
   });
   const listPayload = (await listResponse.json().catch(() => undefined)) as
-    | (ShopeeItemListResponse & { error?: string; message?: string })
-    | undefined;
+    (ShopeeItemListResponse & { error?: string; message?: string }) | undefined;
   if (!listResponse.ok || (listPayload && listPayload.error)) {
     throw new ProviderApiError(
       listPayload?.message || "Não foi possível listar os produtos da Shopee.",
@@ -284,8 +277,7 @@ export async function fetchShopeeProducts(
     cache: "no-store",
   });
   const infoPayload = (await infoResponse.json().catch(() => undefined)) as
-    | (ShopeeItemBaseInfoResponse & { error?: string; message?: string })
-    | undefined;
+    (ShopeeItemBaseInfoResponse & { error?: string; message?: string }) | undefined;
   if (!infoResponse.ok || (infoPayload && infoPayload.error)) {
     throw new ProviderApiError(
       infoPayload?.message || "Não foi possível obter os detalhes dos produtos Shopee.",

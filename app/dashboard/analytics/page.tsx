@@ -140,7 +140,8 @@ export default async function AnalyticsPage({ searchParams }: PageProps) {
               Revenue signal
             </p>
             <h3 className="mt-1 text-base font-semibold text-white">
-              {totals.paidCount} vendas pagas com margem de {formatCurrency(totals.grossMarginCents)}
+              {totals.paidCount} vendas pagas com margem de{" "}
+              {formatCurrency(totals.grossMarginCents)}
             </h3>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-white/60">

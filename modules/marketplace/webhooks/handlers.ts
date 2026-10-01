@@ -153,7 +153,10 @@ function parseMercadoPagoEvent(request: Request, rawBody: string): ParsedWebhook
   });
   if (!verified) throw new WebhookSignatureError("MERCADOPAGO");
   const type = typeof body.type === "string" ? body.type : "unknown";
-  const id = body.id !== undefined ? String(body.id) : `${type}:${dataId}:${String(body.date_created ?? "-")}`;
+  const id =
+    body.id !== undefined
+      ? String(body.id)
+      : `${type}:${dataId}:${String(body.date_created ?? "-")}`;
   const userId = body.user_id !== undefined ? String(body.user_id) : null;
   return {
     externalEventId: `mp:${id}`,

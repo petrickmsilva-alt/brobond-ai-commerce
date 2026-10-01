@@ -120,7 +120,10 @@ export function CreatorsTable({ items }: CreatorsTableProps) {
       </TableHeader>
       <TableBody>
         {items.map((creator) => (
-          <TableRow key={creator.id} className="border-b border-white/6 last:border-none hover:bg-white/[0.025]">
+          <TableRow
+            key={creator.id}
+            className="border-b border-white/6 last:border-none hover:bg-white/[0.025]"
+          >
             <TableCell>
               <CreatorAvatar displayName={creator.displayName} avatarUrl={creator.avatarUrl} />
             </TableCell>

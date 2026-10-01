@@ -9,7 +9,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function jsonError(status: number, error: string, fieldErrors?: Record<string, string[]>) {
-  return NextResponse.json({ ok: false, error, ...(fieldErrors ? { fieldErrors } : {}) }, { status });
+  return NextResponse.json(
+    { ok: false, error, ...(fieldErrors ? { fieldErrors } : {}) },
+    { status },
+  );
 }
 
 /**

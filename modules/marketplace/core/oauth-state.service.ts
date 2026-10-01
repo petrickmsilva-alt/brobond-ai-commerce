@@ -68,10 +68,7 @@ export function createConnectorOAuthStateService(
      *
      * @throws {ConnectorOAuthStateError} invalid, expired or replayed state.
      */
-    async consume(
-      state: string,
-      provider: ConnectorProvider,
-    ): Promise<{ organizationId: string }> {
+    async consume(state: string, provider: ConnectorProvider): Promise<{ organizationId: string }> {
       const current = now();
       const stateHash = hashConnectorOAuthState(state);
       const stored = await db.connectorOAuthState.findUnique({ where: { stateHash } });

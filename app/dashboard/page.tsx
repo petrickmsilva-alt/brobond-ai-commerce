@@ -104,7 +104,11 @@ export default async function DashboardPage() {
               delta={`${overview.orders} pedido(s) pago(s)`}
               trend={overview.gmvCents > 0 ? "up" : "neutral"}
               icon={CircleDollarSign}
-              badge={<Badge tone="brand" size="sm">Alta</Badge>}
+              badge={
+                <Badge tone="brand" size="sm">
+                  Alta
+                </Badge>
+              }
             />
             <StatCard
               label="Pedidos"
@@ -126,7 +130,11 @@ export default async function DashboardPage() {
               delta="retorno sobre custo estimado"
               trend={overview.roiBps > 0 ? "up" : "neutral"}
               icon={Target}
-              badge={<Badge tone="success" size="sm">OK</Badge>}
+              badge={
+                <Badge tone="success" size="sm">
+                  OK
+                </Badge>
+              }
             />
             <StatCard
               label="Conversão"

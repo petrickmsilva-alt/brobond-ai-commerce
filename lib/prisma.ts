@@ -18,8 +18,13 @@ function createPrismaClient(): PrismaClient {
 
   if (!connectionString) {
     // Se estiver na fase de build do Next.js, injeta uma string mockada para não quebrar a instância do PrismaPg
-    if (process.env.NEXT_PHASE === "phase-production-build" || process.env.NODE_ENV === "production") {
-      console.warn("⚠️ Aviso: DATABASE_URL não foi fornecida durante o build. Usando conexão simulada.");
+    if (
+      process.env.NEXT_PHASE === "phase-production-build" ||
+      process.env.NODE_ENV === "production"
+    ) {
+      console.warn(
+        "⚠️ Aviso: DATABASE_URL não foi fornecida durante o build. Usando conexão simulada.",
+      );
       connectionString = "postgresql://mock:mock@localhost:5432/mock";
     } else {
       throw new Error("DATABASE_URL is required to initialize Prisma.");
@@ -28,7 +33,7 @@ function createPrismaClient(): PrismaClient {
 
   const poolMax = positiveInteger(process.env.DATABASE_POOL_MAX);
   const connectionTimeoutMillis = positiveInteger(process.env.DATABASE_CONNECTION_TIMEOUT_MS);
-  
+
   const adapter = new PrismaPg({
     connectionString,
     ...(poolMax ? { max: poolMax } : {}),

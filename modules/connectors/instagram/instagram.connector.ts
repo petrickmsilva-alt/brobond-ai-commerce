@@ -34,9 +34,8 @@ export class InstagramConnector implements Connector {
       );
     }
     // Lazy import keeps Prisma out of any browser-adjacent module graph.
-    const { fetchInstagramContent } = await import(
-      "@/modules/marketplace/instagram/instagram-bridge.service"
-    );
+    const { fetchInstagramContent } =
+      await import("@/modules/marketplace/instagram/instagram-bridge.service");
     return fetchInstagramContent(options.organizationId, options.limit ?? 50);
   }
 

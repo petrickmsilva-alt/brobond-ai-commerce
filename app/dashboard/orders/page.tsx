@@ -152,7 +152,9 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
             </div>
           </div>
           <div className="rounded-2xl border border-white/8 bg-surface-900/65 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-            <div className="text-[11px] uppercase tracking-[0.12em] text-white/45">Recomendação</div>
+            <div className="text-[11px] uppercase tracking-[0.12em] text-white/45">
+              Recomendação
+            </div>
             <div className="mt-2 text-lg font-semibold text-white">Operação estável</div>
             <div className="mt-2 text-xs text-white/55">
               {health.recommendations[0] ?? "Fluxo está sendo processado normalmente."}
