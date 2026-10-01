@@ -2,9 +2,9 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 import type { ConnectorProvider } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { tenantWhere } from "@/lib/tenant";
 import type { MarketplaceDatabase } from "./connector.repository";
-import { marketplaceRepository as _defaultRepository } from "./connector.repository";
 import { hashConnectorOAuthState } from "./crypto.service";
 
 /**
@@ -26,14 +26,13 @@ export class ConnectorOAuthStateError extends Error {
 }
 
 export interface ConnectorOAuthStateDependencies {
-  db?: MarketplaceDatabase;
   now?: () => Date;
   randomState?: () => string;
 }
 
 export function createConnectorOAuthStateService(
   db: MarketplaceDatabase,
-  deps: Omit<ConnectorOAuthStateDependencies, "db"> = {},
+  deps: ConnectorOAuthStateDependencies = {},
 ) {
   const now = deps.now ?? (() => new Date());
   const randomState = deps.randomState ?? (() => randomBytes(32).toString("base64url"));
@@ -92,8 +91,6 @@ export function createConnectorOAuthStateService(
     },
   };
 }
-
-import { prisma } from "@/lib/prisma";
 
 /** Default singleton bound to the app's Prisma client. */
 export const connectorOAuthStateService = createConnectorOAuthStateService(prisma);
