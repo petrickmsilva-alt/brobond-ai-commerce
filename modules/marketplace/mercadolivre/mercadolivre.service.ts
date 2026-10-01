@@ -2,6 +2,7 @@ import "server-only";
 
 import { ConnectorConfigError, ProviderApiError } from "../core/errors";
 import type { NormalizedContent } from "@/modules/connectors/core/connector.interface";
+import { resolveAppBaseUrl } from "@/lib/app-url";
 
 /**
  * Mercado Livre (PR012) — official Meli API, server-side ONLY.
@@ -45,9 +46,10 @@ export function getMercadoLivreConfig(): MercadoLivreConfig {
 export function getMercadoLivreRedirectUri(): string {
   const explicit = process.env.MERCADOLIVRE_REDIRECT_URI?.trim();
   if (explicit) return explicit;
-  const appUrl = process.env.NEXTAUTH_URL?.trim();
-  if (!appUrl) throw new ConnectorConfigError("NEXTAUTH_URL", PROVIDER);
-  return `${appUrl.replace(/\/$/, "")}/api/mercadolivre/callback`;
+  // APP_URL is the canonical Render URL; in local development the explicit
+  // URL is normally absent, so use the same origin Next.js listens on.
+  const appUrl = resolveAppBaseUrl(process.env) || "http://localhost:3000";
+  return `${appUrl}/api/mercadolivre/callback`;
 }
 
 /** Seller authorization URL (official OAuth2, CSRF `state` supported). */
