@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { exchangeCode } from "@/modules/connectors/tiktok/auth/oauth.service";
 import { tiktokOAuthCallbackSchema } from "@/modules/connectors/tiktok/validators";
+import { mirrorTikTokConnection } from "@/modules/marketplace/tiktok/tiktok-bridge.service";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,13 @@ export async function GET(request: Request) {
   if (!parsed.success) return redirectToDashboard(request, "error");
 
   try {
-    await exchangeCode(parsed.data);
+    const accounts = await exchangeCode(parsed.data);
+    // PR012: mirror the connected seller credential into the unified
+    // Connector model so the marketplace card reflects the real state.
+    // Mirroring is best-effort and never fails the OAuth redirect.
+    if (accounts[0]?.organizationId) {
+      await mirrorTikTokConnection(accounts[0].organizationId).catch(() => undefined);
+    }
     return redirectToDashboard(request, "connected");
   } catch (error) {
     // Never leak OAuth/provider errors (or any token-adjacent detail) through
