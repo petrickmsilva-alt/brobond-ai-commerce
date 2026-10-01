@@ -2,6 +2,7 @@ import "server-only";
 
 import type { Connector, ConnectorProvider, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { connectorRepository as connectorStatusRepository } from "@/modules/connectors/core/connector.repository";
 import { connectTikTok } from "@/modules/connectors/tiktok/auth/oauth.service";
 import { connectInstagram } from "@/modules/delivery/instagram/auth.service";
 import { marketplaceRepository, type MarketplaceRepository } from "./connector.repository";
@@ -32,6 +33,11 @@ import {
   fetchMercadoLivreIdentity,
 } from "../mercadolivre/mercadolivre.service";
 import { validateMercadoPagoAccessToken } from "../mercadopago/mercadopago.service";
+import {
+  getMercadoPagoEnvironmentCredentials,
+  hasPersistedMercadoPagoCredentials,
+  type MercadoPagoEnvironment,
+} from "../mercadopago/credentials";
 
 /**
  * Marketplace connector service (PR012) — the single orchestration point
@@ -46,7 +52,10 @@ const TOKEN_REFRESH_SKEW_MS = 5 * 60 * 1000;
 
 export interface MarketplaceServiceDependencies {
   repository?: MarketplaceRepository;
+  statusRepository?: Pick<typeof connectorStatusRepository, "findStatus">;
   now?: () => Date;
+  /** Explicit environment injection keeps fallback resolution unit-testable. */
+  env?: MercadoPagoEnvironment;
 }
 
 /** Masked public-key preview — the ONLY secret derivative the UI receives. */
@@ -61,7 +70,9 @@ function publicKeyPreviewOf(row: Connector | null): string | null {
 
 export function createMarketplaceService(deps: MarketplaceServiceDependencies = {}) {
   const repository = deps.repository ?? marketplaceRepository;
+  const statusRepository = deps.statusRepository ?? connectorStatusRepository;
   const now = deps.now ?? (() => new Date());
+  const env = deps.env ?? process.env;
 
   return {
     /**
@@ -76,18 +87,65 @@ export function createMarketplaceService(deps: MarketplaceServiceDependencies = 
       ]);
       const rows = await repository.list(organizationId);
       const byProvider = new Map(rows.map((row) => [row.provider, row]));
-      return CONNECTOR_PROVIDERS.map((provider) =>
-        toConnectorCardDTO(
+
+      const mercadoPagoRow = byProvider.get("MERCADOPAGO") ?? null;
+      const persistedMercadoPago = hasPersistedMercadoPagoCredentials(mercadoPagoRow);
+      const environmentMercadoPago = getMercadoPagoEnvironmentCredentials(env);
+      const mercadoPagoSource = persistedMercadoPago
+        ? ("database" as const)
+        : environmentMercadoPago
+          ? ("environment" as const)
+          : null;
+
+      // An environment-only installation has no unified Connector row from
+      // which to read counters. ConnectorStatus is the synchronization source
+      // of truth and lets the locked card retain its metrics across reloads.
+      const fallbackMetrics =
+        mercadoPagoSource === "environment" && !mercadoPagoRow
+          ? await statusRepository
+              .findStatus(organizationId, "MERCADOPAGO")
+              .then((status) =>
+                status
+                  ? {
+                      importedCount: status.importedCount,
+                      duplicatedCount: status.duplicateCount,
+                      failedCount: status.failedCount,
+                      syncCount: status.syncCount,
+                      lastSyncAt: status.lastSyncAt?.toISOString() ?? null,
+                      lastError: status.lastError,
+                    }
+                  : undefined,
+              )
+              .catch(() => undefined)
+          : undefined;
+
+      return CONNECTOR_PROVIDERS.map((provider) => {
+        const row = byProvider.get(provider) ?? null;
+        const isMercadoPago = provider === "MERCADOPAGO";
+        const locked = isMercadoPago && mercadoPagoSource !== null;
+        const publicKeyPreview =
+          publicKeyPreviewOf(row) ??
+          (isMercadoPago && mercadoPagoSource === "environment" && environmentMercadoPago
+            ? maskConnectorSecretPreview(environmentMercadoPago.publicKey)
+            : null);
+
+        return toConnectorCardDTO(
           {
             provider,
             name: CONNECTOR_PROVIDER_LABELS[provider],
             description: CONNECTOR_PROVIDER_DESCRIPTIONS[provider],
             authType: CONNECTOR_PROVIDER_AUTH[provider],
           },
-          byProvider.get(provider) ?? null,
-          { publicKeyPreview: publicKeyPreviewOf(byProvider.get(provider) ?? null) },
-        ),
-      );
+          row,
+          {
+            publicKeyPreview,
+            status: locked ? "CONNECTED" : undefined,
+            locked,
+            credentialSource: isMercadoPago ? mercadoPagoSource : null,
+            metrics: isMercadoPago ? fallbackMetrics : undefined,
+          },
+        );
+      });
     },
 
     /**
@@ -232,6 +290,15 @@ export function createMarketplaceService(deps: MarketplaceServiceDependencies = 
       provider: ConnectorProvider,
     ): Promise<{ accessToken: string; shopId: string | null }> {
       const connector = await repository.findByProvider(organizationId, provider);
+      const environmentCredentials =
+        provider === "MERCADOPAGO" ? getMercadoPagoEnvironmentCredentials(env) : null;
+      if (
+        provider === "MERCADOPAGO" &&
+        !hasPersistedMercadoPagoCredentials(connector) &&
+        environmentCredentials
+      ) {
+        return { accessToken: environmentCredentials.accessToken, shopId: null };
+      }
       if (!connector?.accessToken) {
         throw new MarketplaceError(
           `O conector "${String(provider)}" não possui credencial ativa. Conecte a conta primeiro.`,
@@ -240,7 +307,8 @@ export function createMarketplaceService(deps: MarketplaceServiceDependencies = 
       }
 
       const expiring =
-        connector.expiresAt && connector.expiresAt.getTime() <= now().getTime() + TOKEN_REFRESH_SKEW_MS;
+        connector.expiresAt &&
+        connector.expiresAt.getTime() <= now().getTime() + TOKEN_REFRESH_SKEW_MS;
       if (!expiring) {
         return {
           accessToken: decryptConnectorSecret(connector.accessToken),
@@ -269,9 +337,7 @@ export function createMarketplaceService(deps: MarketplaceServiceDependencies = 
           return { accessToken: tokens.accessToken, shopId: connector.shopId };
         }
         if (provider === "MERCADOLIVRE") {
-          const { refreshMercadoLivreToken } = await import(
-            "../mercadolivre/mercadolivre.service"
-          );
+          const { refreshMercadoLivreToken } = await import("../mercadolivre/mercadolivre.service");
           const tokens = await refreshMercadoLivreToken(refreshToken);
           await repository.saveTokens(organizationId, connector.id, {
             accessToken: encryptConnectorSecret(tokens.accessToken),

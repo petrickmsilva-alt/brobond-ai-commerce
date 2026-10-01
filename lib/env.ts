@@ -105,6 +105,10 @@ const envSchema = z.object({
   STRIPE_SECRET_KEY: z.string().min(1).optional(),
   /** Stripe webhook signing secret used for payment confirmation. */
   STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
+  /** Optional server-only Mercado Pago fallback configured as a complete pair. */
+  MERCADOPAGO_ACCESS_TOKEN: z.string().min(1).optional(),
+  /** Optional server-only Mercado Pago public key fallback. Never sent unmasked. */
+  MERCADOPAGO_PUBLIC_KEY: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
