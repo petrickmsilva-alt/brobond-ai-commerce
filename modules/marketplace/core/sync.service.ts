@@ -16,6 +16,11 @@ import { fetchTikTokContent } from "../tiktok/tiktok-bridge.service";
 import { fetchShopeeProducts } from "../shopee/shopee.service";
 import { fetchMercadoLivreItems } from "../mercadolivre/mercadolivre.service";
 import { fetchMercadoPagoPayments } from "../mercadopago/mercadopago.service";
+import {
+  getMercadoPagoEnvironmentCredentials,
+  hasPersistedMercadoPagoCredentials,
+  type MercadoPagoEnvironment,
+} from "../mercadopago/credentials";
 
 /**
  * Marketplace sync service (PR012) — the real "Sincronizar" path.
@@ -45,6 +50,7 @@ const PROVIDER_TO_PLATFORM: Record<ConnectorProvider, ConnectorPlatform> = {
 export interface MarketplaceSyncDependencies {
   repository?: MarketplaceRepository;
   service?: ReturnType<typeof createMarketplaceService>;
+  env?: MercadoPagoEnvironment;
 }
 
 async function fetchProviderContent(
@@ -80,6 +86,7 @@ async function fetchProviderContent(
 export function createMarketplaceSyncService(deps: MarketplaceSyncDependencies = {}) {
   const repository = deps.repository ?? marketplaceRepository;
   const service = deps.service ?? marketplaceService;
+  const env = deps.env ?? process.env;
 
   return {
     async syncProvider(
@@ -89,13 +96,24 @@ export function createMarketplaceSyncService(deps: MarketplaceSyncDependencies =
     ): Promise<MarketplaceSyncResultDTO> {
       const platform = PROVIDER_TO_PLATFORM[provider];
 
-      // The connection must exist and be CONNECTED before any network call.
+      // The connection must be usable before any network call. Mercado Pago
+      // remains usable when the complete credential pair comes from Render,
+      // even if this tenant does not yet have a unified Connector row.
       const connector = await repository.findByProvider(organizationId, provider);
-      if (provider !== "TIKTOK" && provider !== "INSTAGRAM") {
+      if (provider === "MERCADOPAGO") {
+        const configured =
+          hasPersistedMercadoPagoCredentials(connector) ||
+          getMercadoPagoEnvironmentCredentials(env) !== null;
+        if (!configured) throw new ConnectorNotConnectedError(provider);
+      } else if (provider !== "TIKTOK" && provider !== "INSTAGRAM") {
         if (!connector || connector.status !== "CONNECTED" || !connector.accessToken) {
           throw new ConnectorNotConnectedError(provider);
         }
       }
+
+      // Ensure the metrics row before fetching so an environment-only
+      // Mercado Pago failure is durable and visible on the next card load.
+      const statusRow = await connectorRepository.ensureStatus(organizationId, platform);
 
       let items: NormalizedContent[];
       try {
@@ -109,18 +127,15 @@ export function createMarketplaceSyncService(deps: MarketplaceSyncDependencies =
           counters: { imported: 0, duplicated: 0, failed: 0 },
           lastError: message.slice(0, 500),
         });
-        if (connector) {
-          await connectorRepository.recordSyncResult(organizationId, platform, {
-            state: "ERROR",
-            counters: { imported: 0, duplicates: 0, failed: 0 },
-            lastError: message.slice(0, 500),
-          });
-        }
+        await connectorRepository.recordSyncResult(organizationId, platform, {
+          state: "ERROR",
+          counters: { imported: 0, duplicates: 0, failed: 0 },
+          lastError: message.slice(0, 500),
+        });
         throw error;
       }
 
       // Ingest onto the tenant-scoped dedupe key — same contract as PR005.
-      const statusRow = await connectorRepository.ensureStatus(organizationId, platform);
       let imported = 0;
       let duplicated = 0;
       let failed = 0;
