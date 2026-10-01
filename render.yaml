@@ -52,6 +52,25 @@ services:
           property: connectionString
       - key: NEXTAUTH_URL
         sync: false
+      - key: APP_URL
+        sync: false
+      # Marketplace credentials are server-only and must be entered in the
+      # Render environment for each staging/production service. `sync: false`
+      # ensures the Blueprint declares, but never stores, their secret values.
+      - key: CONNECTOR_ENCRYPTION_KEY
+        sync: false
+      - key: SHOPEE_PARTNER_ID
+        sync: false
+      - key: SHOPEE_PARTNER_KEY
+        sync: false
+      - key: MERCADOLIVRE_CLIENT_ID
+        sync: false
+      - key: MERCADOLIVRE_CLIENT_SECRET
+        sync: false
+      - key: MERCADOLIVRE_WEBHOOK_SECRET
+        sync: false
+      - key: MERCADOPAGO_WEBHOOK_SECRET
+        sync: false
       # Keep each Render instance within the managed PostgreSQL connection cap.
       - key: DATABASE_POOL_MAX
         value: "5"
