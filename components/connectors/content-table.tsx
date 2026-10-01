@@ -3,7 +3,7 @@
 import Link from "next/link";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowDown, ArrowUp, ArrowUpDown, Inbox } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -90,7 +90,7 @@ export function ContentTable({ items }: ContentTableProps) {
     // §10 — nothing imported yet means "go connect a source", not "sorry".
     return (
       <TableEmptyState
-        icon={Inbox}
+        iconName="inbox"
         title="Nenhum conteúdo importado"
         description="Conecte uma plataforma e execute uma sincronização para importar vídeos, posts e produtos externos."
         action={

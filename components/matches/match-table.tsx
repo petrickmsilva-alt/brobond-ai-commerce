@@ -3,7 +3,7 @@
 import Link from "next/link";
 
 import { useState, useTransition } from "react";
-import { CircleAlert, CircleCheck, Inbox, Link2, Loader2, Trash2 } from "lucide-react";
+import { CircleAlert, CircleCheck, Link2, Loader2, Trash2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -85,7 +85,7 @@ export function MatchTable({ items, canManage }: MatchTableProps) {
     // §10 — matches are derived data: send the user to their inputs.
     return (
       <TableEmptyState
-        icon={Inbox}
+        iconName="inbox"
         title="Nenhum match gerado"
         description="Os matches são calculados a partir do conteúdo importado e do seu catálogo. Importe produtos e conteúdo para gerar os primeiros pareamentos."
         action={

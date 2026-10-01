@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { FilterX, type LucideIcon } from "lucide-react";
+import { FilterX, Inbox, Package, Users, Wallet, type LucideIcon } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 
@@ -27,7 +27,33 @@ import { Button } from "@/components/ui/button";
  * The CTA is passed in by the caller because only the page knows what the
  * user is permitted to do — RBAC stays where it belongs (§11), and a MEMBER
  * is never shown a button that would fail server-side.
+ *
+ * SERIALIZABLE ICON CONTRACT (PR016)
+ * ----------------------------------
+ * This is a Client Component, so it may NEVER receive a lucide icon as a
+ * prop from a Server Component — a component reference is a function, and
+ * functions cannot cross the server→client boundary ("Functions cannot be
+ * passed directly to Client Components"; this exact mistake crashed the
+ * isolated connector screens with the global error screen). Callers pass a
+ * plain STRING identifier via `iconName`; the icon is resolved from the
+ * registry below, INSIDE this Client Component. The literal-union type makes
+ * an unknown identifier a compile-time error instead of a runtime hole.
  */
+
+/**
+ * The icons this empty state may show, keyed by their serializable
+ * identifiers. Rendered only on the client — the values never travel
+ * through the RSC payload.
+ */
+const ICONS = {
+  inbox: Inbox,
+  package: Package,
+  users: Users,
+  wallet: Wallet,
+} as const satisfies Record<string, LucideIcon>;
+
+/** Serializable icon identifier accepted by `TableEmptyState` (PR016). */
+export type TableEmptyStateIconName = keyof typeof ICONS;
 
 /** Query keys that mean "the user narrowed this list". */
 const FILTER_KEYS = [
@@ -47,8 +73,13 @@ const FILTER_KEYS = [
 ];
 
 export interface TableEmptyStateProps {
-  /** Icon for the "no data at all" case. */
-  icon?: LucideIcon;
+  /**
+   * Icon for the "no data at all" case — a plain string so Server Components
+   * can pass it across the RSC boundary (PR016). Resolved to the lucide
+   * component inside this Client Component; unknown identifiers are
+   * compile-time errors. Omit it to keep EmptyState's default (Inbox).
+   */
+  iconName?: TableEmptyStateIconName;
   /** Headline when the workspace has no data yet. */
   title: string;
   /** Supporting copy for the same case. */
@@ -63,7 +94,7 @@ export interface TableEmptyStateProps {
 }
 
 export function TableEmptyState({
-  icon,
+  iconName,
   title,
   description,
   action,
@@ -98,11 +129,15 @@ export function TableEmptyState({
     );
   }
 
+  // PR016 — the lucide component is resolved HERE, on the client, from the
+  // serializable identifier; only the string ever crossed the boundary.
+  const Icon = iconName ? ICONS[iconName] : undefined;
+
   return (
     <EmptyState
       size="md"
       bordered={false}
-      icon={icon}
+      icon={Icon}
       title={title}
       description={description}
       action={action}

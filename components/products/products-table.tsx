@@ -129,7 +129,7 @@ export function ProductsTable({ items, canEdit, canDelete }: ProductsTableProps)
     // the server would refuse (RBAC §11).
     return (
       <TableEmptyState
-        icon={Package}
+        iconName="package"
         title="Nenhum produto no catálogo"
         description="Importe seu catálogo do TikTok Shop ou cadastre o primeiro produto para começar a montar campanhas."
         action={

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowDown, ArrowUp, ArrowUpDown, Users } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import type { CreatorListItemDTO } from "@/modules/creators/crm/dto/creator.dto";
 import type { CreatorStatusName } from "@/modules/creators/interfaces/creator.interface";
 import { CREATOR_SOURCE_LABELS } from "@/modules/creators/interfaces/creator.interface";
@@ -87,7 +87,7 @@ export function CreatorsTable({ items }: CreatorsTableProps) {
     // §10 — point at the two ways a workspace gets its first creators.
     return (
       <TableEmptyState
-        icon={Users}
+        iconName="users"
         title="Nenhum creator no CRM"
         description="Sincronize o TikTok Shop para descobrir creators do marketplace ou cadastre um profile manualmente."
         action={
