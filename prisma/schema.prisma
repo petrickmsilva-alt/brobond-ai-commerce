@@ -125,14 +125,18 @@ enum TemplateType {
   REENGAGEMENT
 }
 
-/// Platform a connector talks to (PR005 — Connector Framework).
-/// `MOCK` is the only implemented platform: TIKTOK, INSTAGRAM and SHOPEE are
-/// registered placeholders — NO real API is integrated in PR005, by design.
+/// Platform a connector talks to (PR005 — Connector Framework, extended in
+/// PR012 — Real Marketplace Integrations). `MOCK` is the deterministic local
+/// dataset used in development/tests; the other five platforms are real,
+/// server-only official API integrations (TikTok Shop, Instagram Shopping,
+/// Shopee, Mercado Livre and Mercado Pago).
 enum ConnectorPlatform {
   MOCK
   TIKTOK
   INSTAGRAM
   SHOPEE
+  MERCADOLIVRE
+  MERCADOPAGO
 }
 
 /// Operational state of one connector inside one workspace (PR005).
@@ -282,6 +286,30 @@ enum ApprovalRequestStatus {
   REJECTED
 }
 
+/// Marketplace/payment provider integrated through the unified `Connector`
+/// model (PR012 — Real Marketplace Integrations). All five providers use
+/// official production APIs only: TikTok Shop Partner Center, Meta Graph
+/// API (Instagram Shopping), Shopee Open Platform v2 (HMAC-signed),
+/// Mercado Livre OAuth2 (Meli API) and Mercado Pago API credentials.
+enum ConnectorProvider {
+  TIKTOK
+  INSTAGRAM
+  SHOPEE
+  MERCADOLIVRE
+  MERCADOPAGO
+}
+
+/// Credential lifecycle of one unified `Connector` connection (PR012).
+/// `DISCONNECTED` = no valid credential · `CONNECTED` = credential valid ·
+/// `EXPIRED` = token expired and could not be refreshed · `ERROR` = last
+/// provider call failed.
+enum ConnectionStatus {
+  DISCONNECTED
+  CONNECTED
+  EXPIRED
+  ERROR
+}
+
 // ------------------------------------------------------------------
 // Tenancy
 // ------------------------------------------------------------------
@@ -383,6 +411,13 @@ model Organization {
   aiDecisionRuns   AIDecisionRun[]
   aiDecisions      AIDecision[]
   executiveReports ExecutiveReport[]
+
+  // Real Marketplace Integrations (PR012) — unified provider connections,
+  // OAuth states and the idempotent webhook inbox. Secrets never leave the
+  // server; tokens are AES-256-GCM ciphertexts.
+  connectors           Connector[]
+  connectorOAuthStates ConnectorOAuthState[]
+  connectorEvents      ConnectorEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1002,11 +1037,11 @@ model FollowUpSequence {
 /// connector — is it enabled, when did it last sync, how did that run go and
 /// what are its cumulative counters (the dashboard KPIs).
 ///
-/// NO real API is integrated in PR005. `MOCK` is the only implemented
-/// connector; TIKTOK/INSTAGRAM/SHOPEE are placeholders registered in the
-/// factory (`modules/connectors/core/connector.factory.ts`) that throw
-/// `Not implemented` on `fetchContent()`. Credentials are deliberately NOT
-/// modelled here — a future PR adds a secret reference, never a raw token.
+/// PR012 wires the five real platforms behind the framework: TikTok Shop,
+/// Instagram Shopping, Shopee, Mercado Livre and Mercado Pago fetch through
+/// the official APIs using the credentials persisted on the unified
+/// `Connector` model. `MOCK` remains the deterministic local dataset for
+/// development and tests.
 model ConnectorStatus {
   id       String            @id @default(cuid())
   platform ConnectorPlatform
@@ -1170,6 +1205,116 @@ model AuditLog {
   @@unique([organizationId, externalEventId])
   @@index([organizationId, createdAt])
   @@index([organizationId, action])
+}
+
+// ------------------------------------------------------------------
+// Real Marketplace Integrations (PR012)
+// ------------------------------------------------------------------
+
+/// Unified, tenant-isolated connection to one marketplace/payment provider
+/// (PR012 — Real Marketplace Integrations): TikTok Shop, Instagram Shopping,
+/// Shopee, Mercado Livre and Mercado Pago.
+///
+/// SECURITY CONTRACT: `accessToken`, `refreshToken`, `clientSecret` and
+/// `publicKey` are AES-256-GCM ciphertexts produced with
+/// `CONNECTOR_ENCRYPTION_KEY` (`modules/marketplace/core/crypto.service.ts`).
+/// Plaintext credentials are NEVER stored, NEVER selected into dashboard DTOs
+/// and NEVER returned to the browser.
+///
+/// MULTI-TENANCY CONTRACT: one row per `(organizationId, provider)`; every
+/// read/write is scoped through `tenantWhere`/`scopedWhere` (lib/tenant.ts).
+model Connector {
+  id String @id @default(cuid())
+
+  // Tenant — REQUIRED. Strict tenant isolation, cascade with the workspace.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  provider ConnectorProvider
+  status   ConnectionStatus  @default(DISCONNECTED)
+
+  /// Provider-side identity: TikTok shop id, Instagram Business Account id,
+  /// Shopee shop_id, Mercado Livre user id or Mercado Pago collector id.
+  shopId   String?
+  shopName String?
+
+  /// AES-256-GCM ciphertexts (`v1.iv.tag.value`, base64url). Never plaintext.
+  accessToken  String? @db.Text
+  refreshToken String? @db.Text
+  clientSecret String? @db.Text
+  /// Mercado Pago public key used by the checkout billing flow. Stored
+  /// encrypted as well — the dashboard receives only a masked preview.
+  publicKey    String? @db.Text
+
+  /// Access-token expiry. `null` for non-expiring credentials.
+  expiresAt DateTime?
+
+  /// Consolidated REAL sync metrics — the KPI counters rendered on the five
+  /// connector cards (importados · duplicados · falhas).
+  importedCount   Int @default(0)
+  duplicatedCount Int @default(0)
+  failedCount     Int @default(0)
+  /// How many sync runs have been executed for this connection.
+  syncCount       Int @default(0)
+
+  lastSyncAt DateTime?
+  lastError  String?
+
+  /// Non-secret provider extras (scopes, site id, nickname…).
+  metadata Json?
+
+  events ConnectorEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, provider])
+  @@index([organizationId, status])
+  @@index([provider, shopId])
+}
+
+/// Short-lived, one-time server-side CSRF state for the Shopee and Mercado
+/// Livre OAuth redirects (PR012). Only a SHA-256 digest of the opaque state
+/// is persisted; the raw value exists only in the provider redirect URL.
+model ConnectorOAuthState {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  provider  ConnectorProvider
+  stateHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, provider, expiresAt])
+}
+
+/// Durable, idempotent webhook inbox for the five real providers (PR012).
+///
+/// IDEMPOTENCY CONTRACT: `(organizationId, provider, externalEventId)` is
+/// unique, so at-least-once provider deliveries (catalog updates, new
+/// fashion orders, payment/billing status) are processed exactly once — the
+/// handler upserts on this key instead of inserting blindly.
+model ConnectorEvent {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  connectorId String?
+  connector   Connector? @relation(fields: [connectorId], references: [id], onDelete: SetNull)
+
+  provider        ConnectorProvider
+  externalEventId String
+  topic           String?
+  payload         Json?
+  processedAt     DateTime?
+  createdAt       DateTime @default(now())
+
+  @@unique([organizationId, provider, externalEventId])
+  @@index([organizationId, provider, createdAt])
+  @@index([connectorId])
 }
 
 // ------------------------------------------------------------------

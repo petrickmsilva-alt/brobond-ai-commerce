@@ -13,27 +13,27 @@
  *   against the dark premium surfaces.
  */
 
-/** Indigo brand ramp — primary action, focus, active navigation. */
+/** BroBond brand ramp — primary action, focus, and premium highlights. */
 export const brand = {
-  50: "#eef2ff",
-  100: "#e0e7ff",
-  200: "#c7d2fe",
-  300: "#a5b4fc",
-  400: "#818cf8",
-  500: "#6366f1",
-  600: "#4f46e5",
-  700: "#4338ca",
-  800: "#3730a3",
-  900: "#312e81",
+  50: "#f8f2d9",
+  100: "#f3e6b7",
+  200: "#ecd38b",
+  300: "#dfbb61",
+  400: "#d2a84a",
+  500: "#c79a37",
+  600: "#b78326",
+  700: "#8a621f",
+  800: "#5b3f16",
+  900: "#2f220d",
 } as const;
 
-/** Violet accent ramp — secondary gradient stop, data-viz series #2. */
+/** Graphite accent ramp — neutral partner for the warm brand highlights. */
 export const accent = {
-  300: "#d8b4fe",
-  400: "#c084fc",
-  500: "#a855f7",
-  600: "#9333ea",
-  700: "#7e22ce",
+  300: "#dfe4ea",
+  400: "#b8c0cb",
+  500: "#909cab",
+  600: "#697788",
+  700: "#455261",
 } as const;
 
 /**
@@ -41,13 +41,13 @@ export const accent = {
  * one elevation level (sidebar → card → popover → hover).
  */
 export const surface = {
-  950: "#0a0a0f",
-  900: "#0e0e14",
-  850: "#14141c",
-  800: "#1a1a24",
-  700: "#24242f",
-  600: "#33333f",
-  500: "#4a4a58",
+  950: "#07080a",
+  900: "#0b0d11",
+  850: "#12171c",
+  800: "#1a1f25",
+  700: "#252b32",
+  600: "#343d46",
+  500: "#4d5863",
 } as const;
 
 /**

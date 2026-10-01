@@ -367,15 +367,13 @@ describe("sync-connector job — failures (the 'Falhas' KPI)", () => {
   });
 });
 
-describe("sync-connector job — placeholder platforms", () => {
-  const placeholders = [
-    ConnectorPlatform.TIKTOK,
-    ConnectorPlatform.INSTAGRAM,
-    ConnectorPlatform.SHOPEE,
-  ];
-
-  it("records a placeholder sync as ERROR without throwing", async () => {
-    for (const platform of placeholders) {
+describe("sync-connector job — unimplemented connectors", () => {
+  it("records an unimplemented connector sync as ERROR without throwing", async () => {
+    for (const platform of [
+      ConnectorPlatform.TIKTOK,
+      ConnectorPlatform.INSTAGRAM,
+      ConnectorPlatform.SHOPEE,
+    ]) {
       const { repository, recorded } = fakeRepository();
       const job = createConnectorSyncJob({
         resolve: () => ({
@@ -389,7 +387,7 @@ describe("sync-connector job — placeholder platforms", () => {
             platform,
             ok: false,
             implemented: false,
-            message: "placeholder",
+            message: "not available",
           }),
         }),
         repository,
@@ -400,13 +398,13 @@ describe("sync-connector job — placeholder platforms", () => {
       expect(result.status).toBe("failed");
       expect(result.state).toBe("ERROR");
       expect(result.imported).toBe(0);
-      expect(result.error).toMatch(/não foi implementado/i);
+      expect(result.error).toMatch(/não está disponível/i);
       expect(recorded[0]?.state).toBe("ERROR");
-      expect(recorded[0]?.lastError).toMatch(/não foi implementado/i);
+      expect(recorded[0]?.lastError).toMatch(/não está disponível/i);
     }
   });
 
-  it("uses the REAL factory placeholders end-to-end (no injection)", async () => {
+  it("a real adapter without credentials fails the sync without throwing", async () => {
     const { repository } = fakeRepository();
     const job = createConnectorSyncJob({ repository });
 
@@ -416,7 +414,7 @@ describe("sync-connector job — placeholder platforms", () => {
     expect(result.state).toBe("ERROR");
   });
 
-  it("a placeholder failure never creates content rows", async () => {
+  it("an adapter failure never creates content rows", async () => {
     const { repository, rows } = fakeRepository();
     const job = createConnectorSyncJob({ repository });
 
@@ -453,7 +451,7 @@ describe("sync-connector job — error handling", () => {
     expect(result.error).toMatch(/No Connector is registered/);
   });
 
-  it("a non-placeholder fetch failure is recorded with its message", async () => {
+  it("a non-adapter fetch failure is recorded with its message", async () => {
     const { repository: repo, recorded } = fakeRepository();
     const job = createConnectorSyncJob({
       resolve: () => ({

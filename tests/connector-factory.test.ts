@@ -12,18 +12,18 @@ import { MockConnector } from "@/modules/connectors/mock/mock.connector";
 import { TikTokConnector } from "@/modules/connectors/tiktok/tiktok.connector";
 import { InstagramConnector } from "@/modules/connectors/instagram/instagram.connector";
 import { ShopeeConnector } from "@/modules/connectors/shopee/shopee.connector";
+import { MercadoLivreConnector } from "@/modules/connectors/mercadolivre/mercadolivre.connector";
+import { MercadoPagoConnector } from "@/modules/connectors/mercadopago/mercadopago.connector";
 import type { Connector } from "@/modules/connectors/core/connector.interface";
-import {
-  ConnectorNotImplementedError,
-  ConnectorNotRegisteredError,
-} from "@/modules/connectors/core/connector.interface";
+import { ConnectorNotRegisteredError } from "@/modules/connectors/core/connector.interface";
 
 /**
- * PR005 — the connector factory.
+ * PR005/PR012 — the connector factory.
  *
  * `getConnector(platform)` is the ONLY supported way to obtain a connector.
- * MOCK and the server-only TikTok Shop adapter are implemented; Instagram and
- * Shopee remain placeholders.
+ * MOCK is the deterministic local dataset; TikTok Shop, Instagram Shopping,
+ * Shopee, Mercado Livre and Mercado Pago are real, server-only official API
+ * adapters (PR012). No placeholders remain.
  */
 
 describe("getConnector", () => {
@@ -35,12 +35,20 @@ describe("getConnector", () => {
     expect(getConnector(ConnectorPlatform.TIKTOK)).toBeInstanceOf(TikTokConnector);
   });
 
-  it("resolves INSTAGRAM to the Instagram placeholder", () => {
+  it("resolves INSTAGRAM to the real Instagram Shopping adapter", () => {
     expect(getConnector(ConnectorPlatform.INSTAGRAM)).toBeInstanceOf(InstagramConnector);
   });
 
-  it("resolves SHOPEE to the Shopee placeholder", () => {
+  it("resolves SHOPEE to the real Shopee Open Platform adapter", () => {
     expect(getConnector(ConnectorPlatform.SHOPEE)).toBeInstanceOf(ShopeeConnector);
+  });
+
+  it("resolves MERCADOLIVRE to the real Meli API adapter", () => {
+    expect(getConnector(ConnectorPlatform.MERCADOLIVRE)).toBeInstanceOf(MercadoLivreConnector);
+  });
+
+  it("resolves MERCADOPAGO to the real Mercado Pago adapter", () => {
+    expect(getConnector(ConnectorPlatform.MERCADOPAGO)).toBeInstanceOf(MercadoPagoConnector);
   });
 
   it("every resolved connector declares its own platform", () => {
@@ -77,7 +85,7 @@ describe("getConnector", () => {
 });
 
 describe("getDefaultConnector", () => {
-  it("returns the mock connector (the only implemented one in PR005)", () => {
+  it("returns the mock connector (the deterministic local dataset)", () => {
     expect(getDefaultConnector()).toBeInstanceOf(MockConnector);
     expect(getDefaultConnector().implemented).toBe(true);
   });
@@ -89,7 +97,14 @@ describe("getDefaultConnector", () => {
 
 describe("registry helpers", () => {
   it("lists every platform in declaration order (MOCK first)", () => {
-    expect(listConnectorPlatforms()).toEqual(["MOCK", "TIKTOK", "INSTAGRAM", "SHOPEE"]);
+    expect(listConnectorPlatforms()).toEqual([
+      "MOCK",
+      "TIKTOK",
+      "INSTAGRAM",
+      "SHOPEE",
+      "MERCADOLIVRE",
+      "MERCADOPAGO",
+    ]);
   });
 
   it("getAllConnectors returns one adapter per registered platform", () => {
@@ -98,9 +113,9 @@ describe("registry helpers", () => {
     expect(connectors.map((connector) => connector.platform)).toEqual(listConnectorPlatforms());
   });
 
-  it("getImplementedConnectors includes MOCK and real TikTok Shop", () => {
+  it("getImplementedConnectors covers every registered platform (PR012)", () => {
     const implemented = getImplementedConnectors();
-    expect(implemented).toHaveLength(2);
+    expect(implemented).toHaveLength(Object.values(ConnectorPlatform).length);
     expect(implemented[0]).toBeInstanceOf(MockConnector);
     expect(implemented[1]).toBeInstanceOf(TikTokConnector);
   });
@@ -123,34 +138,35 @@ describe("TikTok Shop adapter", () => {
   });
 });
 
-describe("placeholder adapters (Instagram · Shopee)", () => {
-  const placeholders = [ConnectorPlatform.INSTAGRAM, ConnectorPlatform.SHOPEE];
+describe("real marketplace adapters (PR012)", () => {
+  const realAdapters: Array<{ platform: ConnectorPlatform; errorName: string }> = [
+    { platform: ConnectorPlatform.INSTAGRAM, errorName: "InstagramConnectionRequiredError" },
+    { platform: ConnectorPlatform.SHOPEE, errorName: "ShopeeConnectionRequiredError" },
+    { platform: ConnectorPlatform.MERCADOLIVRE, errorName: "MercadoLivreConnectionRequiredError" },
+    { platform: ConnectorPlatform.MERCADOPAGO, errorName: "MercadoPagoConnectionRequiredError" },
+  ];
 
-  it("declares placeholders as not implemented", () => {
-    for (const platform of placeholders) {
-      expect(getConnector(platform).implemented).toBe(false);
+  it("declares every marketplace adapter as implemented", () => {
+    for (const { platform } of realAdapters) {
+      expect(getConnector(platform).implemented).toBe(true);
     }
   });
 
-  it("throw ConnectorNotImplementedError on fetchContent()", async () => {
-    for (const platform of placeholders) {
-      await expect(getConnector(platform).fetchContent()).rejects.toBeInstanceOf(
-        ConnectorNotImplementedError,
-      );
+  it("require a server-injected tenant scope on fetchContent()", async () => {
+    for (const { platform, errorName } of realAdapters) {
+      await expect(getConnector(platform).fetchContent()).rejects.toMatchObject({
+        name: errorName,
+      });
     }
   });
 
-  it("carry the offending platform on the thrown error", async () => {
-    for (const platform of placeholders) {
-      await expect(getConnector(platform).fetchContent()).rejects.toMatchObject({ platform });
-    }
-  });
-
-  it("testConnection() never throws — it reports 'não implementado'", async () => {
-    for (const platform of placeholders) {
+  it("testConnection() never throws and always reports a real adapter", async () => {
+    for (const { platform } of realAdapters) {
       const health = await getConnector(platform).testConnection();
-      expect(health).toMatchObject({ platform, ok: false, implemented: false });
-      expect(health.message).toMatch(/placeholder/i);
+      expect(health.platform).toBe(platform);
+      expect(health.implemented).toBe(true);
+      expect(typeof health.ok).toBe("boolean");
+      expect(health.message.length).toBeGreaterThan(0);
     }
   });
 });

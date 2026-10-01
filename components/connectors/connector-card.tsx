@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import {
   CircleAlert,
   CircleCheck,
+  Link2,
   Loader2,
   Plug,
   Power,
@@ -12,7 +13,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { ConnectorStateBadge } from "./connector-state-badge";
 import type { ConnectorStatusDTO } from "@/modules/connectors/core/connector.dto";
 import {
@@ -21,13 +21,12 @@ import {
   toggleConnectorAction,
 } from "@/app/dashboard/connectors/actions";
 
+const CONNECT_TIKTOK_PATH = "/dashboard/tiktok";
+
 /**
  * One connector card: platform, state, counters and the ADMIN affordances
  * (sincronizar · ativar/desativar · testar). Every action re-asserts
  * `requireAdmin()` server-side — these buttons are affordances only.
- *
- * A placeholder platform renders the "não implementado" badge and its sync
- * is expected to fail (recorded as an ERROR state, never a crash).
  */
 interface ConnectorCardProps {
   connector: ConnectorStatusDTO;
@@ -103,10 +102,7 @@ export function ConnectorCard({ connector, canManage }: ConnectorCardProps) {
               <p className="text-xs text-white/40">{connector.platform}</p>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1.5">
-            <ConnectorStateBadge state={connector.state} />
-            {!connector.implemented && <Badge tone="neutral">placeholder</Badge>}
-          </div>
+          <ConnectorStateBadge state={connector.state} />
         </div>
 
         <dl className="grid grid-cols-3 gap-2 text-center">
@@ -143,6 +139,20 @@ export function ConnectorCard({ connector, canManage }: ConnectorCardProps) {
 
         {canManage ? (
           <div className="mt-auto flex flex-wrap gap-2">
+            {connector.platform === "TIKTOK" && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  setFeedback(null);
+                  window.location.assign(CONNECT_TIKTOK_PATH);
+                }}
+                disabled={isPending}
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                Conectar
+              </Button>
+            )}
             <Button size="sm" onClick={runSync} disabled={isPending}>
               {isPending ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

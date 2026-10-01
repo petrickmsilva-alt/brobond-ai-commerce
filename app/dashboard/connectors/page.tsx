@@ -1,10 +1,18 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { UserRole } from "@prisma/client";
-import { AlertTriangle, CopyCheck, DownloadCloud, Plug } from "lucide-react";
+import {
+  AlertTriangle,
+  CircleCheck,
+  CircleAlert,
+  CopyCheck,
+  DownloadCloud,
+  Plug,
+} from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { KpiCard } from "@/components/dashboard/kpi-card";
+import { ConnectorsGrid } from "@/components/dashboard/connectors-grid";
 import { ConnectorCard } from "@/components/connectors/connector-card";
 import { ContentTable } from "@/components/connectors/content-table";
 import { ContentToolbar } from "@/components/connectors/content-toolbar";
@@ -19,26 +27,31 @@ import {
 import { getAllConnectors } from "@/modules/connectors/core/connector.factory";
 import { connectorRepository } from "@/modules/connectors/core/connector.repository";
 import { contentListQuerySchema } from "@/modules/connectors/core/connector.validator";
+import { marketplaceService } from "@/modules/marketplace/core/connector.service";
+import {
+  CONNECTOR_PROVIDER_LABELS,
+  isConnectorProviderName,
+} from "@/modules/marketplace/core/providers";
 
 export const metadata: Metadata = {
   title: "Conectores",
 };
 
 /**
- * Connectors dashboard (PR005 — Connector Framework).
+ * Connectors dashboard (PR005 framework · PR012 real integrations).
+ *
+ * Marketplaces & Pagamentos: five real provider cards (TikTok Shop,
+ * Instagram Shopping, Shopee, Mercado Livre, Mercado Pago) with OAuth2 /
+ * API-key connect, live sync and consolidated counters.
  *
  * KPIs: Importados · Duplicados · Falhas · Conectores ativos.
- * Grid: one card per registered connector (state, counters, ADMIN actions).
  * Table: conteúdo externo importado — busca, filtros (plataforma, status,
  * tipo), ordenação e paginação em URL-state, responsivo.
  *
  * RBAC (UI affordances; the server actions re-check on every mutation):
- *   ADMIN   → sincronizar · ativar/desativar · testar conector
+ *   ADMIN   → conectar · sincronizar · ativar/desativar · testar
  *   MANAGER → visualizar
  *   MEMBER  → somente leitura
- *
- * NO real API is integrated: MOCK is the only implemented connector and the
- * other three are placeholders — syncing them records an ERROR state.
  */
 export default async function ConnectorsPage({
   searchParams,
@@ -55,10 +68,11 @@ export default async function ConnectorsPage({
     ),
   );
 
-  const [{ items, total }, kpis, statuses] = await Promise.all([
+  const [{ items, total }, kpis, statuses, marketplaceCards] = await Promise.all([
     connectorRepository.listContent(organizationId, query),
     connectorRepository.kpis(organizationId),
     connectorRepository.listStatuses(organizationId),
+    marketplaceService.listConnectorCards(organizationId),
   ]);
 
   // The factory is the source of truth for WHICH connectors exist; the
@@ -86,12 +100,45 @@ export default async function ConnectorsPage({
   const canManage = isAdmin(user.role);
   const isMember = user.role === UserRole.MEMBER;
 
+  // OAuth feedback banner (set by the provider callback redirects).
+  const oauthResult = typeof raw.oauth === "string" ? raw.oauth : undefined;
+  const oauthProviderRaw = typeof raw.provider === "string" ? raw.provider.toUpperCase() : "";
+  const oauthProvider = isConnectorProviderName(oauthProviderRaw)
+    ? CONNECTOR_PROVIDER_LABELS[oauthProviderRaw]
+    : null;
+
   return (
     <>
       <PageHeader
         title="Conectores"
-        description="Connector Framework — arquitetura multi-plataforma para importar conteúdo externo. Mock implementado; TikTok, Instagram e Shopee são placeholders (nenhuma API real integrada)."
+        description="Integrações oficiais em produção: TikTok Shop, Instagram Shopping, Shopee, Mercado Livre e Mercado Pago — conexão OAuth2 / API keys, sincronização real e contadores consolidados."
       />
+
+      {oauthResult === "connected" && (
+        <p
+          role="status"
+          className="mb-6 flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300"
+        >
+          <CircleCheck className="mt-0.5 h-4 w-4 shrink-0" />
+          {oauthProvider
+            ? `${oauthProvider} conectado com sucesso. As credenciais foram criptografadas e já podem sincronizar.`
+            : "Conector conectado com sucesso."}
+        </p>
+      )}
+      {oauthResult === "error" && (
+        <p
+          role="alert"
+          className="mb-6 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"
+        >
+          <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          {oauthProvider
+            ? `Não foi possível conectar ${oauthProvider}. Verifique as credenciais do aplicativo e tente novamente.`
+            : "Não foi possível concluir a conexão. Tente novamente."}
+        </p>
+      )}
+
+      <h2 className="mb-3 text-sm font-medium text-white/70">Marketplaces & Pagamentos</h2>
+      <ConnectorsGrid connectors={marketplaceCards} canManage={canManage} />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard label="Importados" value={String(kpiData.imported)} icon={DownloadCloud} />

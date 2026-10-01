@@ -1,6 +1,6 @@
 /**
- * Connector Factory (PR005) — the SINGLE point where a `ConnectorPlatform`
- * resolves to its `Connector`.
+ * Connector Factory (PR005, extended in PR012) — the SINGLE point where a
+ * `ConnectorPlatform` resolves to its `Connector`.
  *
  * `getConnector(platform)` is the only supported way to obtain a connector;
  * mapping a platform to an implementation must never happen through a
@@ -14,6 +14,8 @@
 
 import { ConnectorPlatform } from "@prisma/client";
 import { InstagramConnector } from "../instagram/instagram.connector";
+import { MercadoLivreConnector } from "../mercadolivre/mercadolivre.connector";
+import { MercadoPagoConnector } from "../mercadopago/mercadopago.connector";
 import { MockConnector } from "../mock/mock.connector";
 import { ShopeeConnector } from "../shopee/shopee.connector";
 import { TikTokConnector } from "../tiktok/tiktok.connector";
@@ -29,6 +31,8 @@ const CONNECTOR_BUILDERS: Record<ConnectorPlatform, () => Connector> = {
   TIKTOK: () => new TikTokConnector(),
   INSTAGRAM: () => new InstagramConnector(),
   SHOPEE: () => new ShopeeConnector(),
+  MERCADOLIVRE: () => new MercadoLivreConnector(),
+  MERCADOPAGO: () => new MercadoPagoConnector(),
 };
 
 const instances = new Map<ConnectorPlatform, Connector>();
@@ -66,14 +70,14 @@ export function isConnectorRegistered(platform: ConnectorPlatform): boolean {
 }
 
 /**
- * The connector actually implemented in PR005 — the MOCK one. Equivalent to
- * `getConnector(ConnectorPlatform.MOCK)`.
+ * The connector used for local development and tests — the MOCK one.
+ * Equivalent to `getConnector(ConnectorPlatform.MOCK)`.
  */
 export function getDefaultConnector(): Connector {
   return getConnector(ConnectorPlatform.MOCK);
 }
 
-/** Connectors whose adapter is implemented (PR005: MOCK only). */
+/** Connectors whose adapter is a real implementation (PR012: every one). */
 export function getImplementedConnectors(): Connector[] {
   return getAllConnectors().filter((connector) => connector.implemented);
 }

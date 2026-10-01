@@ -1,21 +1,4 @@
-/**
- * Instagram Connector — PLACEHOLDER (PR005).
- *
- * Reserved for the real Instagram source (a future PR): Graph API /
- * Instagram Basic Display. The contract is already pinned here and tested,
- * so wiring the real implementation must not touch any caller —
- * `getConnector(ConnectorPlatform.INSTAGRAM)` keeps resolving to this class
- * until then.
- *
- * NO network access, NO SDK, NO credentials are used in PR005 — by design.
- * When the real adapter lands it must:
- *   1. read its secret through a server-only secret reference (never a raw
- *      token in the database, never in the client bundle);
- *   2. map the provider payload onto `NormalizedContent` inside this file,
- *      so nothing downstream learns the provider's shape;
- *   3. flip `implemented` to `true` — the dashboard and the sync service
- *      key off that flag, not off try/catch.
- */
+import "server-only";
 
 import { ConnectorPlatform } from "@prisma/client";
 import type {
@@ -24,19 +7,47 @@ import type {
   FetchContentOptions,
   NormalizedContent,
 } from "../core/connector.interface";
-import { ConnectorNotImplementedError, placeholderHealth } from "../core/connector.interface";
 
+export class InstagramConnectionRequiredError extends Error {
+  constructor(
+    message = "Connect an Instagram Business account before synchronizing this connector.",
+  ) {
+    super(message);
+    this.name = "InstagramConnectionRequiredError";
+  }
+}
+
+/**
+ * Instagram Shopping adapter backed exclusively by the official Graph API
+ * (PR012). Credentials come from the PR010 OAuth flow, mirrored onto the
+ * unified Connector model; tokens rotate transparently before expiry.
+ */
 export class InstagramConnector implements Connector {
   readonly platform: ConnectorPlatform = ConnectorPlatform.INSTAGRAM;
-  readonly name = "Instagram Connector";
-  readonly implemented = false;
+  readonly name = "Instagram Shopping";
+  readonly implemented = true;
 
-  async fetchContent(_options: FetchContentOptions = {}): Promise<NormalizedContent[]> {
-    void _options;
-    throw new ConnectorNotImplementedError(this.platform);
+  async fetchContent(options: FetchContentOptions = {}): Promise<NormalizedContent[]> {
+    if (!options.organizationId) {
+      throw new InstagramConnectionRequiredError(
+        "Instagram Shopping sync requires an organization scope.",
+      );
+    }
+    // Lazy import keeps Prisma out of any browser-adjacent module graph.
+    const { fetchInstagramContent } =
+      await import("@/modules/marketplace/instagram/instagram-bridge.service");
+    return fetchInstagramContent(options.organizationId, options.limit ?? 50);
   }
 
   async testConnection(): Promise<ConnectorHealth> {
-    return placeholderHealth(this.platform, this.name);
+    const configured = Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET);
+    return {
+      platform: this.platform,
+      ok: configured,
+      implemented: true,
+      message: configured
+        ? "Integração oficial pronta. Conecte uma conta Instagram Business para validar as permissões."
+        : "Configure META_APP_ID e META_APP_SECRET no servidor para conectar uma conta.",
+    };
   }
 }

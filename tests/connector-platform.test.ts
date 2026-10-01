@@ -29,7 +29,7 @@ import {
 } from "@/modules/connectors/core/connector.validator";
 
 /**
- * PR005 — the connector enums and their TypeScript mirrors.
+ * PR005/PR012 — the connector enums and their TypeScript mirrors.
  *
  * Each enum exists in THREE places that must never drift apart:
  *   1. Prisma (`prisma/schema.prisma` — the database);
@@ -42,8 +42,15 @@ import {
  */
 
 describe("ConnectorPlatform (Prisma enum)", () => {
-  it("has exactly the four PR005 platforms", () => {
-    expect(Object.values(ConnectorPlatform)).toEqual(["MOCK", "TIKTOK", "INSTAGRAM", "SHOPEE"]);
+  it("has exactly the six platforms (MOCK + five real integrations)", () => {
+    expect(Object.values(ConnectorPlatform)).toEqual([
+      "MOCK",
+      "TIKTOK",
+      "INSTAGRAM",
+      "SHOPEE",
+      "MERCADOLIVRE",
+      "MERCADOPAGO",
+    ]);
   });
 
   it("maps each value to itself (string enum)", () => {
@@ -51,6 +58,8 @@ describe("ConnectorPlatform (Prisma enum)", () => {
     expect(ConnectorPlatform.TIKTOK).toBe("TIKTOK");
     expect(ConnectorPlatform.INSTAGRAM).toBe("INSTAGRAM");
     expect(ConnectorPlatform.SHOPEE).toBe("SHOPEE");
+    expect(ConnectorPlatform.MERCADOLIVRE).toBe("MERCADOLIVRE");
+    expect(ConnectorPlatform.MERCADOPAGO).toBe("MERCADOPAGO");
   });
 });
 
@@ -66,19 +75,18 @@ describe("CONNECTOR_PLATFORMS (client-safe mirror)", () => {
     }
   });
 
-  it("defaults to MOCK — the only implemented platform in PR005", () => {
+  it("defaults to MOCK — the deterministic local dataset", () => {
     expect(DEFAULT_CONNECTOR_PLATFORM).toBe("MOCK");
     expect(DEFAULT_CONNECTOR_PLATFORM).toBe(ConnectorPlatform.MOCK);
   });
 
-  it("keeps only Instagram and Shopee as placeholders after PR009", () => {
-    expect([...PLACEHOLDER_CONNECTOR_PLATFORMS]).toEqual(["INSTAGRAM", "SHOPEE"]);
-    expect(PLACEHOLDER_CONNECTOR_PLATFORMS).not.toContain("TIKTOK");
+  it("has no placeholders left after PR012 — every platform is real", () => {
+    expect([...PLACEHOLDER_CONNECTOR_PLATFORMS]).toEqual([]);
   });
 
-  it("default plus real TikTok plus placeholders cover every registered platform", () => {
+  it("registers MOCK plus the five real providers", () => {
     expect(
-      new Set([DEFAULT_CONNECTOR_PLATFORM, "TIKTOK", ...PLACEHOLDER_CONNECTOR_PLATFORMS]),
+      new Set(["MOCK", "TIKTOK", "INSTAGRAM", "SHOPEE", "MERCADOLIVRE", "MERCADOPAGO"]),
     ).toEqual(new Set(CONNECTOR_PLATFORMS));
   });
 });
@@ -176,7 +184,7 @@ describe("Zod schemas", () => {
 });
 
 describe("type guards", () => {
-  it("isConnectorPlatformName recognizes exactly the four platforms", () => {
+  it("isConnectorPlatformName recognizes exactly the six platforms", () => {
     for (const platform of CONNECTOR_PLATFORMS) {
       expect(isConnectorPlatformName(platform)).toBe(true);
     }

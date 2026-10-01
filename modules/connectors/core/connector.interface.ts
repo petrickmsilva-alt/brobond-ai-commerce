@@ -1,15 +1,15 @@
 /**
- * Connector Framework — module contracts (PR005).
+ * Connector Framework — module contracts (PR005, extended in PR012).
  *
  * This file is the plug-in surface of the connector layer: the `Connector`
  * interface every platform adapter implements, the normalized content shape
  * they return and the client-safe mirrors of the Prisma enums.
  *
- * SCOPE OF PR005 — ARCHITECTURE ONLY.
- * No real API is integrated: `MockConnector` is the single implemented
- * adapter; TikTok, Instagram and Shopee are placeholders that throw
- * `ConnectorNotImplementedError`. There is zero network access, zero
- * scraping, zero SDK and zero credential handling anywhere in the module.
+ * PR012 — REAL INTEGRATIONS: TikTok Shop, Instagram Shopping, Shopee,
+ * Mercado Livre and Mercado Pago are server-only official API adapters
+ * (OAuth2 / production API keys persisted encrypted on the unified
+ * `Connector` model). `MOCK` remains the deterministic local dataset for
+ * development and tests.
  *
  * CLIENT-SAFE on purpose: this file must never import `@prisma/client` as a
  * runtime value (only as a type) — the dashboard imports the platform list
@@ -32,7 +32,14 @@ import type {
  * `ConnectorPlatform` enum (`prisma/schema.prisma`); the sync is pinned by
  * `tests/connector-platform.test.ts`.
  */
-export const CONNECTOR_PLATFORMS = ["MOCK", "TIKTOK", "INSTAGRAM", "SHOPEE"] as const;
+export const CONNECTOR_PLATFORMS = [
+  "MOCK",
+  "TIKTOK",
+  "INSTAGRAM",
+  "SHOPEE",
+  "MERCADOLIVRE",
+  "MERCADOPAGO",
+] as const;
 
 export type ConnectorPlatformName = (typeof CONNECTOR_PLATFORMS)[number];
 
@@ -40,14 +47,11 @@ export type ConnectorPlatformName = (typeof CONNECTOR_PLATFORMS)[number];
 export const DEFAULT_CONNECTOR_PLATFORM: ConnectorPlatformName = "MOCK";
 
 /**
- * Platforms whose adapter is still a placeholder. TikTok Shop became a real,
- * server-only official API integration in PR009; Instagram and Shopee remain
- * intentionally unimplemented.
+ * Platforms whose adapter is still a placeholder. After PR012 every
+ * registered platform is a real integration — the list is intentionally
+ * empty and kept only so existing imports keep compiling.
  */
-export const PLACEHOLDER_CONNECTOR_PLATFORMS: readonly ConnectorPlatformName[] = [
-  "INSTAGRAM",
-  "SHOPEE",
-];
+export const PLACEHOLDER_CONNECTOR_PLATFORMS: readonly ConnectorPlatformName[] = [];
 
 /** pt-BR display labels for the dashboard. */
 export const CONNECTOR_PLATFORM_LABELS: Record<ConnectorPlatformName, string> = {
@@ -55,6 +59,8 @@ export const CONNECTOR_PLATFORM_LABELS: Record<ConnectorPlatformName, string> = 
   TIKTOK: "TikTok",
   INSTAGRAM: "Instagram",
   SHOPEE: "Shopee",
+  MERCADOLIVRE: "Mercado Livre",
+  MERCADOPAGO: "Mercado Pago",
 };
 
 // ------------------------------------------------------------------
@@ -173,7 +179,7 @@ export interface ConnectorHealth {
   platform: ConnectorPlatform;
   /** `true` only when the adapter can actually serve content. */
   ok: boolean;
-  /** `false` for every placeholder adapter (PR005: all but MOCK). */
+  /** `false` for placeholder adapters (none remain after PR012). */
   implemented: boolean;
   /** Human-readable pt-BR explanation shown in the dashboard. */
   message: string;
@@ -190,9 +196,9 @@ export interface ConnectorHealth {
  * `getConnector(platform)` (`connector.factory.ts`) — never instantiated
  * ad hoc by callers and never chosen through a `switch` outside the factory.
  *
- * `MockConnector` returns a deterministic in-memory dataset. TikTok Shop is
- * a server-only official API adapter (PR009); remaining placeholders throw
- * `ConnectorNotImplementedError`.
+ * `MockConnector` returns a deterministic in-memory dataset; the five real
+ * platforms are server-only official API adapters keyed by the encrypted
+ * credentials of the unified `Connector` model (PR012).
  */
 export interface Connector {
   /** Which platform this connector talks to (Prisma `ConnectorPlatform`). */
@@ -200,18 +206,18 @@ export interface Connector {
   /** Human-readable name shown in the dashboard. */
   readonly name: string;
   /**
-   * `false` while the adapter is a placeholder. The dashboard and the sync
-   * service read this instead of try/catching `fetchContent()`.
+   * `true` for every real adapter. The dashboard and the sync service read
+   * this instead of try/catching `fetchContent()`.
    */
   readonly implemented: boolean;
   /**
    * Fetch content from the platform, already normalized.
-   * @throws {ConnectorNotImplementedError} for placeholder adapters.
+   * @throws {ConnectorNotImplementedError} for unimplemented adapters.
    */
   fetchContent(options?: FetchContentOptions): Promise<NormalizedContent[]>;
   /**
-   * Probe the connector. NEVER throws — a placeholder reports
-   * `{ ok: false, implemented: false }` so the UI can render it calmly.
+   * Probe the connector. NEVER throws — reports env/connectivity readiness
+   * so the UI can render it calmly.
    */
   testConnection(): Promise<ConnectorHealth>;
 }
@@ -221,18 +227,15 @@ export interface Connector {
 // ------------------------------------------------------------------
 
 /**
- * Thrown by a placeholder adapter's `fetchContent()`. A dedicated class (and
- * not a bare `Error`) so the sync service can record a precise reason on
- * `ConnectorStatus.lastError` without string matching.
+ * Thrown by an unimplemented adapter's `fetchContent()`. A dedicated class
+ * (and not a bare `Error`) so the sync service can record a precise reason
+ * on `ConnectorStatus.lastError` without string matching.
  */
 export class ConnectorNotImplementedError extends Error {
   readonly platform: ConnectorPlatform;
 
   constructor(platform: ConnectorPlatform, detail?: string) {
-    super(
-      detail ??
-        `O conector "${String(platform)}" ainda não foi implementado — PR005 entrega apenas a arquitetura (nenhuma API real é integrada).`,
-    );
+    super(detail ?? `O conector "${String(platform)}" não está disponível neste ambiente.`);
     this.name = "ConnectorNotImplementedError";
     this.platform = platform;
   }
@@ -253,16 +256,17 @@ export class ConnectorNotRegisteredError extends Error {
 // Helpers
 // ------------------------------------------------------------------
 
-/**
- * Build a `ConnectorHealth` payload for a placeholder adapter. Shared by
- * the three platform placeholders so their message stays identical.
- */
-export function placeholderHealth(platform: ConnectorPlatform, name: string): ConnectorHealth {
+/** Build a `ConnectorHealth` payload for an unconfigured real adapter. */
+export function unconfiguredHealth(
+  platform: ConnectorPlatform,
+  name: string,
+  requiredEnvNames: string[],
+): ConnectorHealth {
   return {
     platform,
     ok: false,
-    implemented: false,
-    message: `${name}: placeholder — nenhuma API real é integrada em PR005.`,
+    implemented: true,
+    message: `${name}: configure ${requiredEnvNames.join(" e ")} no servidor para conectar uma conta.`,
   };
 }
 
