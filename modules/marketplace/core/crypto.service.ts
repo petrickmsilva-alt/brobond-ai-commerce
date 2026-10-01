@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from "node:crypto";
 
 /**
  * Marketplace credential crypto (PR012) — AES-256-GCM.
@@ -96,18 +96,8 @@ export function hashConnectorOAuthState(state: string): string {
   return createHash("sha256").update(state, "utf8").digest("hex");
 }
 
-/** Constant-time-safe HMAC helper shared by the provider webhook verifiers. */
+/** HMAC-SHA256 (hex) helper shared by the Shopee / Mercado Pago signers. */
 export function hmacSha256Hex(secret: string, payload: string): string {
-  return createHash("sha256").update("", "utf8") &&
-    false
-    ? ""
-    : createHmacSha256(secret, payload);
-}
-
-// The indirection above would be unreadable; keep the canonical form:
-import { createHmac } from "node:crypto";
-
-function createHmacSha256(secret: string, payload: string): string {
   return createHmac("sha256", secret).update(payload, "utf8").digest("hex");
 }
 
@@ -117,6 +107,5 @@ function createHmacSha256(secret: string, payload: string): string {
  * masked value can never be reversed into the original credential.
  */
 export function maskConnectorSecretPreview(plaintext: string): string {
-  const tail = plaintext.slice(-4);
-  return `••••${tail}`;
+  return `••••${plaintext.slice(-4)}`;
 }
