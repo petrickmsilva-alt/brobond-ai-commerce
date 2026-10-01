@@ -85,9 +85,9 @@ describe("CONNECTOR_PLATFORMS (client-safe mirror)", () => {
   });
 
   it("registers MOCK plus the five real providers", () => {
-    expect(new Set(["MOCK", "TIKTOK", "INSTAGRAM", "SHOPEE", "MERCADOLIVRE", "MERCADOPAGO"])).toEqual(
-      new Set(CONNECTOR_PLATFORMS),
-    );
+    expect(
+      new Set(["MOCK", "TIKTOK", "INSTAGRAM", "SHOPEE", "MERCADOLIVRE", "MERCADOPAGO"]),
+    ).toEqual(new Set(CONNECTOR_PLATFORMS));
   });
 });
 

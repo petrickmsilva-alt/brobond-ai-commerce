@@ -84,7 +84,8 @@ export default async function AiPage() {
               Taxa de geração
             </p>
             <h3 className="mt-1 text-base font-semibold text-white">
-              {kpis.totalMessages} mensagens com custo estimado de {formatEstimatedCost(estimatedCostUsdCents)}
+              {kpis.totalMessages} mensagens com custo estimado de{" "}
+              {formatEstimatedCost(estimatedCostUsdCents)}
             </h3>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-white/60">

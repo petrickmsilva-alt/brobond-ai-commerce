@@ -14,10 +14,7 @@ import {
   mercadoPagoConnectSchema,
   syncMarketplaceSchema,
 } from "@/modules/marketplace/core/connector.validator";
-import {
-  ConnectorNotConnectedError,
-  MarketplaceError,
-} from "@/modules/marketplace/core/errors";
+import { ConnectorNotConnectedError, MarketplaceError } from "@/modules/marketplace/core/errors";
 import { marketplaceSyncService } from "@/modules/marketplace/core/sync.service";
 import type { ConnectorProvider } from "@prisma/client";
 

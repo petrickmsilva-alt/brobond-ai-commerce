@@ -20,10 +20,7 @@ export const connectorProviderSchema = z.enum(CONNECTOR_PROVIDERS, {
 /** Shopee Open Platform redirect query (?code=…&shop_id=…). */
 export const shopeeCallbackSchema = z.object({
   code: z.string().trim().min(1),
-  shop_id: z
-    .string()
-    .trim()
-    .regex(/^\d+$/, "shop_id inválido."),
+  shop_id: z.string().trim().regex(/^\d+$/, "shop_id inválido."),
 });
 
 export type ShopeeCallbackInput = z.infer<typeof shopeeCallbackSchema>;

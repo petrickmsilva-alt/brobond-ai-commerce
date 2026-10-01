@@ -37,7 +37,10 @@ export function CampaignAudienceTable({ items }: { items: CampaignAudienceTableI
       </TableHeader>
       <TableBody>
         {items.map((item) => (
-          <TableRow key={item.id} className="border-b border-white/6 last:border-none hover:bg-white/[0.025]">
+          <TableRow
+            key={item.id}
+            className="border-b border-white/6 last:border-none hover:bg-white/[0.025]"
+          >
             <TableCell>
               <div className="font-medium text-white">{item.creator}</div>
               <div className="text-xs text-white/40">@{item.handle}</div>

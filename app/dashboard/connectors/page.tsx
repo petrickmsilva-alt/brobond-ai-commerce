@@ -1,7 +1,14 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { UserRole } from "@prisma/client";
-import { AlertTriangle, CircleCheck, CircleAlert, CopyCheck, DownloadCloud, Plug } from "lucide-react";
+import {
+  AlertTriangle,
+  CircleCheck,
+  CircleAlert,
+  CopyCheck,
+  DownloadCloud,
+  Plug,
+} from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { KpiCard } from "@/components/dashboard/kpi-card";

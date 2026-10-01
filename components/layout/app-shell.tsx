@@ -77,11 +77,7 @@ export function AppShell({ children, user, workspace, tiktokStatus }: AppShellPr
           tiktokStatus={tiktokStatus}
         />
 
-        <main
-          id="main-content"
-          tabIndex={-1}
-          className="focus:outline-none"
-        >
+        <main id="main-content" tabIndex={-1} className="focus:outline-none">
           <div className="mx-auto w-full max-w-[1560px] px-4 pb-8 pt-5 sm:px-6 lg:px-8 lg:pt-8">
             <div className="relative rounded-[24px] border border-white/8 bg-surface-950/35 p-0 shadow-[0_12px_40px_-18px_rgba(10,10,15,0.9)] backdrop-blur-sm">
               <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/12 to-transparent" />

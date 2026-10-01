@@ -235,10 +235,7 @@ export class ConnectorNotImplementedError extends Error {
   readonly platform: ConnectorPlatform;
 
   constructor(platform: ConnectorPlatform, detail?: string) {
-    super(
-      detail ??
-        `O conector "${String(platform)}" não está disponível neste ambiente.`,
-    );
+    super(detail ?? `O conector "${String(platform)}" não está disponível neste ambiente.`);
     this.name = "ConnectorNotImplementedError";
     this.platform = platform;
   }

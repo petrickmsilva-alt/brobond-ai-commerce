@@ -210,8 +210,7 @@ export async function fetchMercadoLivreItems(
     cache: "no-store",
   });
   const searchPayload = (await searchResponse.json().catch(() => undefined)) as
-    | MeliItemSearchResponse
-    | undefined;
+    MeliItemSearchResponse | undefined;
   if (!searchResponse.ok) {
     throw new ProviderApiError(
       "Não foi possível listar os anúncios do Mercado Livre.",
@@ -229,8 +228,7 @@ export async function fetchMercadoLivreItems(
     cache: "no-store",
   });
   const itemsPayload = (await itemsResponse.json().catch(() => undefined)) as
-    | MeliItemsBatchEntry[]
-    | undefined;
+    MeliItemsBatchEntry[] | undefined;
   if (!itemsResponse.ok || !Array.isArray(itemsPayload)) {
     throw new ProviderApiError(
       "Não foi possível obter os detalhes dos anúncios do Mercado Livre.",
