@@ -1,5 +1,6 @@
 import "server-only";
 
+import { DeliveryAccountStatus, DeliveryChannel } from "@prisma/client";
 import type { Connector, DeliveryAccount } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { scopedWhere } from "@/lib/tenant";
@@ -30,8 +31,8 @@ function graphMediaUrl(igAccountId: string): URL {
 async function findConnectedAccount(organizationId: string): Promise<DeliveryAccount | null> {
   return prisma.deliveryAccount.findFirst({
     where: scopedWhere(organizationId, {
-      channel: "INSTAGRAM",
-      status: "CONNECTED",
+      channel: DeliveryChannel.INSTAGRAM,
+      status: DeliveryAccountStatus.CONNECTED,
     }),
     orderBy: { createdAt: "asc" },
   });
