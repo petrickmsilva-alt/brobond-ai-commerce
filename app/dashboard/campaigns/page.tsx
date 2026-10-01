@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { BarChart3, Package, Sparkles, TrendingUp, Users } from "lucide-react";
+import { Package, Sparkles, TrendingUp, Users } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +7,6 @@ import { Card } from "@/components/ui/card";
 import { CampaignAudienceTable } from "@/components/campaigns/campaign-audience-table";
 import { requireOrganization } from "@/lib/session";
 import { campaignAudienceRepository } from "@/modules/campaigns/repositories/campaign-audience.repository";
-import { estimateROI } from "@/modules/campaigns/roi/roi";
 
 export const metadata: Metadata = { title: "Campanhas" };
 
@@ -19,19 +18,6 @@ export default async function CampaignsPage() {
   const averageScore = rows.length
     ? Math.round(rows.reduce((sum, row) => sum + row.matchScore, 0) / rows.length)
     : 0;
-  const estimates = rows.map((row) => {
-    const units = Math.max(1, Math.round(row.creator.avgViews * 0.005));
-    return estimateROI({
-      predictedRevenueCents: row.product.priceCents * units,
-      marginPercent: row.product.marginBps / 100,
-      commissionPercent: 10,
-      freightCents: 1_500 * units,
-    });
-  });
-  const predictedRoi = estimates.length
-    ? Math.round(estimates.reduce((sum, value) => sum + value.roiPercent, 0) / estimates.length)
-    : 0;
-
   return (
     <>
       <PageHeader
@@ -44,11 +30,10 @@ export default async function CampaignsPage() {
           </Badge>
         }
       />
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <KpiCard label="Creators Recomendados" value={String(creators.size)} icon={Users} />
         <KpiCard label="Produtos" value={String(products.size)} icon={Package} />
         <KpiCard label="Score Médio" value={`${averageScore}/100`} icon={Sparkles} />
-        <KpiCard label="ROI Previsto" value={`${predictedRoi}%`} icon={BarChart3} />
       </div>
 
       <Card className="mb-4 border-white/8 bg-surface-850/80" variant="glass">
@@ -61,14 +46,9 @@ export default async function CampaignsPage() {
               {rows.filter((row) => row.recommended).length} recomendações com potencial de escala
             </h3>
           </div>
-          <div className="flex flex-wrap items-center gap-2 text-xs text-white/60">
-            <Badge tone="success" size="sm">
-              {predictedRoi}% ROI
-            </Badge>
-            <Badge tone="info" size="sm">
-              {averageScore}/100 score
-            </Badge>
-          </div>
+          <Badge tone="info" size="sm">
+            {averageScore}/100 score
+          </Badge>
         </div>
       </Card>
 

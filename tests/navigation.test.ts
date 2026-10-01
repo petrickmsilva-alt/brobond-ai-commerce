@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { navigationGroups, sidebarNav, isNavItemActive, findActiveGroup } from "@/lib/navigation";
+import {
+  navigationGroups,
+  settingsNavItem,
+  sidebarNav,
+  isNavItemActive,
+  findActiveGroup,
+} from "@/lib/navigation";
 
 /**
  * PR010.1 — Navigation information-architecture tests.
@@ -8,19 +14,12 @@ import { navigationGroups, sidebarNav, isNavItemActive, findActiveGroup } from "
  * every revenue-generating connector (Mercado Livre, Shopee, TikTok Shop,
  * Mercado Pago).
  *
- * These tests pin the contract the redesign promised: the six groups exist,
- * no route was lost or duplicated in the regrouping, and active-route
+ * These tests pin the contract the redesign promised: five daily-use groups
+ * plus a minimal settings footer exist, no route was lost or duplicated, and active-route
  * resolution behaves for both the dashboard root and nested detail pages.
  */
 
-const EXPECTED_GROUPS = [
-  "Overview",
-  "Canais de Venda",
-  "Commerce",
-  "Creators",
-  "Campaigns",
-  "System",
-];
+const EXPECTED_GROUPS = ["Overview", "Canais de Venda", "Commerce", "Creators", "Campaigns"];
 
 /** Routes that existed in the flat PR000 nav and must all survive. */
 const LEGACY_ROUTES = [
@@ -40,7 +39,7 @@ const LEGACY_ROUTES = [
 ];
 
 describe("navigation — grouping", () => {
-  it("declares exactly the six contracted module groups, in order", () => {
+  it("declares exactly the five focused module groups, in order", () => {
     expect(navigationGroups.map((group) => group.label)).toEqual(EXPECTED_GROUPS);
   });
 
@@ -79,9 +78,10 @@ describe("navigation — route integrity", () => {
     expect(new Set(hrefs).size).toBe(hrefs.length);
   });
 
-  it("flattens to exactly the union of the groups", () => {
-    const total = navigationGroups.reduce((sum, group) => sum + group.items.length, 0);
-    expect(sidebarNav).toHaveLength(total);
+  it("flattens the groups and the settings footer into one searchable list", () => {
+    const groupedTotal = navigationGroups.reduce((sum, group) => sum + group.items.length, 0);
+    expect(sidebarNav).toHaveLength(groupedTotal + 1);
+    expect(sidebarNav.at(-1)).toEqual(settingsNavItem);
   });
 
   it("gives every item a label, an absolute href and an icon", () => {
@@ -122,7 +122,7 @@ describe("navigation — active route resolution", () => {
     expect(findActiveGroup("/dashboard/matches")?.label).toBe("Creators");
     expect(findActiveGroup("/dashboard/delivery")?.label).toBe("Campaigns");
     expect(findActiveGroup("/dashboard/tiktok")?.label).toBe("Canais de Venda");
-    expect(findActiveGroup("/settings")?.label).toBe("System");
+    expect(findActiveGroup("/settings")).toBeNull();
   });
 
   it("returns null for a route outside the navigation", () => {
@@ -145,10 +145,9 @@ describe("navigation — PR010.4 removes the access-approval route", () => {
     expect(hrefs).not.toContain("/request-access");
   });
 
-  it("the System group survives and still holds Configurações", () => {
-    const system = navigationGroups.find((group) => group.id === "system");
-    expect(system).toBeTruthy();
-    expect(system?.items.some((entry) => entry.href === "/settings")).toBe(true);
+  it("keeps Configurações in the minimal footer, outside module groups", () => {
+    expect(settingsNavItem.href).toBe("/settings");
+    expect(navigationGroups.some((group) => group.items.includes(settingsNavItem))).toBe(false);
   });
 
   it("every nav href is still unique", () => {
@@ -156,8 +155,8 @@ describe("navigation — PR010.4 removes the access-approval route", () => {
     expect(new Set(hrefs).size).toBe(hrefs.length);
   });
 
-  it("Configurações resolves to the System group", () => {
-    expect(findActiveGroup("/settings")?.label).toBe("System");
+  it("Configurações does not reopen a daily-use module group", () => {
+    expect(findActiveGroup("/settings")).toBeNull();
   });
 
   it("Configurações resolves as the active item for its own route", () => {

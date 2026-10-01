@@ -5,8 +5,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ChevronDown, PanelLeft, PanelLeftClose, X } from "lucide-react";
-import { navigationGroups, isNavItemActive, findActiveGroup } from "@/lib/navigation";
-import { WorkspaceSwitcher, type WorkspaceOption } from "@/components/layout/workspace-switcher";
+import {
+  navigationGroups,
+  settingsNavItem,
+  isNavItemActive,
+  findActiveGroup,
+} from "@/lib/navigation";
 import { Badge } from "@/components/ui/badge";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
@@ -20,7 +24,7 @@ import { duration, easing } from "@/components/ui/design-system/tokens";
  *   Integrations · System), each independently expandable with an animated
  *   height transition.
  * - Icon-only collapsed mode (76px) with accessible tooltips.
- * - Workspace switcher in the brand slot.
+ * - Official Brobond Wear monogram and wordmark in the brand slot.
  * - Per-item badges (e.g. "IA", counts).
  *
  * Off-canvas on mobile (`role="dialog"` + focus trap boundaries via the
@@ -32,7 +36,51 @@ interface SidebarProps {
   onToggleCollapsed: () => void;
   mobileOpen: boolean;
   onCloseMobile: () => void;
-  workspace: WorkspaceOption;
+}
+
+interface BrandLockupProps {
+  collapsed: boolean;
+}
+
+/** Coupled double-B monogram and robust BROBOND WEAR wordmark. */
+function BrandLockup({ collapsed }: BrandLockupProps) {
+  return (
+    <Link
+      href="/dashboard"
+      aria-label="Brobond Wear — ir para o início"
+      className={cn(
+        "group flex min-w-0 items-center rounded-lg focus-visible:outline-none",
+        collapsed ? "justify-center" : "gap-2.5",
+        focusRingRaised,
+      )}
+    >
+      <svg
+        aria-hidden
+        viewBox="0 0 48 38"
+        className="h-9 w-11 shrink-0 overflow-visible"
+        fill="none"
+      >
+        <path
+          d="M5 4v30h10.5c6 0 10-3.3 10-8.2 0-3.7-2.1-6.1-5.7-7.1 2.8-1.2 4.4-3.5 4.4-6.5C24.2 7.2 20.6 4 15 4H5Zm6.2 5.1h3.1c2.5 0 3.8 1.3 3.8 3.3 0 2.1-1.4 3.4-4 3.4h-2.9V9.1Zm0 11.6h3.9c2.7 0 4.1 1.4 4.1 3.9s-1.5 4.1-4.3 4.1h-3.7v-8Z"
+          fill="#C0822A"
+        />
+        <path
+          d="M22.5 4v30H33c6 0 10-3.3 10-8.2 0-3.7-2.1-6.1-5.7-7.1 2.8-1.2 4.4-3.5 4.4-6.5C41.7 7.2 38.1 4 32.5 4h-10Zm6.2 5.1h3.1c2.5 0 3.8 1.3 3.8 3.3 0 2.1-1.4 3.4-4 3.4h-2.9V9.1Zm0 11.6h3.9c2.7 0 4.1 1.4 4.1 3.9s-1.5 4.1-4.3 4.1h-3.7v-8Z"
+          className="fill-white/90 transition-colors group-hover:fill-white"
+        />
+      </svg>
+      {!collapsed && (
+        <span className="min-w-0 leading-none">
+          <span className="block whitespace-nowrap text-[14px] font-black tracking-[0.105em] text-white">
+            BROBOND
+          </span>
+          <span className="mt-1 block text-[8px] font-bold tracking-[0.42em] text-[#D6A45C]">
+            WEAR
+          </span>
+        </span>
+      )}
+    </Link>
+  );
 }
 
 const EASE = [...easing.standard] as [number, number, number, number];
@@ -46,17 +94,13 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
-export function Sidebar({
-  collapsed,
-  onToggleCollapsed,
-  mobileOpen,
-  onCloseMobile,
-  workspace,
-}: SidebarProps) {
+export function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
   const reducedMotion = useReducedMotion();
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const activeGroup = findActiveGroup(pathname);
+  const settingsActive = isNavItemActive(pathname, settingsNavItem.href);
+  const SettingsIcon = settingsNavItem.icon;
   const sidebarRef = React.useRef<HTMLElement>(null);
   const closeButtonRef = React.useRef<HTMLButtonElement>(null);
 
@@ -172,15 +216,15 @@ export function Sidebar({
           className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-brand-600/10 via-brand-500/5 to-transparent"
         />
 
-        {/* Brand / workspace */}
+        {/* Official Brobond Wear identity */}
         <div
           className={cn(
-            "relative flex h-16 shrink-0 items-center gap-2 border-b border-white/8 px-3 pb-2 pt-3",
+            "relative flex h-16 shrink-0 items-center gap-2 border-b border-white/8 px-3",
             railCollapsed && "justify-center px-0",
           )}
         >
           <div className={cn("min-w-0 flex-1", railCollapsed && "flex-none")}>
-            <WorkspaceSwitcher workspace={workspace} collapsed={railCollapsed} />
+            <BrandLockup collapsed={railCollapsed} />
           </div>
 
           <button
@@ -267,7 +311,7 @@ export function Sidebar({
                                 "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
                                 "transition-[background-color,color,box-shadow] duration-150",
                                 active
-                                  ? "bg-gradient-to-r from-brand-500/14 to-transparent text-white shadow-[inset_1px_0_0_rgba(129,140,248,0.65)]"
+                                  ? "bg-gradient-to-r from-brand-500/14 to-transparent text-white shadow-[inset_1px_0_0_rgba(192,130,42,0.75)]"
                                   : "text-ink-400 hover:bg-white/[0.06] hover:text-white",
                                 railCollapsed && "justify-center px-0",
                                 focusRingRaised,
@@ -325,8 +369,39 @@ export function Sidebar({
           })}
         </nav>
 
-        {/* Collapse toggle */}
-        <div className="relative shrink-0 border-t border-white/8 p-3">
+        {/* Minimal utility footer */}
+        <div className="relative shrink-0 space-y-1 border-t border-white/8 p-3">
+          <Link
+            href={settingsNavItem.href}
+            onClick={onCloseMobile}
+            aria-current={settingsActive ? "page" : undefined}
+            title={railCollapsed ? settingsNavItem.label : undefined}
+            className={cn(
+              "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
+              "transition-[background-color,color,box-shadow] duration-150",
+              settingsActive
+                ? "bg-[#C0822A]/14 text-white shadow-[inset_1px_0_0_rgba(192,130,42,0.75)]"
+                : "text-ink-400 hover:bg-white/[0.06] hover:text-white",
+              railCollapsed && "justify-center px-0",
+              focusRingRaised,
+            )}
+          >
+            {settingsActive && (
+              <span
+                aria-hidden
+                className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-[#C0822A]"
+              />
+            )}
+            <SettingsIcon
+              aria-hidden
+              className={cn(
+                "h-[18px] w-[18px] shrink-0",
+                settingsActive ? "text-[#D6A45C]" : "text-ink-400 group-hover:text-white/80",
+              )}
+            />
+            {!railCollapsed && <span>{settingsNavItem.label}</span>}
+          </Link>
+
           <button
             type="button"
             onClick={onToggleCollapsed}

@@ -15,16 +15,16 @@
 
 /** BroBond brand ramp — primary action, focus, and premium highlights. */
 export const brand = {
-  50: "#f8f2d9",
-  100: "#f3e6b7",
-  200: "#ecd38b",
-  300: "#dfbb61",
-  400: "#d2a84a",
-  500: "#c79a37",
-  600: "#b78326",
-  700: "#8a621f",
-  800: "#5b3f16",
-  900: "#2f220d",
+  50: "#fbf6ec",
+  100: "#f5e8cf",
+  200: "#ead09f",
+  300: "#ddb56d",
+  400: "#cf9944",
+  500: "#c0822a",
+  600: "#9f6520",
+  700: "#7a4a1b",
+  800: "#513216",
+  900: "#2d1d0d",
 } as const;
 
 /** Graphite accent ramp — neutral partner for the warm brand highlights. */

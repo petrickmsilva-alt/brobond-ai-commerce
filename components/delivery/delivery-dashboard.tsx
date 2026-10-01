@@ -2,10 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Instagram, Loader2, MessageCircle, Play, RotateCcw, Send, Unplug } from "lucide-react";
+import { Instagram, Loader2, MessageCircle, RotateCcw, Unplug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -20,9 +19,7 @@ import {
   connectInstagramAction,
   connectWhatsAppAction,
   disconnectDeliveryAccountAction,
-  dispatchQueueAction,
   reprocessDeliveryAction,
-  sendDeliveryAction,
 } from "@/app/dashboard/delivery/actions";
 import type { UserRole } from "@prisma/client";
 import {
@@ -88,7 +85,6 @@ export function DeliveryDashboard({
 }) {
   const router = useRouter();
   const isAdmin = role === "ADMIN";
-  const canSend = isAdmin || role === "MANAGER";
 
   const [pending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<string | null>(
@@ -102,11 +98,6 @@ export function DeliveryDashboard({
   const [channelFilter, setChannelFilter] = useState(filters.channel ?? "");
   const [statusFilter, setStatusFilter] = useState(filters.status ?? "");
   const [campaignFilter, setCampaignFilter] = useState(filters.campaignId ?? "");
-
-  const [sendChannel, setSendChannel] = useState<DeliveryChannelName>("WHATSAPP");
-  const [sendRecipient, setSendRecipient] = useState("");
-  const [sendName, setSendName] = useState("");
-  const [sendText, setSendText] = useState("");
 
   function run(action: () => Promise<{ ok: boolean; error?: string } & { data?: unknown }>) {
     setFeedback(null);
@@ -158,25 +149,6 @@ export function DeliveryDashboard({
         1,
       )}`,
     );
-  }
-
-  function sendMessage() {
-    run(async () => {
-      const result = await sendDeliveryAction({
-        channel: sendChannel,
-        recipientId: sendRecipient,
-        recipientName: sendName || undefined,
-        message: { type: "text", text: sendText },
-      });
-      if (result.ok) {
-        setSendRecipient("");
-        setSendName("");
-        setSendText("");
-        setFeedback("Mensagem enfileirada — o dispatcher já processou a tentativa atual.");
-        return { ok: true as const, data: undefined };
-      }
-      return result;
-    });
   }
 
   const connectedAccounts = data.accounts.filter((account) => account.status === "CONNECTED");
@@ -302,71 +274,6 @@ export function DeliveryDashboard({
           </CardContent>
         </Card>
       </div>
-
-      {canSend && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Send className="h-4 w-4 text-brand-300" /> Envio manual & fila
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid gap-3 md:grid-cols-4">
-              <Select
-                value={sendChannel}
-                onChange={(event) => setSendChannel(event.target.value as DeliveryChannelName)}
-                aria-label="Canal de envio"
-              >
-                <option value="WHATSAPP">WhatsApp Business</option>
-                <option value="INSTAGRAM">Instagram Business</option>
-              </Select>
-              <Input
-                placeholder={sendChannel === "WHATSAPP" ? "Telefone (E.164)" : "IG-scoped user id"}
-                value={sendRecipient}
-                onChange={(event) => setSendRecipient(event.target.value)}
-              />
-              <Input
-                placeholder="Nome do destinatário (opcional)"
-                value={sendName}
-                onChange={(event) => setSendName(event.target.value)}
-              />
-              <Input
-                placeholder="Mensagem de texto"
-                value={sendText}
-                onChange={(event) => setSendText(event.target.value)}
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                disabled={pending || !sendRecipient.trim() || !sendText.trim()}
-                onClick={sendMessage}
-              >
-                <Send className="mr-1 h-3.5 w-3.5" /> Enviar agora
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={pending}
-                onClick={() =>
-                  run(async () => {
-                    const result = await dispatchQueueAction();
-                    if (result.ok) {
-                      setFeedback(
-                        `Fila processada: ${result.data.sent} enviadas · ${result.data.retries} reagendadas · ${result.data.failed} falhas.`,
-                      );
-                      return { ok: true as const, data: undefined };
-                    }
-                    return result;
-                  })
-                }
-              >
-                <Play className="mr-1 h-3.5 w-3.5" /> Processar fila
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <CardHeader>

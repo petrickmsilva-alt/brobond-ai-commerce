@@ -19,7 +19,6 @@ import {
   UsersRound,
   Rocket,
   Cable,
-  SlidersHorizontal,
   Store,
   ShoppingBasket,
   Wallet,
@@ -49,10 +48,12 @@ export interface NavGroup {
  * Primary sidebar navigation (PR010.1 · reorganised in PR013 for the Hub
  * Multicanal de Vendas).
  *
- * Six module groups — Overview · Canais de Venda · Commerce · Creators ·
- * Campaigns · System — mirror how an operator running a
- * multi-platform sales hub actually thinks about the product. "Canais de
- * Venda" is pinned right after Overview (PR013 §2): it is the fastest path
+ * Five focused module groups — Overview · Canais de Venda · Commerce ·
+ * Creators · Campaigns — mirror how the Brobond Wear operator uses the
+ * multichannel hub. Configurações is intentionally kept out of this tree and
+ * pinned to the sidebar footer, where it remains available without consuming
+ * the daily-navigation area. "Canais de Venda" is pinned right after Overview:
+ * it is the fastest path
  * to every revenue-generating connector (Mercado Livre, Shopee, TikTok
  * Shop, Mercado Pago, Instagram) and the only group whose items double as
  * the day-to-day operational hub for Brobond's outside-marketplace sales.
@@ -201,30 +202,24 @@ export const navigationGroups: NavGroup[] = [
       },
     ],
   },
-  {
-    id: "system",
-    label: "System",
-    icon: SlidersHorizontal,
-    items: [
-      {
-        label: "Configurações",
-        href: "/settings",
-        icon: Settings,
-        description: "Organização, membros e preferências",
-      },
-      // PR010.4 §1 — the "Acesso" entry pointed at the access-request queue,
-      // which no longer exists. Invitations (the only membership operation
-      // left) live inside Configurações, so a second entry would be a second
-      // door onto the same room.
-    ],
-  },
 ];
 
+/** Minimal destination pinned to the footer instead of occupying a nav group. */
+export const settingsNavItem: NavItem = {
+  label: "Configurações",
+  href: "/settings",
+  icon: Settings,
+  description: "Conta, integrações e preferências do hub",
+};
+
 /**
- * Flat list of every navigable item — consumed by the global command palette
- * (Ctrl/⌘+K) and by active-route resolution.
+ * Flat list of every navigable item — consumed by the global command palette.
+ * The footer destination is included so keyboard navigation remains complete.
  */
-export const sidebarNav: NavItem[] = navigationGroups.flatMap((group) => group.items);
+export const sidebarNav: NavItem[] = [
+  ...navigationGroups.flatMap((group) => group.items),
+  settingsNavItem,
+];
 
 /**
  * Resolve whether a nav item is the active route.

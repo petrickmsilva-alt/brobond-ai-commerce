@@ -23,16 +23,16 @@
     sans-serif;
 
   /* BroBond palette — dark graphite canvas with warm mustard accents */
-  --color-brand-50: #f8f2d9;
-  --color-brand-100: #f3e6b7;
-  --color-brand-200: #ecd38b;
-  --color-brand-300: #dfbb61;
-  --color-brand-400: #d2a84a;
-  --color-brand-500: #c79a37;
-  --color-brand-600: #b78326;
-  --color-brand-700: #8a621f;
-  --color-brand-800: #5b3f16;
-  --color-brand-900: #2f220d;
+  --color-brand-50: #fbf6ec;
+  --color-brand-100: #f5e8cf;
+  --color-brand-200: #ead09f;
+  --color-brand-300: #ddb56d;
+  --color-brand-400: #cf9944;
+  --color-brand-500: #c0822a;
+  --color-brand-600: #9f6520;
+  --color-brand-700: #7a4a1b;
+  --color-brand-800: #513216;
+  --color-brand-900: #2d1d0d;
 
   /* Graphite accent ramp — neutral partner for the warm brand ramp */
   --color-accent-300: #dfe4ea;
@@ -180,7 +180,7 @@ body {
 /* Ambient brand glow behind hero/auth surfaces. */
 .bg-premium-glow {
   background-image:
-    radial-gradient(60% 60% at 50% 0%, rgba(199, 154, 55, 0.18) 0%, transparent 70%),
+    radial-gradient(60% 60% at 50% 0%, rgba(192, 130, 42, 0.18) 0%, transparent 70%),
     radial-gradient(45% 45% at 100% 100%, rgba(145, 156, 171, 0.12) 0%, transparent 70%);
 }
 
@@ -188,7 +188,7 @@ body {
 .bg-app-mesh {
   background-color: var(--color-surface-950);
   background-image:
-    radial-gradient(70% 45% at 15% 0%, rgba(199, 154, 55, 0.1) 0%, transparent 60%),
+    radial-gradient(70% 45% at 15% 0%, rgba(192, 130, 42, 0.1) 0%, transparent 60%),
     radial-gradient(50% 40% at 95% 5%, rgba(145, 156, 171, 0.08) 0%, transparent 65%);
   background-attachment: fixed;
 }

@@ -5,7 +5,6 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import type { UserMenuProps } from "@/components/layout/user-menu";
 import type { ConnectionState } from "@/components/layout/connection-status";
-import type { WorkspaceOption } from "@/components/layout/workspace-switcher";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { cn } from "@/lib/utils";
 
@@ -19,7 +18,7 @@ import { cn } from "@/lib/utils";
  *
  * Every prop is already-sanitised, non-secret session data resolved by the
  * Server Component layout (`app/dashboard/layout.tsx`): this client component
- * never reads the session, the database or an environment variable.
+ * never reads the session, database, workspace or an environment variable.
  *
  * A skip link is the first tab stop so keyboard users can jump past the rail
  * straight to `<main>` (WCAG 2.4.1).
@@ -28,11 +27,10 @@ import { cn } from "@/lib/utils";
 export interface AppShellProps {
   children: React.ReactNode;
   user: UserMenuProps;
-  workspace: WorkspaceOption;
   tiktokStatus?: ConnectionState;
 }
 
-export function AppShell({ children, user, workspace, tiktokStatus }: AppShellProps) {
+export function AppShell({ children, user, tiktokStatus }: AppShellProps) {
   const { collapsed, toggleCollapsed, mobileOpen, toggleMobile, closeMobile } = useSidebar();
 
   // Close the off-canvas rail when the viewport grows past the `lg` breakpoint
@@ -60,7 +58,6 @@ export function AppShell({ children, user, workspace, tiktokStatus }: AppShellPr
         onToggleCollapsed={toggleCollapsed}
         mobileOpen={mobileOpen}
         onCloseMobile={closeMobile}
-        workspace={workspace}
       />
 
       <div

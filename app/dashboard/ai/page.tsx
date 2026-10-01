@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Coins, Hash, MessageSquareText, Sparkles } from "lucide-react";
+import { Coins, Hash, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -58,34 +58,28 @@ export default async function AiPage() {
           </Badge>
         }
       />
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <KpiCard
-          label="Mensagens geradas"
-          value={String(kpis.totalMessages)}
-          icon={MessageSquareText}
-        />
-        <KpiCard
-          label="Tokens consumidos"
+          label="Tokens de API"
           value={(kpis.totalInputTokens + kpis.totalOutputTokens).toLocaleString("pt-BR")}
           icon={Hash}
         />
         <KpiCard
-          label="Custo estimado"
+          label="Custo de API"
           value={formatEstimatedCost(estimatedCostUsdCents)}
           icon={Coins}
         />
-        <KpiCard label="Prompt version" value={latestPromptVersion} icon={Sparkles} />
+        <KpiCard label="Versão do prompt" value={latestPromptVersion} icon={Sparkles} />
       </div>
 
       <Card className="mb-4 border-white/8 bg-surface-850/80" variant="glass">
         <div className="flex flex-col gap-3 border-b border-white/8 px-4 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
           <div>
             <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/45">
-              Taxa de geração
+              Consumo da API
             </p>
             <h3 className="mt-1 text-base font-semibold text-white">
-              {kpis.totalMessages} mensagens com custo estimado de{" "}
-              {formatEstimatedCost(estimatedCostUsdCents)}
+              {formatEstimatedCost(estimatedCostUsdCents)} em chamadas de personalização
             </h3>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-white/60">

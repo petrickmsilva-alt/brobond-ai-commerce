@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { CornerDownLeft, Search } from "lucide-react";
-import { navigationGroups, type NavItem } from "@/lib/navigation";
+import { navigationGroups, settingsNavItem, type NavItem } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { duration, easing } from "@/components/ui/design-system/tokens";
 
@@ -32,9 +32,12 @@ interface Entry extends NavItem {
 
 const EASE = [...easing.standard] as [number, number, number, number];
 
-const ALL_ENTRIES: Entry[] = navigationGroups.flatMap((group) =>
-  group.items.map((item) => ({ ...item, group: group.label })),
-);
+const ALL_ENTRIES: Entry[] = [
+  ...navigationGroups.flatMap((group) =>
+    group.items.map((item) => ({ ...item, group: group.label })),
+  ),
+  { ...settingsNavItem, group: "Utilitários" },
+];
 
 /** Accent-insensitive, case-insensitive normalisation for pt-BR matching. */
 function normalize(value: string): string {

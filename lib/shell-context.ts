@@ -1,34 +1,30 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { APP_SHORT_NAME } from "@/lib/constants";
 import type { UserMenuProps } from "@/components/layout/user-menu";
-import type { WorkspaceOption } from "@/components/layout/workspace-switcher";
 import type { ConnectionState } from "@/components/layout/connection-status";
 
 /**
- * App-shell context resolver — PR010.1 (UI only).
+ * App-shell context resolver.
  *
  * Builds the small, non-secret payload the authenticated chrome needs
- * (display name, email, role, workspace name, integration health) from the
- * already-authenticated session.
+ * (display name, email, role and integration health) from the authenticated
+ * session. The previous workspace selector was removed from the personal hub,
+ * so this resolver no longer fetches or serializes workspace presentation data.
  *
  * SECURITY CONTRACT
  * -----------------
  * This module is `server-only` and every field it returns is safe to serialize
  * into a Client Component:
- *   - no `passwordHash`, no token, no encrypted column, no environment value;
+ *   - no `passwordHash`, token, encrypted column or environment value;
  *   - the TikTok health check `count`s rows by status — it never selects
  *     `accessToken`, `refreshToken`, `shopId` or any credential;
  *   - all queries are scoped to the caller's `organizationId`, which comes
  *     from the session and never from a client-supplied value.
- *
- * It reads no business rule and mutates nothing — it is presentation metadata.
  */
 
 export interface ShellContext {
   user: UserMenuProps;
-  workspace: WorkspaceOption;
   tiktokStatus: ConnectionState;
 }
 
@@ -41,18 +37,9 @@ function displayName(name: string | null, email: string | null): string {
 
 export async function getShellContext(): Promise<ShellContext> {
   const user = await requireUser();
-
   const organizationId = user.organizationId;
 
-  const [organization, tiktokConnected, tiktokTotal] = await Promise.all([
-    organizationId
-      ? prisma.organization.findUnique({
-          where: { id: organizationId },
-          // PR010.4 — `workspaceName` is what a self-signup tenant named its
-          // workspace; `name` is the legal/company name it falls back to.
-          select: { name: true, workspaceName: true },
-        })
-      : Promise.resolve(null),
+  const [tiktokConnected, tiktokTotal] = await Promise.all([
     organizationId
       ? prisma.tikTokAccount.count({ where: { organizationId, status: "CONNECTED" } })
       : Promise.resolve(0),
@@ -68,11 +55,6 @@ export async function getShellContext(): Promise<ShellContext> {
       email: user.email ?? "—",
       role: user.role,
       image: user.image,
-    },
-    workspace: {
-      id: organizationId ?? "unknown",
-      name: organization?.workspaceName ?? organization?.name ?? APP_SHORT_NAME,
-      caption: "Workspace",
     },
     tiktokStatus,
   };

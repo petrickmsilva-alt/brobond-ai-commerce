@@ -16,7 +16,6 @@ type AnyArgs = (args: any) => Promise<any>;
 const requireUser = vi.fn<() => Promise<unknown>>();
 
 const prismaMock = {
-  organization: { findUnique: vi.fn<AnyArgs>(async () => ({ name: "Acme Commerce" })) },
   tikTokAccount: { count: vi.fn<AnyArgs>(async () => 0) },
 };
 
@@ -37,7 +36,6 @@ const BASE_USER = {
 beforeEach(() => {
   vi.clearAllMocks();
   requireUser.mockResolvedValue({ ...BASE_USER });
-  prismaMock.organization.findUnique.mockResolvedValue({ name: "Acme Commerce" });
   prismaMock.tikTokAccount.count.mockResolvedValue(0);
 });
 
@@ -63,56 +61,23 @@ describe("shell context — presentation payload", () => {
     expect(context.user.email).toBe("—");
   });
 
-  it("names the workspace after the organization", async () => {
-    const context = await getShellContext();
-    expect(context.workspace).toEqual({
-      id: "org_acme",
-      name: "Acme Commerce",
-      caption: "Workspace",
-    });
-  });
-
   it("degrades gracefully for a session carrying no tenant", async () => {
     requireUser.mockResolvedValue({ ...BASE_USER, organizationId: null });
 
     const context = await getShellContext();
 
-    expect(context.workspace.id).toBe("unknown");
     expect(context.tiktokStatus).toBe("disconnected");
     // No tenant → no tenant-scoped query may run at all.
-    expect(prismaMock.organization.findUnique).not.toHaveBeenCalled();
     expect(prismaMock.tikTokAccount.count).not.toHaveBeenCalled();
   });
 });
 
 describe("shell context — tenant isolation", () => {
-  it("scopes the organization lookup and the integration counts to the session tenant", async () => {
+  it("scopes every integration count to the session tenant", async () => {
     await getShellContext();
 
-    expect(prismaMock.organization.findUnique).toHaveBeenCalledWith({
-      where: { id: "org_acme" },
-      // PR010.4 — `workspaceName` joins the projection: a self-signup tenant
-      // named its workspace, and the sidebar must show that name.
-      select: { name: true, workspaceName: true },
-    });
     for (const call of prismaMock.tikTokAccount.count.mock.calls) {
       expect(call[0].where.organizationId).toBe("org_acme");
-    }
-  });
-
-  it("selects only display names — never a relation or a secret", async () => {
-    await getShellContext();
-
-    const select = prismaMock.organization.findUnique.mock.calls[0]![0].select;
-    expect(Object.keys(select).sort()).toEqual(["name", "workspaceName"]);
-  });
-
-  it("never projects the tenant's contact or configuration columns", async () => {
-    await getShellContext();
-
-    const select = prismaMock.organization.findUnique.mock.calls[0]![0].select;
-    for (const forbidden of ["whatsapp", "users", "invitations", "tikTokAccounts"]) {
-      expect(select).not.toHaveProperty(forbidden);
     }
   });
 });
@@ -177,10 +142,10 @@ describe("shell context — no secret crosses the client boundary", () => {
     }
   });
 
-  it("exposes exactly the three documented sections and nothing more", async () => {
+  it("exposes exactly the two documented sections and nothing more", async () => {
     const context = await getShellContext();
 
-    expect(Object.keys(context).sort()).toEqual(["tiktokStatus", "user", "workspace"]);
+    expect(Object.keys(context).sort()).toEqual(["tiktokStatus", "user"]);
     expect(Object.keys(context.user).sort()).toEqual(["email", "image", "name", "role"]);
   });
 });

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Building2, Plug, Sparkles, UserRound } from "lucide-react";
+import { Plug, Sparkles, UserRound } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionCard } from "@/components/ui/section-card";
 import { Input } from "@/components/ui/input";
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
  * is what actually enforces them.
  */
 export default async function SettingsPage() {
-  const { user, workspace, tiktokStatus } = await getShellContext();
+  const { user, tiktokStatus } = await getShellContext();
   const current = await requireUser();
   const canManage = isAdmin(current.role);
 
@@ -71,12 +71,12 @@ export default async function SettingsPage() {
       <PageHeader
         eyebrow="System"
         title="Configurações"
-        description="Gerencie sua conta, workspace e integrações."
+        description="Gerencie sua conta e as integrações do Hub Brobond Wear."
         breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: "Configurações" }]}
         actions={
           <Badge tone="brand" size="sm" className="inline-flex items-center gap-1.5">
             <Sparkles className="h-3 w-3" />
-            Workspace control
+            Hub pessoal
           </Badge>
         }
       />
@@ -112,40 +112,12 @@ export default async function SettingsPage() {
           </div>
         </SectionCard>
 
-        <SectionCard
-          title="Workspace"
-          description="A organização à qual sua sessão está vinculada."
-          icon={Building2}
-          actions={<Badge tone="brand">{user.role}</Badge>}
-        >
-          <dl className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wider text-white/40">Nome</dt>
-              <dd className="mt-1 text-sm text-white">{workspace.name}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wider text-white/40">
-                Seu papel
-              </dt>
-              <dd className="mt-1 text-sm text-white">{user.role}</dd>
-            </div>
-          </dl>
-
-          {/* RBAC §11, stated plainly where the role is shown. */}
-          <p className="mt-5 rounded-xl border border-white/8 bg-white/[0.02] px-4 py-3 text-[11px] leading-relaxed text-white/45">
-            <strong className="font-semibold text-white/65">ADMIN</strong> gerencia convites ·{" "}
-            <strong className="font-semibold text-white/65">MANAGER</strong> opera o workspace, sem
-            convites · <strong className="font-semibold text-white/65">MEMBER</strong> tem acesso de
-            leitura.
-          </p>
-        </SectionCard>
-
         {/* §7 — Convites (ADMIN gerencia; demais papéis apenas visualizam). */}
         <InvitationsPanel invitations={invitations} canManage={canManage} />
 
         <SectionCard
           title="Integrações"
-          description="Estado das conexões externas deste workspace."
+          description="Estado das conexões externas do Hub Brobond Wear."
           icon={Plug}
         >
           <ul className="space-y-3">
