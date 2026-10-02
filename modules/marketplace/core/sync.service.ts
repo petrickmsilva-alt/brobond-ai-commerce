@@ -51,6 +51,7 @@ const PROVIDER_TO_PLATFORM: Record<ConnectorProvider, ConnectorPlatform> = {
   SHOPEE: "SHOPEE",
   MERCADOLIVRE: "MERCADOLIVRE",
   MERCADOPAGO: "MERCADOPAGO",
+  NUVEMSHOP: "NUVEMSHOP",
 };
 
 export interface MarketplaceSyncDependencies {

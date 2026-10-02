@@ -22,6 +22,7 @@ export const CONNECTOR_PROVIDERS = [
   "SHOPEE",
   "MERCADOLIVRE",
   "MERCADOPAGO",
+  "NUVEMSHOP",
 ] as const;
 
 export type ConnectorProviderName = (typeof CONNECTOR_PROVIDERS)[number];
@@ -33,6 +34,7 @@ export const CONNECTOR_PROVIDER_LABELS: Record<ConnectorProviderName, string> = 
   SHOPEE: "Shopee",
   MERCADOLIVRE: "Mercado Livre",
   MERCADOPAGO: "Mercado Pago",
+  NUVEMSHOP: "Nuvemshop",
 };
 
 /** Short pt-BR descriptor shown under the card title. */
@@ -42,6 +44,7 @@ export const CONNECTOR_PROVIDER_DESCRIPTIONS: Record<ConnectorProviderName, stri
   SHOPEE: "Shopee Open Platform v2 com assinatura HMAC-SHA256.",
   MERCADOLIVRE: "Meli API oficial — OAuth2 com refresh token automático.",
   MERCADOPAGO: "Checkout e faturamento via Access Token de produção.",
+  NUVEMSHOP: "Pedidos e vendas da loja Nuvemshop via API oficial.",
 };
 
 /**
@@ -56,6 +59,7 @@ export const CONNECTOR_PROVIDER_ACCOUNT_LABELS: Record<ConnectorProviderName, st
   SHOPEE: "Conta da Shopee",
   MERCADOLIVRE: "Conta do Mercado Livre",
   MERCADOPAGO: "Credenciais do Mercado Pago",
+  NUVEMSHOP: "Conta da Nuvemshop",
 };
 
 /** What a successful connection unlocks — used in the "connect first" copy. */
@@ -65,6 +69,7 @@ export const CONNECTOR_PROVIDER_CATALOG_LABELS: Record<ConnectorProviderName, st
   SHOPEE: "os produtos",
   MERCADOLIVRE: "os anúncios",
   MERCADOPAGO: "os pagamentos",
+  NUVEMSHOP: "os pedidos e vendas",
 };
 
 /**
@@ -91,6 +96,7 @@ export const CONNECTOR_PROVIDER_SLUGS: Record<ConnectorProviderName, string> = {
   SHOPEE: "shopee",
   MERCADOLIVRE: "mercado-livre",
   MERCADOPAGO: "mercado-pago",
+  NUVEMSHOP: "nuvemshop",
 };
 
 /** The detail-route path of one provider (sidebar links, hub cards). */
@@ -128,6 +134,7 @@ export const CONNECTOR_PROVIDER_AUTH: Record<ConnectorProviderName, ConnectorAut
   SHOPEE: "oauth2",
   MERCADOLIVRE: "oauth2",
   MERCADOPAGO: "apikeys",
+  NUVEMSHOP: "oauth2",
 };
 
 // ------------------------------------------------------------------

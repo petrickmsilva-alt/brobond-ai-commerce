@@ -66,6 +66,7 @@ export const MERCADOPAGO_SALE_TOPICS = ["payment"] as const;
 export const SALE_INGESTION_PROVIDERS: readonly ConnectorProvider[] = [
   "MERCADOLIVRE",
   "MERCADOPAGO",
+  "NUVEMSHOP",
 ];
 
 /** Does this (provider, topic) pair carry sale-relevant data? */
@@ -77,6 +78,8 @@ export function isSaleIngestionEvent(provider: ConnectorProvider, topic: string 
       return (MERCADOLIVRE_SALE_TOPICS as readonly string[]).includes(normalizedTopic);
     case "MERCADOPAGO":
       return (MERCADOPAGO_SALE_TOPICS as readonly string[]).includes(normalizedTopic);
+    case "NUVEMSHOP":
+      return normalizedTopic.includes("order") || normalizedTopic.includes("pedido");
     default:
       return false;
   }
@@ -142,6 +145,30 @@ async function resolveMercadoLivreDraft(
     status: meliOrderStatusToSaleStatus(order.status) as SaleStatus,
     quantity: order.itemCount,
     occurredAt: order.dateClosed ?? order.dateCreated,
+  };
+}
+
+async function resolveNuvemshopDraft(
+  topic: string | null,
+  payload: Record<string, unknown>,
+): Promise<IngestedSaleDraft | null> {
+  const orderId = payload.id !== undefined ? String(payload.id) : "";
+  if (!orderId) return null;
+  const statusValue = String(payload.payment_status ?? payload.status ?? "").toLowerCase();
+  const status = statusValue.includes("paid") || statusValue.includes("pago") || statusValue.includes("completed")
+    ? SaleStatus.PAID
+    : statusValue.includes("cancel") ? SaleStatus.CANCELLED : SaleStatus.PENDING;
+  const total = Number(payload.total ?? payload.subtotal ?? 0);
+  const amountCents = Math.round(total * 100);
+  const products = Array.isArray(payload.products) ? payload.products : [];
+  const createdAt = typeof payload.created_at === "string" ? new Date(payload.created_at) : new Date();
+  return {
+    externalOrderId: orderId,
+    amountCents,
+    currency: typeof payload.currency === "string" ? payload.currency : "BRL",
+    status,
+    quantity: Math.max(1, products.length),
+    occurredAt: Number.isNaN(createdAt.getTime()) ? new Date() : createdAt,
   };
 }
 
@@ -232,7 +259,9 @@ export async function processSaleIngestionEvent(input: {
         ? await resolveMercadoLivreDraft(organizationId, event.topic, payload)
         : provider === "MERCADOPAGO"
           ? await resolveMercadoPagoDraft(organizationId, payload)
-          : null;
+          : provider === "NUVEMSHOP"
+            ? await resolveNuvemshopDraft(event.topic, payload)
+            : null;
   } catch (error) {
     if (requiresReauthentication(error)) {
       // PR016.2 crypto catch on the financial flow: the channel's stored

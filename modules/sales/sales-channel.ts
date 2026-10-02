@@ -21,6 +21,7 @@ export const SALE_CHANNELS = [
   "SHOPEE",
   "MERCADOLIVRE",
   "MERCADOPAGO",
+  "NUVEMSHOP",
 ] as const;
 
 export type SaleChannelName = (typeof SALE_CHANNELS)[number];
@@ -33,6 +34,7 @@ export const SALE_CHANNEL_LABELS: Record<SaleChannelName, string> = {
   SHOPEE: "Shopee",
   MERCADOLIVRE: "Mercado Livre",
   MERCADOPAGO: "Mercado Pago",
+  NUVEMSHOP: "Nuvemshop",
 };
 
 /** Compact label for dense table cells and badges. */
@@ -43,6 +45,7 @@ export const SALE_CHANNEL_SHORT_LABELS: Record<SaleChannelName, string> = {
   SHOPEE: "Shopee",
   MERCADOLIVRE: "Mercado Livre",
   MERCADOPAGO: "Mercado Pago",
+  NUVEMSHOP: "Nuvemshop",
 };
 
 /** Badge tone per channel — keeps Orders/Analytics visually consistent. */
@@ -56,6 +59,7 @@ export const SALE_CHANNEL_BADGE_TONE: Record<
   SHOPEE: "warning",
   MERCADOLIVRE: "info",
   MERCADOPAGO: "success",
+  NUVEMSHOP: "brand",
 };
 
 export const DEFAULT_SALE_CHANNEL: SaleChannelName = "BROBOND";

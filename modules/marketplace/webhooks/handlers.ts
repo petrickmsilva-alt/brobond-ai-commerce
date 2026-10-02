@@ -169,6 +169,14 @@ function parseMercadoPagoEvent(request: Request, rawBody: string): ParsedWebhook
   };
 }
 
+function parseNuvemshopEvent(request: Request, rawBody: string): ParsedWebhookEvent {
+  const body = asRecord(JSON.parse(rawBody));
+  const shopId = request.headers.get("x-linked-store-id") ?? (body.store_id !== undefined ? String(body.store_id) : null);
+  const orderId = body.id !== undefined ? String(body.id) : String(request.headers.get("x-webhook-id") ?? Date.now());
+  const topic = request.headers.get("x-webhook-topic") ?? "orders/created";
+  return { externalEventId: `nuvemshop:${shopId ?? "-"}:${topic}:${orderId}`, topic, shopId, payload: body };
+}
+
 const PARSERS: Record<
   ConnectorProvider,
   (request: Request, rawBody: string) => ParsedWebhookEvent
@@ -178,6 +186,7 @@ const PARSERS: Record<
   SHOPEE: parseShopeeEvent,
   MERCADOLIVRE: parseMercadoLivreEvent,
   MERCADOPAGO: parseMercadoPagoEvent,
+  NUVEMSHOP: parseNuvemshopEvent,
 };
 
 // ------------------------------------------------------------------

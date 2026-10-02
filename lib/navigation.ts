@@ -23,6 +23,7 @@ import {
   ShoppingBasket,
   Wallet,
   Instagram,
+  Cloud,
 } from "lucide-react";
 import { connectorProviderPath } from "@/modules/marketplace/core/providers";
 
@@ -179,6 +180,12 @@ export const navigationGroups: NavGroup[] = [
             href: connectorProviderPath("INSTAGRAM"),
             icon: Instagram,
             description: "Conta, credenciais e catálogo do Instagram Shopping",
+          },
+          {
+            label: "Nuvemshop",
+            href: "/dashboard/connectors/nuvemshop",
+            icon: Cloud,
+            description: "Pedidos e vendas da sua loja Nuvemshop",
           },
         ],
       },

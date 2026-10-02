@@ -105,6 +105,7 @@ enum SaleChannel {
   SHOPEE
   MERCADOLIVRE
   MERCADOPAGO
+  NUVEMSHOP
 }
 
 enum ProductMediaType {
@@ -153,6 +154,7 @@ enum ConnectorPlatform {
   SHOPEE
   MERCADOLIVRE
   MERCADOPAGO
+  NUVEMSHOP
 }
 
 /// Operational state of one connector inside one workspace (PR005).
@@ -313,6 +315,7 @@ enum ConnectorProvider {
   SHOPEE
   MERCADOLIVRE
   MERCADOPAGO
+  NUVEMSHOP
 }
 
 /// Credential lifecycle of one unified `Connector` connection (PR012).
