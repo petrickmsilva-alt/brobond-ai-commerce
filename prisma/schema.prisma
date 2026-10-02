@@ -1311,16 +1311,21 @@ model Connector {
 /// Short-lived, one-time server-side CSRF state for the Shopee and Mercado
 /// Livre OAuth redirects (PR012). Only a SHA-256 digest of the opaque state
 /// is persisted; the raw value exists only in the provider redirect URL.
+///
+/// PR016.2 — `codeVerifier` holds the Mercado Livre PKCE code_verifier as a
+/// versioned AES-256-GCM ciphertext (same contract as the Connector tokens),
+/// bound 1:1 to the state it was issued with and expiring alongside it.
 model ConnectorOAuthState {
   id String @id @default(cuid())
 
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  provider  ConnectorProvider
-  stateHash String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  provider     ConnectorProvider
+  stateHash    String   @unique
+  codeVerifier String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
 
   @@index([organizationId, provider, expiresAt])
 }

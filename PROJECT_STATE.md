@@ -1,5 +1,51 @@
 # PROJECT STATE — Brobond AI Commerce OS
 
+### PR016.2 — Mercado Livre OAuth PKCE (RFC 7636) (2026-10-02) — implemented
+
+- **Sintoma.** "Consigo conectar ao Mercado Pago e não consigo conectar ao
+  Mercado Livre." Com `MERCADOLIVRE_CLIENT_ID`/`MERCADOLIVRE_CLIENT_SECRET`
+  corretos e o redirect URI registrado, o OAuth chegava ao callback e morria
+  na troca do código com `?oauth=error&reason=exchange` — em loop infinito
+  de "reconecte a conta".
+- **Causa raiz.** As aplicações criadas no **DevCenter unificado** (Mercado
+  Livre + Mercado Pago na mesma app) saem com o fluxo **PKCE habilitado** — e
+  a documentação oficial é explícita: habilitado o PKCE, `code_challenge` /
+  `code_verifier` tornam-se **obrigatórios**. O conector não enviava nenhum
+  dos dois, então `/oauth/token` respondia HTTP 400
+  `invalid_request: "code_verifier is a required parameter"`. Pior: a
+  recuperação de `redirect_uri` (PR016.1) tratava qualquer 400 como
+  "candidato errado" e reenviava o MESMO request inválido contra os demais
+  candidatos, mascarando a causa real. O Mercado Pago nunca passava por isso
+  porque conecta colando Access Token/Public Key — sem OAuth.
+- **Correção — fluxo S256 completo.**
+  `generateMercadoLivrePkcePair()` emite um `code_verifier` de 384 bits
+  (RFC 7636) por tentativa e o challenge `base64url(SHA-256(verifier))`;
+  `buildMercadoLivreAuthorizationUrl()` anexa `code_challenge` +
+  `code_challenge_method=S256`; `connectorOAuthStateService.issue()` persiste
+  o verifier **criptografado** (AES-256-GCM sob `CONNECTOR_ENCRYPTION_KEY`,
+  nova coluna `ConnectorOAuthState.codeVerifier`) atrelado ao state de uso
+  único; `consume()` o devolve e `exchangeMercadoLivreCode(..., { codeVerifier })`
+  o reenvia na troca. Aplicativos SEM o flag toleram os parâmetros extras,
+  então um único caminho de código atende aos dois mundos.
+- **Correção — roteamento de erro.** `MarketplaceError` ganhou
+  `providerCode` (o `error` do protocolo OAuth, diagnóstico de servidor,
+  nunca renderizado) e a recuperação de `redirect_uri` só tenta o próximo
+  candidato em `invalid_grant` — um `invalid_request` é malformado para
+  TODOS os candidatos e parar cedo preserva a causa real nos logs.
+- **Compatibilidade.** States pré-migração (sem verifier) completam o fluxo
+  exatamente como antes; verifier ilegível (rotação de chave no meio do
+  fluxo) falha fechado com a orientação de reiniciar a conexão; Shopee não é
+  afetado (não emite verifier).
+- **Migration.** `20261002090000_mercadolivre_pkce_code_verifier` — `ALTER
+TABLE "ConnectorOAuthState" ADD COLUMN "codeVerifier" TEXT` (nullable,
+  zero-downtime).
+- **Tests.** +12 testes (`tests/mercadolivre-pkce.test.ts`): alfabeto/tamanho
+  RFC 7636 do verifier, derivação S256 do challenge, ausência do segredo na
+  URL de autorização, presença/ausência do `code_verifier` no POST da troca,
+  não-retry em `invalid_request`, retry preservado em `invalid_grant`,
+  roundtrip issue→consume com ciphertext versionado, states legados e falha
+  fechada com chave rotacionada. **3.003 passando.**
+
 ### PR016.1 — Mercado Livre OAuth redirect URI + reautenticação (2026-10-02) — implemented
 
 - **Sintoma.** Com as chaves corretas e uma `CONNECTOR_ENCRYPTION_KEY` válida

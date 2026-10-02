@@ -102,6 +102,10 @@ services:
         sync: false
       # Mercado Livre official API (DevCenter application). The redirect URI
       # registered there must be ${APP_URL}/api/mercadolivre/callback.
+      # PKCE (PR016.2): the connector runs the full S256 flow automatically —
+      # unified-DevCenter applications (Mercado Livre + Mercado Pago) reject
+      # the code exchange with `code_verifier is a required parameter`
+      # otherwise. No extra configuration is required here.
       - key: MERCADOLIVRE_CLIENT_ID
         sync: false
       - key: MERCADOLIVRE_CLIENT_SECRET

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createHash, randomBytes } from "node:crypto";
 import {
   ConnectorConfigError,
   ConnectorReauthRequiredError,
@@ -144,6 +145,53 @@ function normalizeAuthorizationClientId(clientId: string): string {
   return clientId.trim().toLowerCase().replace(/\/+$/, "");
 }
 
+// ------------------------------------------------------------------
+// PKCE — RFC 7636 (PR016.2)
+// ------------------------------------------------------------------
+
+/**
+ * PKCE pair for one authorization attempt.
+ *
+ * WHY THIS EXISTS (PR016.2): applications created in the unified DevCenter
+ * (Mercado Livre + Mercado Pago) ship with the PKCE flow ENABLED, and the
+ * official documentation is explicit — once enabled, `code_challenge` and
+ * `code_verifier` become MANDATORY. Without them the token exchange is
+ * rejected with HTTP 400 `invalid_request: "code_verifier is a required
+ * parameter"`, which the panel surfaced as an endless "reconnect" loop while
+ * the Mercado Pago connector (credential paste, no OAuth) worked normally.
+ * Sending the pair is also tolerated by applications WITHOUT the flag (the
+ * parameters simply do not apply), so one code path serves both.
+ */
+export interface MercadoLivrePkcePair {
+  /** RFC 7636 code_verifier — secret side, replayed on the token exchange. */
+  codeVerifier: string;
+  /** S256 code_challenge — public side, sent on `/authorization`. */
+  codeChallenge: string;
+}
+
+/**
+ * Generate a fresh PKCE pair: a 384-bit code_verifier (48 random bytes as
+ * base64url — 64 characters inside the RFC 7636 alphabet, well within the
+ * 43–128 bound) and its SHA-256 challenge, base64url-encoded.
+ */
+export function generateMercadoLivrePkcePair(): MercadoLivrePkcePair {
+  const codeVerifier = randomBytes(48).toString("base64url");
+  return {
+    codeVerifier,
+    codeChallenge: createHash("sha256").update(codeVerifier, "ascii").digest("base64url"),
+  };
+}
+
+/** PKCE material the authorization URL/referrer knows about. */
+export interface MercadoLivrePkceOptions {
+  /**
+   * S256 challenge derived from the one-time code_verifier. When present the
+   * authorization request opts into PKCE and the exchange MUST replay the
+   * matching `code_verifier`.
+   */
+  codeChallenge?: string;
+}
+
 /**
  * Seller authorization URL for a private/in-house Mercado Livre application.
  *
@@ -151,19 +199,26 @@ function normalizeAuthorizationClientId(clientId: string): string {
  * configuration in DevCenter. Sending `scope` (including `offline_access`)
  * opts into public/third-party permission validation and can trigger the
  * yellow commercial-homologation rejection screen. Keep the authorization
- * request deliberately strict: protocol fields plus the one-time CSRF state.
- * Refresh-token issuance remains part of the authorization-code exchange.
+ * request deliberately strict: protocol fields, the one-time CSRF state and
+ * — when issued — the PKCE S256 challenge (mandatory for unified-DevCenter
+ * applications, harmless otherwise). Refresh-token issuance remains part of
+ * the authorization-code exchange.
  */
 export function buildMercadoLivreAuthorizationUrl(
   state: string,
   config: MercadoLivreConfig = getMercadoLivreConfig(),
   request?: RedirectRequestContext,
+  pkce: MercadoLivrePkceOptions = {},
 ): string {
   const url = new URL("/authorization", config.authBaseUrl.trim().toLowerCase());
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", normalizeAuthorizationClientId(config.clientId));
   url.searchParams.set("redirect_uri", resolveMercadoLivreRedirectUri(request));
   url.searchParams.set("state", state);
+  if (pkce.codeChallenge) {
+    url.searchParams.set("code_challenge", pkce.codeChallenge);
+    url.searchParams.set("code_challenge_method", "S256");
+  }
   return url.toString();
 }
 
@@ -246,8 +301,14 @@ async function meliTokenRequest(
       PROVIDER,
       // A rejected grant is never fixed by retrying — only by authorizing
       // the account again (the panel turns this into the connect CTA).
-      // Rate limits and outages stay retryable.
-      { requiresReauth: status < 500 && status !== 429 },
+      // Rate limits and outages stay retryable. `providerCode` lets the
+      // redirect-URI recovery distinguish a candidate mismatch
+      // (`invalid_grant`) from a malformed request (`invalid_request`, e.g.
+      // a missing PKCE verifier) that no other candidate can fix.
+      {
+        requiresReauth: status < 500 && status !== 429,
+        providerCode: payload?.error,
+      },
     );
   }
   return {
@@ -264,11 +325,18 @@ async function meliTokenRequest(
  * Meli answers an `invalid_grant` for BOTH a consumed/expired code and a
  * redirect URI mismatch, without distinguishing them, so the exchange simply
  * tries the next candidate: at worst that is one extra 400 in the logs.
+ *
+ * `invalid_request` is deliberately NOT retried: it means the request itself
+ * is malformed for every candidate — classically `code_verifier is a
+ * required parameter` on unified-DevCenter (PKCE-enabled) applications —
+ * and replaying it against another redirect URI can only fail the same way
+ * while hiding the real cause behind a misleading redirect-URI trail.
  */
 function isRedirectUriRejection(error: unknown): boolean {
   if (!(error instanceof ProviderApiError)) return false;
   if (error.status >= 500 || error.status === 429) return false;
-  return error.status === 400 || error.status === 401;
+  if (error.status !== 400 && error.status !== 401) return false;
+  return error.providerCode === undefined || error.providerCode === "invalid_grant";
 }
 
 export interface MercadoLivreExchangeOptions {
@@ -276,6 +344,14 @@ export interface MercadoLivreExchangeOptions {
   request?: RedirectRequestContext;
   /** Explicit candidate list (tests and callers that already resolved it). */
   redirectUris?: string[];
+  /**
+   * RFC 7636 code_verifier issued with the OAuth state. Mandatory whenever
+   * the DevCenter application has the PKCE flow enabled (the default for
+   * unified Mercado Livre + Mercado Pago apps): without it Meli rejects the
+   * exchange with `invalid_request: "code_verifier is a required
+   * parameter"`. Optional otherwise — the parameter simply does not apply.
+   */
+  codeVerifier?: string;
 }
 
 /**
@@ -303,6 +379,9 @@ export async function exchangeMercadoLivreCode(
         grant_type: "authorization_code",
         code,
         redirect_uri: redirectUri,
+        // PKCE (PR016.2): proves possession of the verifier whose S256
+        // challenge opened this authorization attempt.
+        ...(options.codeVerifier ? { code_verifier: options.codeVerifier } : {}),
       });
     } catch (error) {
       firstError ??= error;

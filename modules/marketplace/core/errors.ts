@@ -19,6 +19,12 @@ export interface MarketplaceErrorOptions {
   requiresReauth?: boolean;
   /** Underlying cause, preserved for the server logs — never for the UI. */
   cause?: unknown;
+  /**
+   * The provider's own protocol error code (OAuth `error` field, e.g.
+   * `invalid_grant` or `invalid_request`) when one exists. Server-side
+   * diagnostic routing only — never rendered verbatim to the browser.
+   */
+  providerCode?: string;
 }
 
 /** Base class for every marketplace integration failure. */
@@ -26,6 +32,8 @@ export class MarketplaceError extends Error {
   readonly provider?: ConnectorProvider;
   /** Whether the UI must offer re-authentication (see the options doc). */
   readonly requiresReauth: boolean;
+  /** The provider's protocol error code, when known (server logs only). */
+  readonly providerCode?: string;
 
   constructor(
     message: string,
@@ -37,6 +45,7 @@ export class MarketplaceError extends Error {
     this.provider = provider;
     this.requiresReauth = options.requiresReauth ?? false;
     if (options.cause !== undefined) this.cause = options.cause;
+    if (options.providerCode !== undefined) this.providerCode = options.providerCode;
   }
 }
 

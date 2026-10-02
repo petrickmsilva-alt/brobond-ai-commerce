@@ -1,0 +1,15 @@
+-- PR016.2 — Mercado Livre OAuth PKCE support.
+--
+-- Applications created in the unified DevCenter (Mercado Livre + Mercado
+-- Pago) ship with the PKCE flow enabled, and Meli then REJECTS the
+-- authorization-code exchange with HTTP 400
+-- `invalid_request: "code_verifier is a required parameter"` — which is why
+-- the Mercado Livre connector could never finish connecting while the
+-- Mercado Pago one (credential paste, no OAuth) worked.
+--
+-- The code_verifier travels with the one-time OAuth state it belongs to.
+-- It is stored as a versioned AES-256-GCM ciphertext (same contract as the
+-- Connector access/refresh tokens) and expires with the state (10 minutes).
+-- Nullable: states issued before this migration simply complete the flow
+-- without a verifier, exactly as they did before.
+ALTER TABLE "ConnectorOAuthState" ADD COLUMN "codeVerifier" TEXT;

@@ -31,6 +31,7 @@ import {
   buildMercadoLivreAuthorizationUrl,
   exchangeMercadoLivreCode,
   fetchMercadoLivreIdentity,
+  generateMercadoLivrePkcePair,
 } from "../mercadolivre/mercadolivre.service";
 import { validateMercadoPagoAccessToken } from "../mercadopago/mercadopago.service";
 import {
@@ -202,8 +203,19 @@ export function createMarketplaceService(deps: MarketplaceServiceDependencies = 
         case "SHOPEE":
           return { authorizationUrl: buildShopeeAuthorizationUrl() };
         case "MERCADOLIVRE": {
-          const state = await connectorOAuthStateService.issue(organizationId, provider);
-          return { authorizationUrl: buildMercadoLivreAuthorizationUrl(state) };
+          // PKCE (PR016.2): unified-DevCenter applications require the S256
+          // challenge on /authorization and the matching verifier on the
+          // token exchange. The verifier is stored — encrypted — with the
+          // one-time state so the callback can prove possession of it.
+          const pkce = generateMercadoLivrePkcePair();
+          const { state } = await connectorOAuthStateService.issue(organizationId, provider, {
+            codeVerifier: pkce.codeVerifier,
+          });
+          return {
+            authorizationUrl: buildMercadoLivreAuthorizationUrl(state, undefined, undefined, {
+              codeChallenge: pkce.codeChallenge,
+            }),
+          };
         }
         case "MERCADOPAGO":
           throw new MarketplaceError(
@@ -250,21 +262,24 @@ export function createMarketplaceService(deps: MarketplaceServiceDependencies = 
 
     /**
      * Mercado Livre callback: consume the single-use state (the state — and
-     * only it — determines the tenant), exchange the code and persist the
-     * encrypted credential pair plus the seller identity.
+     * only it — determines the tenant), replay the PKCE code_verifier bound
+     * to it, exchange the code and persist the encrypted credential pair
+     * plus the seller identity.
      */
     async handleMercadoLivreCallback(
       input: { code: string; state: string },
       context: ConnectorCallbackContext = {},
     ): Promise<Connector> {
-      const { organizationId } = await connectorOAuthStateService.consume(
+      const { organizationId, codeVerifier } = await connectorOAuthStateService.consume(
         input.state,
         "MERCADOLIVRE",
       );
       // The request travels with the exchange so the `redirect_uri` replayed
-      // to Meli is the one it actually used (PR016.1).
+      // to Meli is the one it actually used (PR016.1); the code_verifier
+      // satisfies the PKCE check of unified-DevCenter applications (PR016.2).
       const tokens = await exchangeMercadoLivreCode(input.code, undefined, {
         request: context.request,
+        codeVerifier,
       });
       const identity = await fetchMercadoLivreIdentity(tokens.accessToken);
       const connector = await repository.upsertConnection(organizationId, "MERCADOLIVRE", {
