@@ -19,6 +19,7 @@ import type { MarketplaceSyncResultDTO } from "./connector.dto";
 import { fetchInstagramContent } from "../instagram/instagram-bridge.service";
 import { fetchTikTokContent } from "../tiktok/tiktok-bridge.service";
 import { ShopeeConnector } from "@/modules/connectors/shopee/shopee.connector";
+import { NuvemshopConnector } from "@/modules/connectors/nuvemshop/nuvemshop.connector";
 import { TikTokPendingApprovalError } from "@/modules/connectors/tiktok/pending-approval.service";
 import { fetchMercadoLivreItems } from "../mercadolivre/mercadolivre.service";
 import { fetchMercadoPagoPayments } from "../mercadopago/mercadopago.service";
@@ -49,6 +50,7 @@ const PROVIDER_TO_PLATFORM: Record<ConnectorProvider, ConnectorPlatform> = {
   TIKTOK: "TIKTOK",
   INSTAGRAM: "INSTAGRAM",
   SHOPEE: "SHOPEE",
+  NUVEMSHOP: "NUVEMSHOP",
   MERCADOLIVRE: "MERCADOLIVRE",
   MERCADOPAGO: "MERCADOPAGO",
 };
@@ -72,6 +74,8 @@ async function fetchProviderContent(
       return fetchInstagramContent(organizationId, limit);
     case "SHOPEE":
       return new ShopeeConnector().syncProducts(organizationId, limit);
+    case "NUVEMSHOP":
+      return new NuvemshopConnector().syncProducts(organizationId, limit);
     case "MERCADOLIVRE": {
       const { accessToken, shopId } = await service.getValidAccessToken(organizationId, provider);
       if (!shopId) throw new ConnectorNotConnectedError(provider);

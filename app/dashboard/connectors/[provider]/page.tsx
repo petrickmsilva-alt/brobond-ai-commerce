@@ -115,7 +115,9 @@ function oauthErrorMessage(
     case "config":
       return `A integração com ${label} está incompleta no servidor. Confirme as variáveis do aplicativo (client id, client secret e a URL de redirecionamento) no ambiente da Render e tente novamente.`;
     case "exchange":
-      return `${label} recusou a troca do código de autorização. A causa mais comum é a URL de redirecionamento registrada no painel do desenvolvedor estar diferente de APP_URL/NEXTAUTH_URL — confira os valores registrados no log do servidor e tente novamente.`;
+      return provider === "NUVEMSHOP"
+        ? `${label} recusou a troca do código de autorização ou o registro dos webhooks. Confirme NUVEMSHOP_REDIRECT_URI no painel de parceiros e tente novamente.`
+        : `${label} recusou a troca do código de autorização. A causa mais comum é a URL de redirecionamento registrada no painel do desenvolvedor estar diferente de APP_URL/NEXTAUTH_URL — confira os valores registrados no log do servidor e tente novamente.`;
     case "invalid_request":
       return `O retorno de ${label} chegou incompleto. Use "${connectorConnectLabel(provider)}" para iniciar a conexão novamente.`;
     default:

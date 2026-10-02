@@ -272,10 +272,11 @@ describe("navigation — PR015 collapsible connectors menu", () => {
     expect(flatItems().map((item) => item.href)).not.toContain("/dashboard/connectors");
   });
 
-  it("reveals exactly the five individual connectors, each fully described", () => {
+  it("reveals exactly the six individual connectors, each fully described", () => {
     expect(connectors!.children.map((item) => item.label)).toEqual([
       "Mercado Livre",
       "Shopee",
+      "Nuvemshop",
       "TikTok Shop",
       "Mercado Pago",
       "Instagram Shopping",

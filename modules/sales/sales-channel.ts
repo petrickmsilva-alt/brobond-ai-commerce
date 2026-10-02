@@ -19,6 +19,7 @@ export const SALE_CHANNELS = [
   "TIKTOK",
   "INSTAGRAM",
   "SHOPEE",
+  "NUVEMSHOP",
   "MERCADOLIVRE",
   "MERCADOPAGO",
 ] as const;
@@ -31,6 +32,7 @@ export const SALE_CHANNEL_LABELS: Record<SaleChannelName, string> = {
   TIKTOK: "TikTok Shop",
   INSTAGRAM: "Instagram Shopping",
   SHOPEE: "Shopee",
+  NUVEMSHOP: "Nuvemshop",
   MERCADOLIVRE: "Mercado Livre",
   MERCADOPAGO: "Mercado Pago",
 };
@@ -41,6 +43,7 @@ export const SALE_CHANNEL_SHORT_LABELS: Record<SaleChannelName, string> = {
   TIKTOK: "TikTok",
   INSTAGRAM: "Instagram",
   SHOPEE: "Shopee",
+  NUVEMSHOP: "Nuvemshop",
   MERCADOLIVRE: "Mercado Livre",
   MERCADOPAGO: "Mercado Pago",
 };
@@ -54,6 +57,7 @@ export const SALE_CHANNEL_BADGE_TONE: Record<
   TIKTOK: "neutral",
   INSTAGRAM: "accent",
   SHOPEE: "warning",
+  NUVEMSHOP: "info",
   MERCADOLIVRE: "info",
   MERCADOPAGO: "success",
 };

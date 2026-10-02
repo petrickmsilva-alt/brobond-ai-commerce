@@ -19,6 +19,7 @@ import {
   UsersRound,
   Rocket,
   Cable,
+  Cloud,
   Store,
   ShoppingBasket,
   Wallet,
@@ -144,7 +145,7 @@ export const navigationGroups: NavGroup[] = [
         label: "Conectores",
         icon: Plug,
         description:
-          "Expandir os canais de venda — Mercado Livre, Shopee, TikTok Shop, Mercado Pago e Instagram",
+          "Expandir os canais de venda — Mercado Livre, Shopee, Nuvemshop, TikTok Shop, Mercado Pago e Instagram",
         // The stacked hub stays a routed page (contextual "Voltar ao hub"
         // link on each connector screen) but is no longer a sidebar
         // destination: clicking "Conectores" only toggles the list below.
@@ -161,6 +162,12 @@ export const navigationGroups: NavGroup[] = [
             href: connectorProviderPath("SHOPEE"),
             icon: ShoppingBasket,
             description: "Conta, credenciais, catálogo e vendas da Shopee",
+          },
+          {
+            label: "Nuvemshop",
+            href: connectorProviderPath("NUVEMSHOP"),
+            icon: Cloud,
+            description: "Loja, catálogo, pedidos e vendas da Nuvemshop",
           },
           {
             label: "TikTok Shop",

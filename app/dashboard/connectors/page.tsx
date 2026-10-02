@@ -40,8 +40,8 @@ export const metadata: Metadata = {
 /**
  * Connectors dashboard (PR005 framework · PR012 real integrations).
  *
- * Marketplaces & Pagamentos: five real provider cards (TikTok Shop,
- * Instagram Shopping, Shopee, Mercado Livre, Mercado Pago) with OAuth2 /
+ * Marketplaces & Pagamentos: six real provider cards (TikTok Shop,
+ * Instagram Shopping, Shopee, Nuvemshop, Mercado Livre, Mercado Pago) with OAuth2 /
  * API-key connect, live sync and consolidated counters.
  *
  * KPIs: Importados · Duplicados · Falhas · Conectores ativos.
@@ -112,7 +112,7 @@ export default async function ConnectorsPage({
       <PageHeader
         eyebrow="Canais de Venda"
         title="Conectores — Hub Multicanal"
-        description="Centralize suas vendas em um só lugar: TikTok Shop, Instagram Shopping, Shopee, Mercado Livre e Mercado Pago — conexão OAuth2 / API keys, sincronização real e contadores consolidados por plataforma."
+        description="Centralize suas vendas em um só lugar: TikTok Shop, Instagram Shopping, Shopee, Nuvemshop, Mercado Livre e Mercado Pago — conexão OAuth2 / API keys, sincronização real e contadores consolidados por plataforma."
       />
 
       {oauthResult === "connected" && (

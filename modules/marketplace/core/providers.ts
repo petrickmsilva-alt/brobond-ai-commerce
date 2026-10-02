@@ -20,17 +20,19 @@ export const CONNECTOR_PROVIDERS = [
   "TIKTOK",
   "INSTAGRAM",
   "SHOPEE",
+  "NUVEMSHOP",
   "MERCADOLIVRE",
   "MERCADOPAGO",
 ] as const;
 
 export type ConnectorProviderName = (typeof CONNECTOR_PROVIDERS)[number];
 
-/** pt-BR display labels for the five connector cards. */
+/** pt-BR display labels for the six connector cards. */
 export const CONNECTOR_PROVIDER_LABELS: Record<ConnectorProviderName, string> = {
   TIKTOK: "TikTok Shop",
   INSTAGRAM: "Instagram Shopping",
   SHOPEE: "Shopee",
+  NUVEMSHOP: "Nuvemshop",
   MERCADOLIVRE: "Mercado Livre",
   MERCADOPAGO: "Mercado Pago",
 };
@@ -40,6 +42,7 @@ export const CONNECTOR_PROVIDER_DESCRIPTIONS: Record<ConnectorProviderName, stri
   TIKTOK: "Catálogo e pedidos via TikTok Shop Partner Center (OAuth2 oficial).",
   INSTAGRAM: "Instagram Shopping via Graph API / Facebook Login oficial.",
   SHOPEE: "Shopee Open Platform v2 com assinatura HMAC-SHA256.",
+  NUVEMSHOP: "Catálogo e pedidos da loja virtual via OAuth2 e API oficial.",
   MERCADOLIVRE: "Meli API oficial — OAuth2 com refresh token automático.",
   MERCADOPAGO: "Checkout e faturamento via Access Token de produção.",
 };
@@ -54,6 +57,7 @@ export const CONNECTOR_PROVIDER_ACCOUNT_LABELS: Record<ConnectorProviderName, st
   TIKTOK: "Conta do TikTok Shop",
   INSTAGRAM: "Conta do Instagram",
   SHOPEE: "Conta da Shopee",
+  NUVEMSHOP: "Loja da Nuvemshop",
   MERCADOLIVRE: "Conta do Mercado Livre",
   MERCADOPAGO: "Credenciais do Mercado Pago",
 };
@@ -63,6 +67,7 @@ export const CONNECTOR_PROVIDER_CATALOG_LABELS: Record<ConnectorProviderName, st
   TIKTOK: "os vídeos e pedidos",
   INSTAGRAM: "as publicações e produtos",
   SHOPEE: "os produtos",
+  NUVEMSHOP: "os produtos e pedidos",
   MERCADOLIVRE: "os anúncios",
   MERCADOPAGO: "os pagamentos",
 };
@@ -89,6 +94,7 @@ export const CONNECTOR_PROVIDER_SLUGS: Record<ConnectorProviderName, string> = {
   TIKTOK: "tiktok",
   INSTAGRAM: "instagram",
   SHOPEE: "shopee",
+  NUVEMSHOP: "nuvemshop",
   MERCADOLIVRE: "mercado-livre",
   MERCADOPAGO: "mercado-pago",
 };
@@ -126,6 +132,7 @@ export const CONNECTOR_PROVIDER_AUTH: Record<ConnectorProviderName, ConnectorAut
   TIKTOK: "oauth2",
   INSTAGRAM: "oauth2",
   SHOPEE: "oauth2",
+  NUVEMSHOP: "oauth2",
   MERCADOLIVRE: "oauth2",
   MERCADOPAGO: "apikeys",
 };
@@ -168,7 +175,7 @@ export function isProviderConnected(status: ConnectionStatus | ConnectionStatusN
 // Type guards
 // ------------------------------------------------------------------
 
-/** Type guard: is a value one of the five real providers? */
+/** Type guard: is a value one of the six real providers? */
 export function isConnectorProviderName(value: unknown): value is ConnectorProviderName {
   return (
     typeof value === "string" &&

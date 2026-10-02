@@ -8,12 +8,13 @@ import { log } from "@/lib/observability/logger";
 import { marketplaceRepository } from "../core/connector.repository";
 import { WebhookSignatureError } from "../core/errors";
 import { verifyShopeeWebhookSignature } from "../shopee/shopee.service";
+import { verifyNuvemshopWebhookSignature } from "@/modules/connectors/nuvemshop/nuvemshop.service";
 import { verifyMercadoPagoWebhookSignature } from "../mercadopago/mercadopago.service";
 import { isSaleIngestionEvent } from "../ingestion/sale-ingestion.service";
 
 /**
  * Unified provider webhook handlers (PR012) — verification, normalization
- * and idempotent ingestion for the five real integrations.
+ * and idempotent ingestion for the six real integrations.
  *
  * Every handler follows the same contract:
  *   1. VERIFY the provider signature over the exact raw bytes (a forged
@@ -118,6 +119,26 @@ function parseShopeeEvent(request: Request, rawBody: string): ParsedWebhookEvent
   };
 }
 
+/** Nuvemshop: base64 HMAC-SHA256(app secret, raw request body). */
+function parseNuvemshopEvent(request: Request, rawBody: string): ParsedWebhookEvent {
+  if (!verifyNuvemshopWebhookSignature(rawBody, request.headers.get("x-linkedstore-hmac-sha256"))) {
+    throw new WebhookSignatureError("NUVEMSHOP");
+  }
+  const body = asRecord(JSON.parse(rawBody));
+  const topic = typeof body.event === "string" ? body.event.trim().toLowerCase() : "unknown";
+  const storeId = body.store_id !== undefined ? String(body.store_id) : null;
+  const resourceId = body.id !== undefined ? String(body.id) : "unknown";
+  return {
+    // Nuvemshop sends no delivery id. A store/topic/resource tuple is stable
+    // across at-least-once retries, while distinct lifecycle topics still
+    // process the same order as it moves from created → paid/cancelled.
+    externalEventId: `nuvemshop:${storeId ?? "-"}:${topic}:${resourceId}`,
+    topic,
+    shopId: storeId,
+    payload: body,
+  };
+}
+
 /**
  * Mercado Livre notifications carry no HMAC; integrity is enforced by an
  * optional shared secret appended to the registered notification URL
@@ -176,6 +197,7 @@ const PARSERS: Record<
   TIKTOK: parseTikTokEvent,
   INSTAGRAM: parseInstagramEvent,
   SHOPEE: parseShopeeEvent,
+  NUVEMSHOP: parseNuvemshopEvent,
   MERCADOLIVRE: parseMercadoLivreEvent,
   MERCADOPAGO: parseMercadoPagoEvent,
 };

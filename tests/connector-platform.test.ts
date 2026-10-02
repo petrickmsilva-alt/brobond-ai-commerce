@@ -42,12 +42,13 @@ import {
  */
 
 describe("ConnectorPlatform (Prisma enum)", () => {
-  it("has exactly the six platforms (MOCK + five real integrations)", () => {
+  it("has exactly the seven platforms (MOCK + six real integrations)", () => {
     expect(Object.values(ConnectorPlatform)).toEqual([
       "MOCK",
       "TIKTOK",
       "INSTAGRAM",
       "SHOPEE",
+      "NUVEMSHOP",
       "MERCADOLIVRE",
       "MERCADOPAGO",
     ]);
@@ -58,6 +59,7 @@ describe("ConnectorPlatform (Prisma enum)", () => {
     expect(ConnectorPlatform.TIKTOK).toBe("TIKTOK");
     expect(ConnectorPlatform.INSTAGRAM).toBe("INSTAGRAM");
     expect(ConnectorPlatform.SHOPEE).toBe("SHOPEE");
+    expect(ConnectorPlatform.NUVEMSHOP).toBe("NUVEMSHOP");
     expect(ConnectorPlatform.MERCADOLIVRE).toBe("MERCADOLIVRE");
     expect(ConnectorPlatform.MERCADOPAGO).toBe("MERCADOPAGO");
   });
@@ -84,9 +86,17 @@ describe("CONNECTOR_PLATFORMS (client-safe mirror)", () => {
     expect([...PLACEHOLDER_CONNECTOR_PLATFORMS]).toEqual([]);
   });
 
-  it("registers MOCK plus the five real providers", () => {
+  it("registers MOCK plus the six real providers", () => {
     expect(
-      new Set(["MOCK", "TIKTOK", "INSTAGRAM", "SHOPEE", "MERCADOLIVRE", "MERCADOPAGO"]),
+      new Set([
+        "MOCK",
+        "TIKTOK",
+        "INSTAGRAM",
+        "SHOPEE",
+        "NUVEMSHOP",
+        "MERCADOLIVRE",
+        "MERCADOPAGO",
+      ]),
     ).toEqual(new Set(CONNECTOR_PLATFORMS));
   });
 });

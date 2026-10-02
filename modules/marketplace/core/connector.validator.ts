@@ -25,6 +25,14 @@ export const shopeeCallbackSchema = z.object({
 
 export type ShopeeCallbackInput = z.infer<typeof shopeeCallbackSchema>;
 
+/** Nuvemshop OAuth redirect query (?code=…&state=…). */
+export const nuvemshopCallbackSchema = z.object({
+  code: z.string().trim().min(1),
+  state: z.string().trim().min(16),
+});
+
+export type NuvemshopCallbackInput = z.infer<typeof nuvemshopCallbackSchema>;
+
 /** Mercado Livre OAuth redirect query (?code=…&state=…). */
 export const mercadoLivreCallbackSchema = z.object({
   code: z.string().trim().min(1),

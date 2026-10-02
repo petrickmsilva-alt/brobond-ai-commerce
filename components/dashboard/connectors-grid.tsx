@@ -6,6 +6,7 @@ import {
   ArrowRight,
   CircleAlert,
   CircleCheck,
+  Cloud,
   Instagram,
   KeyRound,
   Link2,
@@ -36,7 +37,7 @@ import {
 } from "@/app/dashboard/marketplace/actions";
 
 /**
- * Marketplace connectors grid (PR012) — the five real provider cards.
+ * Marketplace connectors grid — the six real provider cards.
  *
  * The server-rendered DTO avoids a disconnected flash. Once mounted, the
  * client refreshes it through `/api/connectors/status`, whose Mercado Pago
@@ -48,6 +49,7 @@ const PROVIDER_ICONS = {
   TIKTOK: Music2,
   INSTAGRAM: Instagram,
   SHOPEE: ShoppingBag,
+  NUVEMSHOP: Cloud,
   MERCADOLIVRE: Store,
   MERCADOPAGO: Wallet,
 } as const;

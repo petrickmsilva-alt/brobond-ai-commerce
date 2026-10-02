@@ -37,6 +37,12 @@ import {
   exchangeMercadoLivreCode,
   fetchMercadoLivreIdentity,
 } from "../mercadolivre/mercadolivre.service";
+import {
+  buildNuvemshopAuthorizationUrl,
+  ensureNuvemshopOrderWebhooks,
+  exchangeNuvemshopCode,
+  fetchNuvemshopStore,
+} from "@/modules/connectors/nuvemshop/nuvemshop.service";
 import { validateMercadoPagoAccessToken } from "../mercadopago/mercadopago.service";
 import {
   getMercadoPagoEnvironmentCredentials,
@@ -46,7 +52,7 @@ import {
 
 /**
  * Marketplace connector service (PR012) — the single orchestration point
- * for connecting, mirroring and disconnecting the five real providers.
+ * for connecting, mirroring and disconnecting the six real providers.
  *
  * SECURITY CONTRACT: every credential is encrypted (AES-256-GCM) BEFORE the
  * upsert; this service never returns plaintext to callers — the only secret
@@ -150,7 +156,7 @@ export function createMarketplaceService(deps: MarketplaceServiceDependencies = 
 
   return {
     /**
-     * Card DTOs for the five providers. Before reading, mirrors the PR009 /
+     * Card DTOs for the six providers. Before reading, mirrors the PR009 /
      * PR010 credentials (TikTok / Instagram) so the cards always reflect the
      * real connection state — mirroring never throws into the listing.
      */
@@ -240,7 +246,7 @@ export function createMarketplaceService(deps: MarketplaceServiceDependencies = 
      * URL — the browser is then redirected by the caller. TikTok and
      * Instagram reuse the PR009/PR010 official flows (hashed, single-use
      * states); Shopee binds the tenant via the authenticated session on the
-     * callback; Mercado Livre consumes a PR012 single-use state.
+     * callback; Mercado Livre and Nuvemshop consume a single-use state.
      */
     async startOAuth(
       organizationId: string,
@@ -253,6 +259,10 @@ export function createMarketplaceService(deps: MarketplaceServiceDependencies = 
           return connectInstagram(organizationId);
         case "SHOPEE":
           return { authorizationUrl: buildShopeeAuthorizationUrl() };
+        case "NUVEMSHOP": {
+          const state = await connectorOAuthStateService.issue(organizationId, provider);
+          return { authorizationUrl: buildNuvemshopAuthorizationUrl(state) };
+        }
         case "MERCADOLIVRE": {
           const state = await connectorOAuthStateService.issue(organizationId, provider);
           return { authorizationUrl: buildMercadoLivreAuthorizationUrl(state) };
@@ -295,6 +305,52 @@ export function createMarketplaceService(deps: MarketplaceServiceDependencies = 
           entityType: "Connector",
           entityId: connector.id,
           metadata: { shopId: input.shop_id } as Prisma.InputJsonValue,
+        },
+      });
+      return connector;
+    },
+
+    /**
+     * Nuvemshop callback: the one-time state is the sole tenant binding. The
+     * authorization code is exchanged with the static NUVEMSHOP_REDIRECT_URI,
+     * the long-lived token is encrypted, and order webhooks are registered
+     * before the callback is considered complete.
+     */
+    async handleNuvemshopCallback(input: { code: string; state: string }): Promise<Connector> {
+      const { organizationId } = await connectorOAuthStateService.consume(input.state, "NUVEMSHOP");
+      const tokens = await exchangeNuvemshopCode(input.code);
+      const store = await fetchNuvemshopStore(tokens.accessToken, tokens.storeId).catch(() => ({
+        storeName: null,
+      }));
+      const connector = await repository.upsertConnection(organizationId, "NUVEMSHOP", {
+        status: "CONNECTED",
+        accessToken: encryptConnectorSecret(tokens.accessToken),
+        refreshToken: null,
+        expiresAt: null,
+        shopId: tokens.storeId,
+        shopName: store.storeName,
+        metadata: { scope: tokens.scope } as Prisma.InputJsonValue,
+      });
+
+      try {
+        await ensureNuvemshopOrderWebhooks(tokens.accessToken, tokens.storeId);
+      } catch (error) {
+        await repository.setStatus(
+          organizationId,
+          "NUVEMSHOP",
+          "ERROR",
+          "Não foi possível registrar os webhooks de pedidos. Reconecte a loja.",
+        );
+        throw error;
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          organizationId,
+          action: "NUVEMSHOP_CONNECTED",
+          entityType: "Connector",
+          entityId: connector.id,
+          metadata: { storeId: tokens.storeId, webhooks: "orders" } as Prisma.InputJsonValue,
         },
       });
       return connector;

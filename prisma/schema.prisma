@@ -103,6 +103,7 @@ enum SaleChannel {
   TIKTOK
   INSTAGRAM
   SHOPEE
+  NUVEMSHOP
   MERCADOLIVRE
   MERCADOPAGO
 }
@@ -143,14 +144,15 @@ enum TemplateType {
 
 /// Platform a connector talks to (PR005 — Connector Framework, extended in
 /// PR012 — Real Marketplace Integrations). `MOCK` is the deterministic local
-/// dataset used in development/tests; the other five platforms are real,
+/// dataset used in development/tests; the other six platforms are real,
 /// server-only official API integrations (TikTok Shop, Instagram Shopping,
-/// Shopee, Mercado Livre and Mercado Pago).
+/// Shopee, Nuvemshop, Mercado Livre and Mercado Pago).
 enum ConnectorPlatform {
   MOCK
   TIKTOK
   INSTAGRAM
   SHOPEE
+  NUVEMSHOP
   MERCADOLIVRE
   MERCADOPAGO
 }
@@ -303,14 +305,15 @@ enum ApprovalRequestStatus {
 }
 
 /// Marketplace/payment provider integrated through the unified `Connector`
-/// model (PR012 — Real Marketplace Integrations). All five providers use
+/// model (PR012 — Real Marketplace Integrations). All six providers use
 /// official production APIs only: TikTok Shop Partner Center, Meta Graph
 /// API (Instagram Shopping), Shopee Open Platform v2 (HMAC-signed),
-/// Mercado Livre OAuth2 (Meli API) and Mercado Pago API credentials.
+/// Nuvemshop OAuth2, Mercado Livre OAuth2 and Mercado Pago credentials.
 enum ConnectorProvider {
   TIKTOK
   INSTAGRAM
   SHOPEE
+  NUVEMSHOP
   MERCADOLIVRE
   MERCADOPAGO
 }
@@ -503,6 +506,9 @@ model Product {
   /// Stable `${shop_id}:${item_id}` identifier from Shopee Open Platform v2.
   /// Used as the tenant-scoped idempotency key by catalog synchronization.
   shopeeProductId String?
+  /// Stable `${store_id}:${product_id}` identifier from Nuvemshop's official
+  /// Products API. Names/SKUs may change, so catalog sync never dedupes on them.
+  nuvemshopProductId String?
 
   /**
    * Aggregate stock on hand (variant stock is tracked per ProductVariant).
@@ -541,6 +547,7 @@ model Product {
   @@unique([organizationId, sku])
   @@unique([organizationId, tiktokProductId])
   @@unique([organizationId, shopeeProductId])
+  @@unique([organizationId, nuvemshopProductId])
   @@index([status])
   @@index([organizationId])
   @@index([organizationId, status])
@@ -1084,8 +1091,8 @@ model FollowUpSequence {
 /// connector — is it enabled, when did it last sync, how did that run go and
 /// what are its cumulative counters (the dashboard KPIs).
 ///
-/// PR012 wires the five real platforms behind the framework: TikTok Shop,
-/// Instagram Shopping, Shopee, Mercado Livre and Mercado Pago fetch through
+/// The six real platforms behind the framework — TikTok Shop, Instagram
+/// Shopping, Shopee, Nuvemshop, Mercado Livre and Mercado Pago — fetch through
 /// the official APIs using the credentials persisted on the unified
 /// `Connector` model. `MOCK` remains the deterministic local dataset for
 /// development and tests.
@@ -1260,7 +1267,7 @@ model AuditLog {
 
 /// Unified, tenant-isolated connection to one marketplace/payment provider
 /// (PR012 — Real Marketplace Integrations): TikTok Shop, Instagram Shopping,
-/// Shopee, Mercado Livre and Mercado Pago.
+/// Shopee, Nuvemshop, Mercado Livre and Mercado Pago.
 ///
 /// SECURITY CONTRACT: `accessToken`, `refreshToken`, `clientSecret` and
 /// `publicKey` are AES-256-GCM ciphertexts produced with
@@ -1320,9 +1327,9 @@ model Connector {
   @@index([provider, shopId])
 }
 
-/// Short-lived, one-time server-side CSRF state for the Shopee and Mercado
-/// Livre OAuth redirects (PR012). Only a SHA-256 digest of the opaque state
-/// is persisted; the raw value exists only in the provider redirect URL.
+/// Short-lived, one-time server-side CSRF state for marketplace OAuth
+/// redirects (Mercado Livre and Nuvemshop). Only a SHA-256 digest of the
+/// opaque state is persisted; the raw value exists only in the provider redirect URL.
 model ConnectorOAuthState {
   id String @id @default(cuid())
 
@@ -1337,7 +1344,7 @@ model ConnectorOAuthState {
   @@index([organizationId, provider, expiresAt])
 }
 
-/// Durable, idempotent webhook inbox for the five real providers (PR012).
+/// Durable, idempotent webhook inbox for the six real providers.
 ///
 /// IDEMPOTENCY CONTRACT: `(organizationId, provider, externalEventId)` is
 /// unique, so at-least-once provider deliveries (catalog updates, new

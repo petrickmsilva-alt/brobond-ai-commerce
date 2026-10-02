@@ -102,6 +102,7 @@ describe("registry helpers", () => {
       "TIKTOK",
       "INSTAGRAM",
       "SHOPEE",
+      "NUVEMSHOP",
       "MERCADOLIVRE",
       "MERCADOPAGO",
     ]);
