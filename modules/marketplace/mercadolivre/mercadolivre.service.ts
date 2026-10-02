@@ -32,6 +32,13 @@ function requiredEnv(name: string): string {
   return value;
 }
 
+/** Check if production developer credentials are set. */
+export function isMercadoLivreConfigured(): boolean {
+  return Boolean(
+    process.env.MERCADOLIVRE_CLIENT_ID?.trim() && process.env.MERCADOLIVRE_CLIENT_SECRET?.trim(),
+  );
+}
+
 /** Server-only config; the client secret never leaves this module. */
 export function getMercadoLivreConfig(): MercadoLivreConfig {
   return {
@@ -109,6 +116,20 @@ async function meliTokenRequest(
   }
   const payload = (await response.json().catch(() => undefined)) as MeliTokenResponse | undefined;
   if (!response.ok || !payload?.access_token || !payload.refresh_token || !payload.expires_in) {
+    if (
+      response.status === 400 ||
+      response.status === 401 ||
+      response.status === 403 ||
+      payload?.error === "invalid_grant" ||
+      payload?.error === "invalid_client" ||
+      payload?.error === "unauthorized_client"
+    ) {
+      throw new ProviderApiError(
+        "Aguardando autenticação da conta de desenvolvedor",
+        response.status || 401,
+        PROVIDER,
+      );
+    }
     throw new ProviderApiError(
       payload?.message || "O Mercado Livre rejeitou a troca de token.",
       response.status || 502,
@@ -157,12 +178,24 @@ export async function fetchMercadoLivreIdentity(
   accessToken: string,
   config: MercadoLivreConfig = getMercadoLivreConfig(),
 ): Promise<{ userId: string; nickname: string | null; siteId: string | null }> {
-  const response = await fetch(new URL("/users/me", config.apiBaseUrl), {
-    headers: { accept: "application/json", authorization: `Bearer ${accessToken}` },
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(new URL("/users/me", config.apiBaseUrl), {
+      headers: { accept: "application/json", authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+  } catch {
+    throw new ProviderApiError("Falha de rede ao contatar o Mercado Livre.", 503, PROVIDER);
+  }
   const payload = (await response.json().catch(() => undefined)) as MeliUser | undefined;
   if (!response.ok || payload?.id === undefined) {
+    if (response.status === 401 || response.status === 403) {
+      throw new ProviderApiError(
+        "Aguardando autenticação da conta de desenvolvedor",
+        response.status,
+        PROVIDER,
+      );
+    }
     throw new ProviderApiError(
       "Não foi possível identificar a conta do vendedor no Mercado Livre.",
       response.status || 502,
@@ -243,6 +276,13 @@ export async function fetchMercadoLivreOrder(
   const payload = (await response.json().catch(() => undefined)) as
     (MeliOrderResponse & { message?: string }) | undefined;
   if (!response.ok || payload?.id === undefined) {
+    if (response.status === 401 || response.status === 403) {
+      throw new ProviderApiError(
+        "Aguardando autenticação da conta de desenvolvedor",
+        response.status,
+        PROVIDER,
+      );
+    }
     throw new ProviderApiError(
       payload?.message || `Não foi possível obter o pedido ${orderId} do Mercado Livre.`,
       response.status || 502,
@@ -312,13 +352,26 @@ export async function fetchMercadoLivreItems(
   searchUrl.searchParams.set("limit", String(Math.min(Math.max(limit, 1), 50)));
   searchUrl.searchParams.set("offset", "0");
 
-  const searchResponse = await fetch(searchUrl, {
-    headers: { accept: "application/json", authorization: `Bearer ${accessToken}` },
-    cache: "no-store",
-  });
+  let searchResponse: Response;
+  try {
+    searchResponse = await fetch(searchUrl, {
+      headers: { accept: "application/json", authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+  } catch {
+    throw new ProviderApiError("Falha de rede ao contatar o Mercado Livre.", 503, PROVIDER);
+  }
+
   const searchPayload = (await searchResponse.json().catch(() => undefined)) as
     MeliItemSearchResponse | undefined;
   if (!searchResponse.ok) {
+    if (searchResponse.status === 401 || searchResponse.status === 403) {
+      throw new ProviderApiError(
+        "Aguardando autenticação da conta de desenvolvedor",
+        searchResponse.status,
+        PROVIDER,
+      );
+    }
     throw new ProviderApiError(
       "Não foi possível listar os anúncios do Mercado Livre.",
       searchResponse.status || 502,
@@ -330,13 +383,27 @@ export async function fetchMercadoLivreItems(
 
   const itemsUrl = new URL("/items", config.apiBaseUrl);
   itemsUrl.searchParams.set("ids", ids.join(","));
-  const itemsResponse = await fetch(itemsUrl, {
-    headers: { accept: "application/json", authorization: `Bearer ${accessToken}` },
-    cache: "no-store",
-  });
+
+  let itemsResponse: Response;
+  try {
+    itemsResponse = await fetch(itemsUrl, {
+      headers: { accept: "application/json", authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+  } catch {
+    throw new ProviderApiError("Falha de rede ao contatar o Mercado Livre.", 503, PROVIDER);
+  }
+
   const itemsPayload = (await itemsResponse.json().catch(() => undefined)) as
     MeliItemsBatchEntry[] | undefined;
   if (!itemsResponse.ok || !Array.isArray(itemsPayload)) {
+    if (itemsResponse.status === 401 || itemsResponse.status === 403) {
+      throw new ProviderApiError(
+        "Aguardando autenticação da conta de desenvolvedor",
+        itemsResponse.status,
+        PROVIDER,
+      );
+    }
     throw new ProviderApiError(
       "Não foi possível obter os detalhes dos anúncios do Mercado Livre.",
       itemsResponse.status || 502,
@@ -365,3 +432,26 @@ export async function fetchMercadoLivreItems(
       };
     });
 }
+
+/**
+ * High-level Mercado Livre sync service helper for one tenant: resolves valid
+ * tokens (auto-renewing with MERCADOLIVRE_CLIENT_SECRET) and fetches active listings.
+ */
+export async function syncMercadoLivreProducts(
+  organizationId: string,
+  limit: number = 50,
+): Promise<NormalizedContent[]> {
+  if (!isMercadoLivreConfigured()) {
+    throw new ProviderApiError("Aguardando autenticação da conta de desenvolvedor", 401, PROVIDER);
+  }
+  const { marketplaceService } = await import("@/modules/marketplace/core/connector.service");
+  const { accessToken, shopId } = await marketplaceService.getValidAccessToken(
+    organizationId,
+    "MERCADOLIVRE",
+  );
+  if (!shopId) {
+    throw new ProviderApiError("Aguardando autenticação da conta de desenvolvedor", 401, PROVIDER);
+  }
+  return fetchMercadoLivreItems(accessToken, shopId, limit);
+}
+

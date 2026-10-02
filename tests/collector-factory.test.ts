@@ -20,7 +20,7 @@ import type { TrendCollector } from "@/modules/trends/interfaces/trend.interface
  * to its `TrendCollector`. These tests pin:
  *
  *   1. every source maps to the right collector (and `source` matches);
- *   2. real sources are placeholders that throw "Not implemented";
+ *   2. real sources validate credentials and connect to their APIs;
  *   3. MANUAL has no collector (manual trends come from the dashboard form);
  *   4. the factory is the only place allowed to map source → implementation.
  */
@@ -87,21 +87,51 @@ describe("getCollector() — MANUAL and unknown sources", () => {
   });
 });
 
-describe("real collectors are placeholders (Not implemented)", () => {
+describe("real collectors require environment credentials or fetch", () => {
   it.each([
-    ["TikTokCollector", new TikTokCollector()],
-    ["ShopeeCollector", new ShopeeCollector()],
-    ["InstagramCollector", new InstagramCollector()],
-  ])("%s.collect() throws 'Not implemented'", async (_name, collector) => {
-    await expect(collector.collect()).rejects.toThrow("Not implemented");
+    ["TikTokCollector", new TikTokCollector(), /TIKTOK_APP_KEY/],
+    ["ShopeeCollector", new ShopeeCollector(), /SHOPEE_PARTNER_ID/],
+    ["InstagramCollector", new InstagramCollector(), /META_APP_ID/],
+  ])("%s.collect() throws configuration error when env is unset", async (_name, collector, pattern) => {
+    const prevKey = process.env.TIKTOK_APP_KEY;
+    const prevPartner = process.env.SHOPEE_PARTNER_ID;
+    const prevMeta = process.env.META_APP_ID;
+    delete process.env.TIKTOK_APP_KEY;
+    delete process.env.TIKTOK_APP_SECRET;
+    delete process.env.SHOPEE_PARTNER_ID;
+    delete process.env.SHOPEE_PARTNER_KEY;
+    delete process.env.META_APP_ID;
+    delete process.env.META_APP_SECRET;
+    try {
+      await expect(collector.collect()).rejects.toThrow(pattern);
+    } finally {
+      if (prevKey) process.env.TIKTOK_APP_KEY = prevKey;
+      if (prevPartner) process.env.SHOPEE_PARTNER_ID = prevPartner;
+      if (prevMeta) process.env.META_APP_ID = prevMeta;
+    }
   });
 
   it.each([
-    ["TikTokCollector", new TikTokCollector()],
-    ["ShopeeCollector", new ShopeeCollector()],
-    ["InstagramCollector", new InstagramCollector()],
-  ])("%s keeps the PR002 alias throwing the same error", async (_name, collector) => {
-    await expect(collector.collectDailyTrends!()).rejects.toThrow("Not implemented");
+    ["TikTokCollector", new TikTokCollector(), /TIKTOK_APP_KEY/],
+    ["ShopeeCollector", new ShopeeCollector(), /SHOPEE_PARTNER_ID/],
+    ["InstagramCollector", new InstagramCollector(), /META_APP_ID/],
+  ])("%s keeps the PR002 alias throwing configuration error when env is unset", async (_name, collector, pattern) => {
+    const prevKey = process.env.TIKTOK_APP_KEY;
+    const prevPartner = process.env.SHOPEE_PARTNER_ID;
+    const prevMeta = process.env.META_APP_ID;
+    delete process.env.TIKTOK_APP_KEY;
+    delete process.env.TIKTOK_APP_SECRET;
+    delete process.env.SHOPEE_PARTNER_ID;
+    delete process.env.SHOPEE_PARTNER_KEY;
+    delete process.env.META_APP_ID;
+    delete process.env.META_APP_SECRET;
+    try {
+      await expect(collector.collectDailyTrends!()).rejects.toThrow(pattern);
+    } finally {
+      if (prevKey) process.env.TIKTOK_APP_KEY = prevKey;
+      if (prevPartner) process.env.SHOPEE_PARTNER_ID = prevPartner;
+      if (prevMeta) process.env.META_APP_ID = prevMeta;
+    }
   });
 });
 

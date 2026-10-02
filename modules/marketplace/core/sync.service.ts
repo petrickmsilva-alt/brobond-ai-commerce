@@ -100,7 +100,25 @@ export function createMarketplaceSyncService(deps: MarketplaceSyncDependencies =
       // remains usable when the complete credential pair comes from Render,
       // even if this tenant does not yet have a unified Connector row.
       const connector = await repository.findByProvider(organizationId, provider);
-      if (provider === "MERCADOPAGO") {
+      if (provider === "MERCADOLIVRE") {
+        const configured = Boolean(
+          process.env.MERCADOLIVRE_CLIENT_ID?.trim() && process.env.MERCADOLIVRE_CLIENT_SECRET?.trim(),
+        );
+        if (!configured || !connector || connector.status !== "CONNECTED" || !connector.accessToken) {
+          const reason = "Aguardando autenticação da conta de desenvolvedor";
+          await repository.recordSyncResult(organizationId, provider, {
+            status: "ERROR",
+            counters: { imported: 0, duplicated: 0, failed: 0 },
+            lastError: reason,
+          });
+          await connectorRepository.recordSyncResult(organizationId, platform, {
+            state: "ERROR",
+            counters: { imported: 0, duplicates: 0, failed: 0 },
+            lastError: reason,
+          });
+          throw new MarketplaceError(reason, provider);
+        }
+      } else if (provider === "MERCADOPAGO") {
         const configured =
           hasPersistedMercadoPagoCredentials(connector) ||
           getMercadoPagoEnvironmentCredentials(env) !== null;
@@ -119,8 +137,21 @@ export function createMarketplaceSyncService(deps: MarketplaceSyncDependencies =
       try {
         items = await fetchProviderContent(organizationId, provider, limit, service);
       } catch (error) {
-        const message =
+        let message =
           error instanceof Error ? error.message : "Falha desconhecida na sincronização.";
+        if (
+          provider === "MERCADOLIVRE" &&
+          (message.includes("autenticação") ||
+            message.includes("obrigatória") ||
+            message.includes("expirou") ||
+            message.includes("credencial") ||
+            message.includes("401") ||
+            message.includes("403") ||
+            message.includes("MERCADOLIVRE_CLIENT_SECRET") ||
+            message.includes("MERCADOLIVRE_CLIENT_ID"))
+        ) {
+          message = "Aguardando autenticação da conta de desenvolvedor";
+        }
         // Record the failure on BOTH stores so the cards show a real ERROR.
         await repository.recordSyncResult(organizationId, provider, {
           status: "ERROR",
@@ -132,6 +163,9 @@ export function createMarketplaceSyncService(deps: MarketplaceSyncDependencies =
           counters: { imported: 0, duplicates: 0, failed: 0 },
           lastError: message.slice(0, 500),
         });
+        if (provider === "MERCADOLIVRE" && message === "Aguardando autenticação da conta de desenvolvedor") {
+          throw new MarketplaceError(message, provider);
+        }
         throw error;
       }
 

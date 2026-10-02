@@ -299,7 +299,32 @@ export function createMarketplaceService(deps: MarketplaceServiceDependencies = 
       ) {
         return { accessToken: environmentCredentials.accessToken, shopId: null };
       }
+
+      if (provider === "MERCADOLIVRE") {
+        const configured = Boolean(
+          process.env.MERCADOLIVRE_CLIENT_ID?.trim() && process.env.MERCADOLIVRE_CLIENT_SECRET?.trim(),
+        );
+        if (!configured) {
+          await repository.setStatus(
+            organizationId,
+            provider,
+            "DISCONNECTED",
+            "Aguardando autenticação da conta de desenvolvedor",
+          );
+          throw new MarketplaceError(
+            "Aguardando autenticação da conta de desenvolvedor",
+            provider,
+          );
+        }
+      }
+
       if (!connector?.accessToken) {
+        if (provider === "MERCADOLIVRE") {
+          throw new MarketplaceError(
+            "Aguardando autenticação da conta de desenvolvedor",
+            provider,
+          );
+        }
         throw new MarketplaceError(
           `O conector "${String(provider)}" não possui credencial ativa. Conecte a conta primeiro.`,
           provider,
@@ -316,11 +341,12 @@ export function createMarketplaceService(deps: MarketplaceServiceDependencies = 
         };
       }
       if (!connector.refreshToken) {
-        await repository.setStatus(organizationId, provider, "EXPIRED");
-        throw new MarketplaceError(
-          `A credencial do conector "${String(provider)}" expirou. Reconecte a conta.`,
-          provider,
-        );
+        const expiredReason =
+          provider === "MERCADOLIVRE"
+            ? "Aguardando autenticação da conta de desenvolvedor"
+            : `A credencial do conector "${String(provider)}" expirou. Reconecte a conta.`;
+        await repository.setStatus(organizationId, provider, "EXPIRED", expiredReason);
+        throw new MarketplaceError(expiredReason, provider);
       }
 
       const refreshToken = decryptConnectorSecret(connector.refreshToken);
@@ -337,8 +363,11 @@ export function createMarketplaceService(deps: MarketplaceServiceDependencies = 
           return { accessToken: tokens.accessToken, shopId: connector.shopId };
         }
         if (provider === "MERCADOLIVRE") {
-          const { refreshMercadoLivreToken } = await import("../mercadolivre/mercadolivre.service");
-          const tokens = await refreshMercadoLivreToken(refreshToken);
+          const { refreshMercadoLivreToken, getMercadoLivreConfig } = await import(
+            "../mercadolivre/mercadolivre.service"
+          );
+          const meliConfig = getMercadoLivreConfig();
+          const tokens = await refreshMercadoLivreToken(refreshToken, meliConfig);
           await repository.saveTokens(organizationId, connector.id, {
             accessToken: encryptConnectorSecret(tokens.accessToken),
             refreshToken: encryptConnectorSecret(tokens.refreshToken),
@@ -352,12 +381,19 @@ export function createMarketplaceService(deps: MarketplaceServiceDependencies = 
           provider,
         );
       } catch (error) {
+        const failReason =
+          provider === "MERCADOLIVRE"
+            ? "Aguardando autenticação da conta de desenvolvedor"
+            : "A renovação do token falhou — reconecte a conta.";
         await repository.setStatus(
           organizationId,
           provider,
           "EXPIRED",
-          "A renovação do token falhou — reconecte a conta.",
+          failReason,
         );
+        if (provider === "MERCADOLIVRE") {
+          throw new MarketplaceError(failReason, provider);
+        }
         throw error;
       }
     },

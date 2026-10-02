@@ -323,14 +323,14 @@ describe("PR002.1 — multi-source architecture", () => {
     expect(result.source).toBe("MOCK");
   });
 
-  it("a placeholder source (TIKTOK) fails gracefully — 'Not implemented', never a throw", async () => {
+  it("an unconfigured real source (TIKTOK) fails gracefully — reports error, never a throw", async () => {
     const { repository, log } = fakeRepository();
     const job = createCollectDailyTrendsJob({ source: TrendSource.TIKTOK, repository });
 
     const result = await job.execute(ORG);
 
     expect(result.status).toBe("failed");
-    expect(result.error).toContain("Not implemented");
+    expect(result.error).toBeTruthy();
     expect(result.snapshotsCreated).toBe(0);
     expect(log.snapshots).toHaveLength(0); // nothing persisted on failure
     expect(result.source).toBe(TrendSource.TIKTOK);

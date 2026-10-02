@@ -31,17 +31,44 @@ export class MercadoLivreConnector implements Connector {
         "Mercado Livre sync requires an organization scope.",
       );
     }
+    const configured = Boolean(
+      process.env.MERCADOLIVRE_CLIENT_ID?.trim() && process.env.MERCADOLIVRE_CLIENT_SECRET?.trim(),
+    );
+    if (!configured) {
+      throw new MercadoLivreConnectionRequiredError(
+        "Aguardando autenticação da conta de desenvolvedor",
+      );
+    }
     // Lazy imports keep Prisma out of any browser-adjacent module graph.
     const [{ marketplaceService }, { fetchMercadoLivreItems }] = await Promise.all([
       import("@/modules/marketplace/core/connector.service"),
       import("@/modules/marketplace/mercadolivre/mercadolivre.service"),
     ]);
-    const { accessToken, shopId } = await marketplaceService.getValidAccessToken(
-      options.organizationId,
-      "MERCADOLIVRE",
-    );
-    if (!shopId) throw new MercadoLivreConnectionRequiredError();
-    return fetchMercadoLivreItems(accessToken, shopId, options.limit ?? 50);
+    try {
+      const { accessToken, shopId } = await marketplaceService.getValidAccessToken(
+        options.organizationId,
+        "MERCADOLIVRE",
+      );
+      if (!shopId) {
+        throw new MercadoLivreConnectionRequiredError(
+          "Aguardando autenticação da conta de desenvolvedor",
+        );
+      }
+      return await fetchMercadoLivreItems(accessToken, shopId, options.limit ?? 50);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (
+        message.includes("autenticação") ||
+        message.includes("expirou") ||
+        message.includes("credencial") ||
+        message.includes("obrigatória")
+      ) {
+        throw new MercadoLivreConnectionRequiredError(
+          "Aguardando autenticação da conta de desenvolvedor",
+        );
+      }
+      throw error;
+    }
   }
 
   async testConnection(): Promise<ConnectorHealth> {
@@ -54,7 +81,7 @@ export class MercadoLivreConnector implements Connector {
       implemented: true,
       message: configured
         ? "Integração oficial pronta. Conecte uma conta Mercado Livre para validar as permissões."
-        : "Configure MERCADOLIVRE_CLIENT_ID e MERCADOLIVRE_CLIENT_SECRET no servidor para conectar uma conta.",
+        : "Aguardando autenticação da conta de desenvolvedor",
     };
   }
 }

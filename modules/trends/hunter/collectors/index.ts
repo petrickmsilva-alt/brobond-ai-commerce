@@ -1,12 +1,12 @@
 /**
- * Trend collectors — one implementation per `TrendSource` (PR002.1).
+ * Trend collectors — one implementation per `TrendSource` (PR002.1 / PR012).
  *
  * | Class                | Source      | Status                              |
  * | -------------------- | ----------- | ----------------------------------- |
  * | `MockCollector`      | `MOCK`      | ✅ implemented (30 signals/day)     |
- * | `TikTokCollector`    | `TIKTOK`    | 🧩 placeholder ("Not implemented")  |
- * | `ShopeeCollector`    | `SHOPEE`    | 🧩 placeholder ("Not implemented")  |
- * | `InstagramCollector` | `INSTAGRAM` | 🧩 placeholder ("Not implemented")  |
+ * | `TikTokCollector`    | `TIKTOK`    | ✅ implemented (TikTok Trends API)  |
+ * | `ShopeeCollector`    | `SHOPEE`    | ✅ implemented (Shopee Keywords API)|
+ * | `InstagramCollector` | `INSTAGRAM` | ✅ implemented (Meta Graph API)     |
  *
  * `MANUAL` has no collector by design — manual trends are created through
  * the dashboard form (`app/dashboard/trends/actions.ts`).

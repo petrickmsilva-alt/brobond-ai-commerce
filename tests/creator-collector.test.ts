@@ -145,16 +145,31 @@ describe("MockCreatorCollector", () => {
   });
 });
 
-describe("Placeholder collectors (TikTok · Instagram · Shopee)", () => {
+describe("Real collectors (TikTok · Instagram · Shopee)", () => {
   it("declare their sources", () => {
     expect(new TikTokCreatorCollector().source).toBe(CreatorSource.TIKTOK);
     expect(new InstagramCreatorCollector().source).toBe(CreatorSource.INSTAGRAM);
     expect(new ShopeeCreatorCollector().source).toBe(CreatorSource.SHOPEE);
   });
 
-  it("throw Not-Implemented on collect() (no network access in PR003)", async () => {
-    await expect(new TikTokCreatorCollector().collect()).rejects.toThrow(/not implemented/i);
-    await expect(new InstagramCreatorCollector().collect()).rejects.toThrow(/not implemented/i);
-    await expect(new ShopeeCreatorCollector().collect()).rejects.toThrow(/not implemented/i);
+  it("throw ConnectorConfigError on collect() when env credentials are unset", async () => {
+    const prevTiktok = process.env.TIKTOK_APP_KEY;
+    const prevShopee = process.env.SHOPEE_PARTNER_ID;
+    const prevMeta = process.env.META_APP_ID;
+    delete process.env.TIKTOK_APP_KEY;
+    delete process.env.TIKTOK_APP_SECRET;
+    delete process.env.SHOPEE_PARTNER_ID;
+    delete process.env.SHOPEE_PARTNER_KEY;
+    delete process.env.META_APP_ID;
+    delete process.env.META_APP_SECRET;
+    try {
+      await expect(new TikTokCreatorCollector().collect()).rejects.toThrow(/TIKTOK_APP_KEY/);
+      await expect(new InstagramCreatorCollector().collect()).rejects.toThrow(/META_APP_ID/);
+      await expect(new ShopeeCreatorCollector().collect()).rejects.toThrow(/SHOPEE_PARTNER_ID/);
+    } finally {
+      if (prevTiktok) process.env.TIKTOK_APP_KEY = prevTiktok;
+      if (prevShopee) process.env.SHOPEE_PARTNER_ID = prevShopee;
+      if (prevMeta) process.env.META_APP_ID = prevMeta;
+    }
   });
 });

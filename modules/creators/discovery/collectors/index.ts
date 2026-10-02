@@ -1,12 +1,12 @@
 /**
- * Creator collectors — one implementation per `CreatorSource` (PR003).
+ * Creator collectors — one implementation per `CreatorSource` (PR003 / PR012).
  *
- * | Class                     | Source      | Status                              |
- * | ------------------------- | ----------- | ----------------------------------- |
- * | `MockCreatorCollector`    | `MOCK`      | ✅ implemented (100 candidates)     |
- * | `TikTokCreatorCollector`  | `TIKTOK`    | 🧩 placeholder ("Not implemented")  |
- * | `InstagramCreatorCollector` | `INSTAGRAM` | 🧩 placeholder ("Not implemented") |
- * | `ShopeeCreatorCollector`  | `SHOPEE`    | 🧩 placeholder ("Not implemented")  |
+ * | Class                     | Source      | Status                                         |
+ * | ------------------------- | ----------- | ---------------------------------------------- |
+ * | `MockCreatorCollector`    | `MOCK`      | ✅ implemented (100 candidates)                |
+ * | `TikTokCreatorCollector`  | `TIKTOK`    | ✅ implemented (TikTok Creator API)           |
+ * | `InstagramCreatorCollector` | `INSTAGRAM` | ✅ implemented (Meta Graph API Creator Search) |
+ * | `ShopeeCreatorCollector`  | `SHOPEE`    | ✅ implemented (Shopee Affiliate KOL API)     |
  *
  * `MANUAL` has no collector by design — manual profiles are created through
  * the CRM form (`app/dashboard/creators/actions.ts`).
