@@ -17,3 +17,6 @@ export * from "./connector.interface";
 export * from "./connector.factory";
 export * from "./connector.validator";
 export * from "./connector.dto";
+// Pure (no `server-only`, no Prisma): the unified ecosystem redirect URI
+// binding — safe behind this client-importable barrel.
+export * from "./connector.service";

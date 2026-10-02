@@ -12,7 +12,12 @@ import {
   encryptConnectorSecret,
   maskConnectorSecretPreview,
 } from "./crypto.service";
-import { ConnectorConfigError, ConnectorReauthRequiredError, MarketplaceError } from "./errors";
+import {
+  ConnectorConfigError,
+  ConnectorReauthRequiredError,
+  ConnectorTokenUndecryptableError,
+  MarketplaceError,
+} from "./errors";
 import {
   CONNECTOR_PROVIDERS,
   CONNECTOR_PROVIDER_AUTH,
@@ -51,14 +56,6 @@ import {
 const TOKEN_REFRESH_SKEW_MS = 5 * 60 * 1000;
 
 /**
- * Context an OAuth callback hands to the service: the inbound request, used
- * ONLY to recover the exact `redirect_uri` the provider just used (PR016.1).
- */
-export interface ConnectorCallbackContext {
-  request?: { url: string; headers: { get(name: string): string | null } };
-}
-
-/**
  * Decrypt a stored credential, translating a crypto failure into the action
  * the operator must take.
  *
@@ -68,6 +65,11 @@ export interface ConnectorCallbackContext {
  * offering "Sincronizar" and the operator only saw an opaque listing error.
  * Reconnecting re-encrypts with the current key, which is exactly what this
  * message asks for.
+ *
+ * The dedicated `ConnectorTokenUndecryptableError` subtype lets
+ * `getValidAccessToken()` park the channel in REAUTH_REQUIRED (not the
+ * generic EXPIRED/ERROR) so the panel renders the clean connect button
+ * (PR016.2).
  */
 function decryptCredential(
   ciphertext: string,
@@ -77,12 +79,49 @@ function decryptCredential(
   try {
     return decryptConnectorSecret(ciphertext);
   } catch (error) {
-    throw new ConnectorReauthRequiredError(
+    throw new ConnectorTokenUndecryptableError(
       provider,
       `Não foi possível descriptografar o ${label} salvo deste conector — a chave CONNECTOR_ENCRYPTION_KEY mudou desde a conexão. Reconecte a conta para gerar credenciais novas.`,
       { cause: error },
     );
   }
+}
+
+/**
+ * Graceful degradation when a stored credential can no longer be opened
+ * (PR016.2 "crypto catch").
+ *
+ * The channel is parked in the dedicated `REAUTH_REQUIRED` status on
+ * PostgreSQL — the panel then unlocks the card and renders the clean
+ * connect button. This persistence is BEST-EFFORT: a database hiccup here
+ * must never turn a decrypt failure into a server crash, so it is guarded
+ * and only logged. The thrown domain error remains the actionable signal.
+ */
+async function parkConnectorForUndecryptableCredential(
+  repository: MarketplaceRepository,
+  organizationId: string,
+  provider: ConnectorProvider,
+  error: ConnectorTokenUndecryptableError,
+): Promise<void> {
+  try {
+    await repository.setStatus(organizationId, provider, "REAUTH_REQUIRED", error.message);
+  } catch (persistError) {
+    console.error(
+      "[connector.crypto] não foi possível gravar REAUTH_REQUIRED no banco — a falha de descriptografia segue reportada pelo erro de domínio",
+      {
+        provider: String(provider),
+        persistError: persistError instanceof Error ? persistError.message : String(persistError),
+      },
+    );
+  }
+  console.error(
+    "[connector.crypto] credencial salva não pôde ser aberta — canal movido para REAUTH_REQUIRED",
+    {
+      provider: String(provider),
+      message: error.message,
+      cause: error.cause instanceof Error ? error.cause.name : undefined,
+    },
+  );
 }
 
 export interface MarketplaceServiceDependencies {
@@ -124,8 +163,21 @@ export function createMarketplaceService(deps: MarketplaceServiceDependencies = 
       const byProvider = new Map(rows.map((row) => [row.provider, row]));
 
       const mercadoPagoRow = byProvider.get("MERCADOPAGO") ?? null;
-      const persistedMercadoPago = hasPersistedMercadoPagoCredentials(mercadoPagoRow);
-      const environmentMercadoPago = getMercadoPagoEnvironmentCredentials(env);
+      // PR016.2 — a credential that no longer decrypts
+      // (CONNECTOR_ENCRYPTION_KEY rotation) is NOT usable even though both
+      // ciphertexts are still stored: the channel was parked in
+      // REAUTH_REQUIRED by the crypto catch in `getValidAccessToken()`.
+      // The card must NOT render the locked "connected" state — it unlocks
+      // and offers the clean connect button (reconnecting re-encrypts with
+      // the current key). The Render environment pair is deliberately NOT
+      // used as a fallback here either: `getValidAccessToken()` prefers the
+      // tenant's persisted pair, so the card must advertise the same truth.
+      const mercadoPagoRequiresReauth = mercadoPagoRow?.status === "REAUTH_REQUIRED";
+      const persistedMercadoPago =
+        !mercadoPagoRequiresReauth && hasPersistedMercadoPagoCredentials(mercadoPagoRow);
+      const environmentMercadoPago = mercadoPagoRequiresReauth
+        ? null
+        : getMercadoPagoEnvironmentCredentials(env);
       const mercadoPagoSource = persistedMercadoPago
         ? ("database" as const)
         : environmentMercadoPago
@@ -252,20 +304,19 @@ export function createMarketplaceService(deps: MarketplaceServiceDependencies = 
      * Mercado Livre callback: consume the single-use state (the state — and
      * only it — determines the tenant), exchange the code and persist the
      * encrypted credential pair plus the seller identity.
+     *
+     * PR016.2 — the exchange replays the STATIC unified redirect URI
+     * (`MERCADOLIVRE_REDIRECT_URI` / `MERCADOPAGO_REDIRECT_URI`), the same
+     * value `buildMercadoLivreAuthorizationUrl()` sent on `/authorization`.
+     * No request-derived computation: the inbound request never feeds the
+     * `redirect_uri`, so the two legs cannot diverge.
      */
-    async handleMercadoLivreCallback(
-      input: { code: string; state: string },
-      context: ConnectorCallbackContext = {},
-    ): Promise<Connector> {
+    async handleMercadoLivreCallback(input: { code: string; state: string }): Promise<Connector> {
       const { organizationId } = await connectorOAuthStateService.consume(
         input.state,
         "MERCADOLIVRE",
       );
-      // The request travels with the exchange so the `redirect_uri` replayed
-      // to Meli is the one it actually used (PR016.1).
-      const tokens = await exchangeMercadoLivreCode(input.code, undefined, {
-        request: context.request,
-      });
+      const tokens = await exchangeMercadoLivreCode(input.code);
       const identity = await fetchMercadoLivreIdentity(tokens.accessToken);
       const connector = await repository.upsertConnection(organizationId, "MERCADOLIVRE", {
         status: "CONNECTED",
@@ -350,69 +401,92 @@ export function createMarketplaceService(deps: MarketplaceServiceDependencies = 
         );
       }
 
-      const expiring =
-        connector.expiresAt &&
-        connector.expiresAt.getTime() <= now().getTime() + TOKEN_REFRESH_SKEW_MS;
-      if (!expiring) {
-        return {
-          accessToken: decryptCredential(connector.accessToken, provider, "token de acesso"),
-          shopId: connector.shopId,
-        };
-      }
-      if (!connector.refreshToken) {
-        await repository.setStatus(organizationId, provider, "EXPIRED");
-        throw new ConnectorReauthRequiredError(
-          provider,
-          `A credencial do conector "${String(provider)}" expirou. Reconecte a conta.`,
-        );
-      }
-
-      const refreshToken = decryptCredential(connector.refreshToken, provider, "refresh token");
+      // PR016.2 — the whole credential READ + AES-256-GCM DECRYPT path is
+      // guarded. A ciphertext saved before a `CONNECTOR_ENCRYPTION_KEY`
+      // rotation can never open again; that state is captured gracefully:
+      // the channel is parked in REAUTH_REQUIRED on PostgreSQL (best-effort,
+      // never a crash) and the rethrown domain error carries the action the
+      // operator must take. The panel renders the clean connect button.
       try {
-        if (provider === "SHOPEE") {
-          if (!connector.shopId) throw new ConnectorConfigError("shopId", provider);
-          const { refreshShopeeToken } = await import("../shopee/shopee.service");
-          const tokens = await refreshShopeeToken(refreshToken, connector.shopId);
-          await repository.saveTokens(organizationId, connector.id, {
-            accessToken: encryptConnectorSecret(tokens.accessToken),
-            refreshToken: encryptConnectorSecret(tokens.refreshToken),
-            expiresAt: tokens.expiresAt,
-          });
-          return { accessToken: tokens.accessToken, shopId: connector.shopId };
+        const expiring =
+          connector.expiresAt &&
+          connector.expiresAt.getTime() <= now().getTime() + TOKEN_REFRESH_SKEW_MS;
+        if (!expiring) {
+          return {
+            accessToken: decryptCredential(connector.accessToken, provider, "token de acesso"),
+            shopId: connector.shopId,
+          };
         }
-        if (provider === "MERCADOLIVRE") {
-          const { refreshMercadoLivreToken } = await import("../mercadolivre/mercadolivre.service");
-          const tokens = await refreshMercadoLivreToken(refreshToken);
-          await repository.saveTokens(organizationId, connector.id, {
-            accessToken: encryptConnectorSecret(tokens.accessToken),
-            refreshToken: encryptConnectorSecret(tokens.refreshToken),
-            expiresAt: tokens.expiresAt,
-          });
-          return { accessToken: tokens.accessToken, shopId: connector.shopId };
+        if (!connector.refreshToken) {
+          await repository.setStatus(organizationId, provider, "EXPIRED");
+          throw new ConnectorReauthRequiredError(
+            provider,
+            `A credencial do conector "${String(provider)}" expirou. Reconecte a conta.`,
+          );
         }
-        await repository.setStatus(organizationId, provider, "EXPIRED");
-        throw new MarketplaceError(
-          `O conector "${String(provider)}" não suporta renovação automática de token.`,
-          provider,
-        );
+
+        const refreshToken = decryptCredential(connector.refreshToken, provider, "refresh token");
+        try {
+          if (provider === "SHOPEE") {
+            if (!connector.shopId) throw new ConnectorConfigError("shopId", provider);
+            const { refreshShopeeToken } = await import("../shopee/shopee.service");
+            const tokens = await refreshShopeeToken(refreshToken, connector.shopId);
+            await repository.saveTokens(organizationId, connector.id, {
+              accessToken: encryptConnectorSecret(tokens.accessToken),
+              refreshToken: encryptConnectorSecret(tokens.refreshToken),
+              expiresAt: tokens.expiresAt,
+            });
+            return { accessToken: tokens.accessToken, shopId: connector.shopId };
+          }
+          if (provider === "MERCADOLIVRE") {
+            const { refreshMercadoLivreToken } =
+              await import("../mercadolivre/mercadolivre.service");
+            const tokens = await refreshMercadoLivreToken(refreshToken);
+            await repository.saveTokens(organizationId, connector.id, {
+              accessToken: encryptConnectorSecret(tokens.accessToken),
+              refreshToken: encryptConnectorSecret(tokens.refreshToken),
+              expiresAt: tokens.expiresAt,
+            });
+            return { accessToken: tokens.accessToken, shopId: connector.shopId };
+          }
+          await repository.setStatus(organizationId, provider, "EXPIRED");
+          throw new MarketplaceError(
+            `O conector "${String(provider)}" não suporta renovação automática de token.`,
+            provider,
+          );
+        } catch (error) {
+          await repository.setStatus(
+            organizationId,
+            provider,
+            "EXPIRED",
+            "A renovação do token falhou — reconecte a conta.",
+          );
+          // A failed refresh is terminal for this credential: the provider
+          // will keep rejecting it until the account is authorized again, so
+          // the panel must offer reconnection rather than another retry. Only
+          // an error that already carries operator-facing copy survives as-is;
+          // a raw provider payload ("invalid_grant") is replaced.
+          if (error instanceof ConnectorReauthRequiredError) throw error;
+          throw new ConnectorReauthRequiredError(
+            provider,
+            `A renovação automática do token do conector "${String(provider)}" falhou. Reconecte a conta para restabelecer o acesso.`,
+            { cause: error },
+          );
+        }
       } catch (error) {
-        await repository.setStatus(
-          organizationId,
-          provider,
-          "EXPIRED",
-          "A renovação do token falhou — reconecte a conta.",
-        );
-        // A failed refresh is terminal for this credential: the provider
-        // will keep rejecting it until the account is authorized again, so
-        // the panel must offer reconnection rather than another retry. Only
-        // an error that already carries operator-facing copy survives as-is;
-        // a raw provider payload ("invalid_grant") is replaced.
-        if (error instanceof ConnectorReauthRequiredError) throw error;
-        throw new ConnectorReauthRequiredError(
-          provider,
-          `A renovação automática do token do conector "${String(provider)}" falhou. Reconecte a conta para restabelecer o acesso.`,
-          { cause: error },
-        );
+        // The crypto catch: an undecryptable token (old
+        // CONNECTOR_ENCRYPTION_KEY) is a STATE, not an exception to crash on.
+        // Park the channel in REAUTH_REQUIRED and keep the domain error as
+        // the single, actionable signal.
+        if (error instanceof ConnectorTokenUndecryptableError) {
+          await parkConnectorForUndecryptableCredential(
+            repository,
+            organizationId,
+            provider,
+            error,
+          );
+        }
+        throw error;
       }
     },
 

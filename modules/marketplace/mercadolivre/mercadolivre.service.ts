@@ -7,12 +7,11 @@ import {
 } from "../core/errors";
 import type { NormalizedContent } from "@/modules/connectors/core/connector.interface";
 import {
-  LOCAL_FALLBACK_BASE_URL,
-  listRedirectBaseUrls,
-  resolveRequestUrl,
-  type AppUrlEnv,
-  type RedirectRequestContext,
-} from "@/lib/app-url";
+  listUnifiedRedirectUriCandidates,
+  resolveUnifiedRedirectUri,
+  UNIFIED_CALLBACK_PATH,
+} from "@/modules/connectors/core/connector.service";
+import type { AppUrlEnv } from "@/lib/app-url";
 
 /**
  * Mercado Livre (PR012) — official Meli API, server-side ONLY.
@@ -24,26 +23,26 @@ import {
  *   pair (POST api.mercadolibre.com/oauth/token), refreshMercadoLivreToken()
  *   rotates it transparently before expiry (6h lifetime).
  *
- * REDIRECT URI CONTRACT (PR016.1)
+ * REDIRECT URI CONTRACT (PR016.2)
  * -------------------------------
  * Meli validates `redirect_uri` TWICE — once on `/authorization` and once on
  * the code exchange, where the two values must be byte-identical and must
- * match the URI registered in DevCenter. Any divergence (a stale `APP_URL`,
- * a deploy answering on a second domain, the apex vs. the `www` host) fails
- * the exchange with `invalid_grant`; the connector then keeps whatever stale
- * token it had and every later call dies with "Não foi possível listar os
- * anúncios do Mercado Livre". `mercadoLivreRedirectUriCandidates()` is the
- * single source of truth for that value: `MERCADOLIVRE_REDIRECT_URI` →
- * `APP_URL` → `NEXTAUTH_URL` → the callback request's own public URL, which
- * is literally where Meli delivered the browser.
+ * match the URI registered in DevCenter. The value is now STATIC: it is
+ * resolved exclusively from the environment by the connector configuration
+ * service (`modules/connectors/core/connector.service.ts`), which accepts
+ * BOTH `MERCADOLIVRE_REDIRECT_URI` and `MERCADOPAGO_REDIRECT_URI` — the
+ * unified ecosystem callback the director pinned on Render. NOTHING is
+ * derived from the inbound request anymore (no `X-Forwarded-Host`, no
+ * `request.url`): the authorization URL and the token exchange read the
+ * exact same constant, so the two legs cannot diverge by construction.
  */
 
 const MELI_API_BASE_URL = "https://api.mercadolibre.com";
 const MELI_AUTH_BASE_URL = "https://auth.mercadolivre.com.br";
 const PROVIDER = "MERCADOLIVRE" as const;
 
-/** Canonical callback path of this application. */
-export const MERCADOLIVRE_CALLBACK_PATH = "/api/mercadolivre/callback";
+/** Canonical callback path of this application (unified ecosystem handler). */
+export const MERCADOLIVRE_CALLBACK_PATH = UNIFIED_CALLBACK_PATH;
 
 /**
  * Label of the single call to action that fixes every authorization failure
@@ -75,56 +74,34 @@ export function getMercadoLivreConfig(): MercadoLivreConfig {
   };
 }
 
-/** Accepts only absolute http(s) URIs; trailing slashes are dropped. */
-function normalizeRedirectUri(value: string | undefined): string {
-  const trimmed = value?.trim().replace(/\/+$/, "") ?? "";
-  return /^https?:\/\/[^/]+/i.test(trimmed) ? trimmed : "";
-}
-
 /**
  * Every redirect URI this deployment may legitimately present to Meli, in
- * precedence order and de-duplicated.
+ * precedence order and de-duplicated — ALL of them static (environment
+ * only, resolved by the connector configuration service):
  *
- * 1. `MERCADOLIVRE_REDIRECT_URI` — an explicit operator override always wins.
- * 2. `APP_URL`, then `NEXTAUTH_URL` — the Render-configured public address
- *    (the fix for the domain divergence this function exists for).
- * 3. The inbound callback request's own public URL (`X-Forwarded-Host` behind
- *    Render's proxy). Only available during the exchange, where it is the
- *    ground truth, and it also covers the `/api/connectors/mercadolivre/…`
- *    alias path.
- * 4. `http://localhost:3000` — local development only.
+ * 1. `MERCADOLIVRE_REDIRECT_URI` / `MERCADOPAGO_REDIRECT_URI` — the
+ *    operator's explicit pin of the unified ecosystem callback (Render).
+ * 2. `APP_URL`, then `NEXTAUTH_URL` — the configured public base plus the
+ *    canonical callback path.
+ * 3. `http://localhost:3000` — local development only.
+ *
+ * PR016.2 removed the request-derived candidate: recomputing the
+ * `redirect_uri` from the callback's own headers is what made the
+ * authorization leg and the exchange leg diverge behind Render's proxy.
  */
-export function mercadoLivreRedirectUriCandidates(
-  request?: RedirectRequestContext,
-  env: AppUrlEnv = process.env,
-): string[] {
-  const candidates = [
-    normalizeRedirectUri(env.MERCADOLIVRE_REDIRECT_URI),
-    // Configured bases only: the request is handled separately below so its
-    // real path (not the canonical one) is preserved.
-    ...listRedirectBaseUrls(undefined, env).map((base) => `${base}${MERCADOLIVRE_CALLBACK_PATH}`),
-    normalizeRedirectUri(resolveRequestUrl(request)),
-    `${LOCAL_FALLBACK_BASE_URL}${MERCADOLIVRE_CALLBACK_PATH}`,
-  ];
-  return candidates.filter(
-    (candidate, index) => candidate.length > 0 && candidates.indexOf(candidate) === index,
-  );
+export function mercadoLivreRedirectUriCandidates(env: AppUrlEnv = process.env): string[] {
+  return listUnifiedRedirectUriCandidates(env);
 }
 
 /**
- * The redirect URI to present to Mercado Livre — the first candidate.
+ * The redirect URI to present to Mercado Livre — the first static
+ * candidate.
  *
  * It MUST be registered verbatim in DevCenter
  * (developers.mercadolivre.com.br → your application → Redirect URI).
  */
-export function resolveMercadoLivreRedirectUri(
-  request?: RedirectRequestContext,
-  env: AppUrlEnv = process.env,
-): string {
-  return (
-    mercadoLivreRedirectUriCandidates(request, env)[0] ??
-    `${LOCAL_FALLBACK_BASE_URL}${MERCADOLIVRE_CALLBACK_PATH}`
-  );
+export function resolveMercadoLivreRedirectUri(env: AppUrlEnv = process.env): string {
+  return resolveUnifiedRedirectUri(env);
 }
 
 /** Back-compatible alias of `resolveMercadoLivreRedirectUri()`. */
@@ -153,16 +130,19 @@ function normalizeAuthorizationClientId(clientId: string): string {
  * yellow commercial-homologation rejection screen. Keep the authorization
  * request deliberately strict: protocol fields plus the one-time CSRF state.
  * Refresh-token issuance remains part of the authorization-code exchange.
+ *
+ * The `redirect_uri` is the STATIC unified value — the same constant the
+ * code exchange replays (PR016.2), so Meli's byte-identical requirement is
+ * satisfied by construction.
  */
 export function buildMercadoLivreAuthorizationUrl(
   state: string,
   config: MercadoLivreConfig = getMercadoLivreConfig(),
-  request?: RedirectRequestContext,
 ): string {
   const url = new URL("/authorization", config.authBaseUrl.trim().toLowerCase());
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", normalizeAuthorizationClientId(config.clientId));
-  url.searchParams.set("redirect_uri", resolveMercadoLivreRedirectUri(request));
+  url.searchParams.set("redirect_uri", resolveMercadoLivreRedirectUri());
   url.searchParams.set("state", state);
   return url.toString();
 }
@@ -195,11 +175,14 @@ function parseMeliTokenResponse(rawBody: string): MeliTokenResponse | undefined 
   }
 }
 
-function logMeliTokenRejection(response: Response, rawBody: string): void {
+function logMeliTokenRejection(response: Response, rawBody: string, redirectUri?: string): void {
   console.error("[mercadolivre.oauth.token] resposta rejeitada pelo Mercado Livre", {
     status: response.status,
     statusText: response.statusText,
     contentType: response.headers.get("content-type"),
+    // The STATIC redirect URI this deployment replayed — the value to
+    // register verbatim in DevCenter when Meli rejects the grant.
+    ...(redirectUri ? { redirectUri } : {}),
     // Never print a HTTP-200 payload: even an incomplete successful response
     // may contain a live access token. Non-2xx bodies contain Meli's exact
     // rejection and are required for DevCenter diagnosis.
@@ -210,6 +193,7 @@ function logMeliTokenRejection(response: Response, rawBody: string): void {
 async function meliTokenRequest(
   config: MercadoLivreConfig,
   form: Record<string, string>,
+  redirectUri?: string,
 ): Promise<MercadoLivreTokenSet> {
   const url = new URL("/oauth/token", config.apiBaseUrl);
   const body = new URLSearchParams({
@@ -235,7 +219,7 @@ async function meliTokenRequest(
   const rawBody = await response.text().catch(() => "");
   const payload = parseMeliTokenResponse(rawBody);
   if (!response.ok || !payload?.access_token || !payload.refresh_token || !payload.expires_in) {
-    logMeliTokenRejection(response, rawBody);
+    logMeliTokenRejection(response, rawBody, redirectUri);
     const status = response.status || 502;
     throw new ProviderApiError(
       payload?.error_description ||
@@ -258,68 +242,40 @@ async function meliTokenRequest(
   };
 }
 
-/**
- * Is this failure Meli saying "that is not the redirect_uri I expected"?
- *
- * Meli answers an `invalid_grant` for BOTH a consumed/expired code and a
- * redirect URI mismatch, without distinguishing them, so the exchange simply
- * tries the next candidate: at worst that is one extra 400 in the logs.
- */
-function isRedirectUriRejection(error: unknown): boolean {
-  if (!(error instanceof ProviderApiError)) return false;
-  if (error.status >= 500 || error.status === 429) return false;
-  return error.status === 400 || error.status === 401;
-}
-
 export interface MercadoLivreExchangeOptions {
-  /** The inbound callback request — recovers the real `redirect_uri`. */
-  request?: RedirectRequestContext;
-  /** Explicit candidate list (tests and callers that already resolved it). */
-  redirectUris?: string[];
+  /**
+   * Explicit redirect URI override (tests, or a caller that already resolved
+   * the static value). Production calls omit it and read the STATIC unified
+   * redirect URI — `MERCADOLIVRE_REDIRECT_URI` / `MERCADOPAGO_REDIRECT_URI`.
+   */
+  redirectUri?: string;
 }
 
 /**
  * Exchange the authorization `code` for tokens (official code grant).
  *
- * Every resolved redirect URI is attempted in precedence order until Meli
- * accepts one, so a deployment whose `APP_URL` does not match the DevCenter
- * registration still completes the connection instead of leaving the tenant
- * with a stale token. The attempted URI is logged (never the code or the
- * secret) so Render's logs name the value to register.
+ * PR016.2 — the exchange replays the STATIC unified redirect URI, the same
+ * constant `buildMercadoLivreAuthorizationUrl()` sent on `/authorization`.
+ * There is NO request-derived computation anymore (no candidate probing
+ * from `X-Forwarded-Host`/`request.url`): Meli's byte-identical
+ * requirement is satisfied by construction, and a rejected grant names the
+ * one value to register in DevCenter (it is logged, never the code or the
+ * secret).
  */
 export async function exchangeMercadoLivreCode(
   code: string,
   config: MercadoLivreConfig = getMercadoLivreConfig(),
   options: MercadoLivreExchangeOptions = {},
 ): Promise<MercadoLivreTokenSet> {
-  const candidates =
-    options.redirectUris?.filter(Boolean) ?? mercadoLivreRedirectUriCandidates(options.request);
-  const redirectUris = candidates.length > 0 ? candidates : [resolveMercadoLivreRedirectUri()];
-
-  let firstError: unknown;
-  for (const [index, redirectUri] of redirectUris.entries()) {
-    try {
-      return await meliTokenRequest(config, {
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: redirectUri,
-      });
-    } catch (error) {
-      firstError ??= error;
-      const isLast = index === redirectUris.length - 1;
-      if (isLast || !isRedirectUriRejection(error)) throw error;
-      console.warn(
-        "[mercadolivre.oauth.exchange] redirect_uri rejeitado, tentando o próximo candidato",
-        {
-          attempted: redirectUri,
-          next: redirectUris[index + 1],
-          status: error instanceof ProviderApiError ? error.status : undefined,
-        },
-      );
-    }
-  }
-  throw (
-    firstError ?? new ProviderApiError("O Mercado Livre rejeitou a troca de token.", 502, PROVIDER)
+  const redirectUri = options.redirectUri ?? resolveMercadoLivreRedirectUri();
+  return meliTokenRequest(
+    config,
+    {
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: redirectUri,
+    },
+    redirectUri,
   );
 }
 

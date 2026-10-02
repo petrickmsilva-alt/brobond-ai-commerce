@@ -86,12 +86,12 @@ function reasonOf(error: unknown): MercadoLivreCallbackReason {
  * and only it — determines the tenant (same contract as the PR009 TikTok
  * flow). No OAuth error detail ever reaches the browser redirect.
  *
- * REDIRECT URI (PR016.1): the code exchange must replay the exact
- * `redirect_uri` used on `/authorization`. The request is threaded into the
- * service so the resolution order is `MERCADOLIVRE_REDIRECT_URI` → `APP_URL`
- * → `NEXTAUTH_URL` → this request's own public URL — the last one being
- * where Meli actually delivered the browser, which is what makes a domain
- * divergence recoverable instead of fatal.
+ * REDIRECT URI (PR016.2): the code exchange replays the STATIC unified
+ * redirect URI — `MERCADOLIVRE_REDIRECT_URI` / `MERCADOPAGO_REDIRECT_URI`
+ * (the unified ecosystem callback pinned on Render), resolved by the
+ * connector configuration service. Nothing is computed from this request's
+ * headers: the authorization leg and the exchange leg read the same
+ * constant, so they cannot diverge.
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -118,17 +118,19 @@ export async function GET(request: Request) {
   if (!parsed.success) return redirectToDashboard(request, "error", "invalid_request");
 
   try {
-    await marketplaceService.handleMercadoLivreCallback(parsed.data, { request });
+    await marketplaceService.handleMercadoLivreCallback(parsed.data);
     return redirectToDashboard(request, "connected");
   } catch (error) {
-    // Diagnostics for the operator reading Render's logs: the redirect URIs
-    // this deployment presented (never the code, the state or the secret).
-    // If none of them is registered in DevCenter, this line says so.
+    // Diagnostics for the operator reading Render's logs: the STATIC
+    // redirect URIs this deployment presents (never the code, the state or
+    // the secret). If none of them is registered in DevCenter, this line
+    // says so. `deliveredTo` is log-only context (where Meli delivered the
+    // browser) — it never feeds the exchange.
     console.error("[mercadolivre.oauth.callback]", {
       message: error instanceof Error ? error.message : "exchange failed",
       reason: reasonOf(error),
       requiresReauth: error instanceof MarketplaceError ? error.requiresReauth : undefined,
-      redirectUriCandidates: mercadoLivreRedirectUriCandidates(request),
+      redirectUriCandidates: mercadoLivreRedirectUriCandidates(),
       deliveredTo: resolveRequestUrl(request),
     });
     return redirectToDashboard(request, "error", reasonOf(error));

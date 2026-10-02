@@ -324,6 +324,11 @@ enum ConnectionStatus {
   CONNECTED
   EXPIRED
   ERROR
+  /// The stored credential can no longer be opened (e.g. it was encrypted
+  /// with a previous CONNECTOR_ENCRYPTION_KEY). Only reconnecting the
+  /// account re-encrypts with the current key — the panel renders the clean
+  /// connect button instead of offering another sync (PR016.2).
+  REAUTH_REQUIRED
 }
 
 // ------------------------------------------------------------------

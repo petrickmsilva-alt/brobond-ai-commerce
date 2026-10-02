@@ -80,6 +80,24 @@ export class ConnectorReauthRequiredError extends MarketplaceError {
   }
 }
 
+/**
+ * The stored AES-256-GCM ciphertext no longer opens — the credential was
+ * written BEFORE a `CONNECTOR_ENCRYPTION_KEY` rotation (or is corrupt), so
+ * the auth tag can never match again.
+ *
+ * A specialization of `ConnectorReauthRequiredError` so callers can react
+ * precisely: the channel is parked in the dedicated `REAUTH_REQUIRED`
+ * connection status (PR016.2) instead of the generic EXPIRED/ERROR, and the
+ * panel renders the clean connect button. Reconnecting is the ONLY fix —
+ * it re-encrypts the fresh credential with the current key.
+ */
+export class ConnectorTokenUndecryptableError extends ConnectorReauthRequiredError {
+  constructor(provider: ConnectorProvider, message: string, options: MarketplaceErrorOptions = {}) {
+    super(provider, message, options);
+    this.name = "ConnectorTokenUndecryptableError";
+  }
+}
+
 /** A required environment variable for one provider is missing. */
 export class ConnectorConfigError extends MarketplaceError {
   constructor(variable: string, provider?: ConnectorProvider) {

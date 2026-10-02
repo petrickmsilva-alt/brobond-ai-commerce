@@ -134,7 +134,13 @@ export const CONNECTOR_PROVIDER_AUTH: Record<ConnectorProviderName, ConnectorAut
 // Connection status
 // ------------------------------------------------------------------
 
-export const CONNECTION_STATUSES = ["DISCONNECTED", "CONNECTED", "EXPIRED", "ERROR"] as const;
+export const CONNECTION_STATUSES = [
+  "DISCONNECTED",
+  "CONNECTED",
+  "EXPIRED",
+  "ERROR",
+  "REAUTH_REQUIRED",
+] as const;
 
 export type ConnectionStatusName = (typeof CONNECTION_STATUSES)[number];
 
@@ -144,6 +150,8 @@ export const CONNECTION_STATUS_LABELS: Record<ConnectionStatusName, string> = {
   CONNECTED: "Conectado",
   EXPIRED: "Expirado",
   ERROR: "Erro",
+  /** The stored credential can no longer be decrypted (key rotation). */
+  REAUTH_REQUIRED: "Reconectar",
 };
 
 /**

@@ -7,6 +7,7 @@ import { saleChannelFromConnectorProvider } from "@/modules/sales/sales-channel"
 import { salesService } from "@/modules/sales/sales.service";
 import { marketplaceRepository } from "../core/connector.repository";
 import { marketplaceService } from "../core/connector.service";
+import { requiresReauthentication } from "../core/errors";
 import type { ConnectorPlatform } from "@prisma/client";
 import { connectorRepository } from "@/modules/connectors/core/connector.repository";
 import { analyticsService } from "@/modules/analytics/services/analytics.service";
@@ -224,12 +225,39 @@ export async function processSaleIngestionEvent(input: {
   }
 
   const payload = asRecord(event.payload);
-  const draft =
-    provider === "MERCADOLIVRE"
-      ? await resolveMercadoLivreDraft(organizationId, event.topic, payload)
-      : provider === "MERCADOPAGO"
-        ? await resolveMercadoPagoDraft(organizationId, payload)
-        : null;
+  let draft: IngestedSaleDraft | null;
+  try {
+    draft =
+      provider === "MERCADOLIVRE"
+        ? await resolveMercadoLivreDraft(organizationId, event.topic, payload)
+        : provider === "MERCADOPAGO"
+          ? await resolveMercadoPagoDraft(organizationId, payload)
+          : null;
+  } catch (error) {
+    if (requiresReauthentication(error)) {
+      // PR016.2 crypto catch on the financial flow: the channel's stored
+      // credential can no longer be opened (e.g. the Mercado Pago token was
+      // saved BEFORE a CONNECTOR_ENCRYPTION_KEY rotation —
+      // `getValidAccessToken()` already parked the channel in
+      // REAUTH_REQUIRED). Nothing in this worker can fix that, and it must
+      // NEVER crash the server: the delivery stays pending in the inbox
+      // (`processedAt` remains null), so the pending-event scanner retries
+      // it once the operator reconnects the account and a fresh token is
+      // re-encrypted with the current key.
+      log({
+        event: "SALE_INGESTION_DEFERRED_REAUTH_REQUIRED",
+        level: "warn",
+        context: {
+          organizationId,
+          provider,
+          externalEventId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+      return { provider, externalEventId, status: "skipped" };
+    }
+    throw error;
+  }
 
   if (!draft) {
     // No fetchable resource (malformed payload or non-sale topic): terminal,

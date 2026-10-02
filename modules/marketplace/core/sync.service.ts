@@ -9,7 +9,12 @@ import {
 import type { NormalizedContent } from "@/modules/connectors/core/connector.interface";
 import { marketplaceRepository, type MarketplaceRepository } from "./connector.repository";
 import { marketplaceService, type createMarketplaceService } from "./connector.service";
-import { ConnectorNotConnectedError, MarketplaceError, requiresReauthentication } from "./errors";
+import {
+  ConnectorNotConnectedError,
+  ConnectorTokenUndecryptableError,
+  MarketplaceError,
+  requiresReauthentication,
+} from "./errors";
 import type { MarketplaceSyncResultDTO } from "./connector.dto";
 import { fetchInstagramContent } from "../instagram/instagram-bridge.service";
 import { fetchTikTokContent } from "../tiktok/tiktok-bridge.service";
@@ -124,10 +129,20 @@ export function createMarketplaceSyncService(deps: MarketplaceSyncDependencies =
         // An authorization failure is NOT a generic error: EXPIRED is what
         // makes the card render the reconnect call to action instead of
         // inviting another sync that can only fail the same way (PR016.1).
+        // A credential that no longer decrypts (CONNECTOR_ENCRYPTION_KEY
+        // rotation) goes one step further and parks the channel in the
+        // dedicated REAUTH_REQUIRED status (PR016.2) — it must not be
+        // flattened into EXPIRED, which would hide the clean connect button.
         const reauth = requiresReauthentication(error);
+        const status =
+          error instanceof ConnectorTokenUndecryptableError
+            ? ("REAUTH_REQUIRED" as const)
+            : reauth
+              ? ("EXPIRED" as const)
+              : ("ERROR" as const);
         // Record the failure on BOTH stores so the cards show a real ERROR.
         await repository.recordSyncResult(organizationId, provider, {
-          status: reauth ? "EXPIRED" : "ERROR",
+          status,
           counters: { imported: 0, duplicated: 0, failed: 0 },
           lastError: message.slice(0, 500),
         });

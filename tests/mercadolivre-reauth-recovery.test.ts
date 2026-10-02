@@ -117,10 +117,13 @@ describe("getValidAccessToken() — Mercado Livre credential resolution", () => 
   it("explains a CONNECTOR_ENCRYPTION_KEY rotation instead of failing opaquely", async () => {
     // Stored under key A, the deployment now runs with key B: the AES-GCM
     // auth tag no longer matches and the row still claims CONNECTED.
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const setStatus = vi.fn().mockResolvedValue(null);
     process.env.CONNECTOR_ENCRYPTION_KEY = KEY_B;
     const service = createMarketplaceService({
       repository: {
         findByProvider: vi.fn().mockResolvedValue(connectorRow()),
+        setStatus,
       } as unknown as MarketplaceRepository,
       now: () => NOW,
     });
@@ -134,6 +137,36 @@ describe("getValidAccessToken() — Mercado Livre credential resolution", () => 
     expect((error as Error).message).toContain("Reconecte a conta");
     // The ciphertext must never leak into the operator-facing message.
     expect((error as Error).message).not.toContain("v1.");
+    // PR016.2 — the crypto catch also parks the channel in the dedicated
+    // REAUTH_REQUIRED status on PostgreSQL, which is what unlocks the card
+    // and renders the clean connect button in the panel.
+    expect(setStatus).toHaveBeenCalledWith(
+      "org_a",
+      "MERCADOLIVRE",
+      "REAUTH_REQUIRED",
+      expect.stringContaining("Reconecte a conta"),
+    );
+  });
+
+  it("never crashes when even the REAUTH_REQUIRED write fails (best-effort persistence)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    process.env.CONNECTOR_ENCRYPTION_KEY = KEY_B;
+    const service = createMarketplaceService({
+      repository: {
+        findByProvider: vi.fn().mockResolvedValue(connectorRow()),
+        // The database itself is unavailable — the decrypt failure must
+        // still surface as the domain error, never as a secondary crash.
+        setStatus: vi.fn().mockRejectedValue(new Error("db unavailable")),
+      } as unknown as MarketplaceRepository,
+      now: () => NOW,
+    });
+
+    const error = await service
+      .getValidAccessToken("org_a", "MERCADOLIVRE")
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ConnectorReauthRequiredError);
+    expect((error as Error).message).toContain("CONNECTOR_ENCRYPTION_KEY");
   });
 
   it("parks the connector in EXPIRED and demands reconnection when the refresh fails", async () => {

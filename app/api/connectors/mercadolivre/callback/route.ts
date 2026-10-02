@@ -12,8 +12,9 @@ import { GET as handleMercadoLivreOAuthCallback } from "../../../mercadolivre/ca
  *
  * It delegates to the same handler — identical single-use state validation,
  * identical tenant resolution, no extra surface. The exchange replays the
- * redirect URI derived from THIS request, so the alias path is sent back to
- * Meli verbatim (see `mercadoLivreRedirectUriCandidates`).
+ * STATIC unified redirect URI (`MERCADOLIVRE_REDIRECT_URI` /
+ * `MERCADOPAGO_REDIRECT_URI`, PR016.2) regardless of which alias path Meli
+ * used — no request-derived computation.
  *
  * The segment config is declared literally (not re-exported): Next.js reads
  * `runtime`/`dynamic` statically and cannot follow a re-export.

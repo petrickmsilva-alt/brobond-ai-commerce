@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * PR016.1 — Mercado Livre OAuth redirect URI + reauthentication contract.
+ * PR016.1/PR016.2 — Mercado Livre OAuth redirect URI + reauthentication
+ * contract.
  *
  * THE PRODUCTION BUG
  * ------------------
@@ -9,9 +10,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * answered "Não foi possível listar os anúncios do Mercado Livre". Three
  * distinct faults hid behind that one sentence:
  *
- *   1. the `redirect_uri` sent on the code exchange was re-derived from the
- *      environment and could diverge from the one Meli actually used, so the
- *      exchange failed and the tenant kept a stale (or no) token;
+ *   1. the `redirect_uri` sent on the code exchange was re-derived at
+ *      callback time (including from the request's own headers) and could
+ *      diverge from the one Meli actually used, so the exchange failed and
+ *      the tenant kept a stale (or no) token. PR016.2 pins the value
+ *      STATICALLY: `MERCADOLIVRE_REDIRECT_URI` / `MERCADOPAGO_REDIRECT_URI`
+ *      (the unified ecosystem callback) — no request-derived computation;
  *   2. the listing call ran even with an empty/absent access token, turning
  *      "never authorized" into an opaque provider error;
  *   3. 401/403 answers were reported as generic failures, so the panel kept
@@ -26,7 +30,6 @@ import {
   requiresReauthentication,
 } from "@/modules/marketplace/core/errors";
 import {
-  MERCADOLIVRE_CALLBACK_PATH,
   MERCADOLIVRE_CONNECT_CTA,
   assertMercadoLivreAuthorization,
   buildMercadoLivreAuthorizationUrl,
@@ -46,14 +49,13 @@ const CONFIG = {
   authBaseUrl: "https://auth.mercadolivre.com.br",
 };
 
-/** A callback request as Render delivers it: wildcard bind + proxy headers. */
-function callbackRequest(
-  path = MERCADOLIVRE_CALLBACK_PATH,
-  host = "brobond-ai-commerce.onrender.com",
-) {
+/** The canonical token-set answer of a successful code exchange. */
+function tokenPairPayload() {
   return {
-    url: `http://0.0.0.0:10000${path}?code=TG-abc&state=s`,
-    headers: new Headers({ "x-forwarded-host": host, "x-forwarded-proto": "https" }),
+    access_token: "APP_USR-access",
+    refresh_token: "TG-refresh",
+    expires_in: 21_600,
+    user_id: 987,
   };
 }
 
@@ -69,6 +71,7 @@ const ORIGINAL_ENV = { ...process.env };
 beforeEach(() => {
   delete process.env.APP_URL;
   delete process.env.MERCADOLIVRE_REDIRECT_URI;
+  delete process.env.MERCADOPAGO_REDIRECT_URI;
   process.env.NEXTAUTH_URL = ORIGINAL_ENV.NEXTAUTH_URL;
 });
 
@@ -77,13 +80,13 @@ afterEach(() => {
 });
 
 // ------------------------------------------------------------------
-// 1. Redirect URI resolution
+// 1. Redirect URI resolution — STATIC, environment-only (PR016.2)
 // ------------------------------------------------------------------
 
-describe("mercadoLivreRedirectUriCandidates() — the domain divergence fix", () => {
+describe("mercadoLivreRedirectUriCandidates() — the static unified redirect URI", () => {
   it("uses APP_URL in preference to NEXTAUTH_URL", () => {
     expect(
-      resolveMercadoLivreRedirectUri(undefined, {
+      resolveMercadoLivreRedirectUri({
         APP_URL: "https://app.brobond.ai",
         NEXTAUTH_URL: RENDER_URL,
       }),
@@ -91,14 +94,14 @@ describe("mercadoLivreRedirectUriCandidates() — the domain divergence fix", ()
   });
 
   it("falls back to NEXTAUTH_URL when APP_URL is unset", () => {
-    expect(resolveMercadoLivreRedirectUri(undefined, { NEXTAUTH_URL: RENDER_URL })).toBe(
+    expect(resolveMercadoLivreRedirectUri({ NEXTAUTH_URL: RENDER_URL })).toBe(
       `${RENDER_URL}/api/mercadolivre/callback`,
     );
   });
 
   it("lets an explicit MERCADOLIVRE_REDIRECT_URI win over both", () => {
     expect(
-      resolveMercadoLivreRedirectUri(undefined, {
+      resolveMercadoLivreRedirectUri({
         MERCADOLIVRE_REDIRECT_URI: "https://legacy.example.com/api/mercadolivre/callback",
         APP_URL: "https://app.brobond.ai",
         NEXTAUTH_URL: RENDER_URL,
@@ -106,41 +109,53 @@ describe("mercadoLivreRedirectUriCandidates() — the domain divergence fix", ()
     ).toBe("https://legacy.example.com/api/mercadolivre/callback");
   });
 
+  it("accepts MERCADOPAGO_REDIRECT_URI as the unified ecosystem alias", () => {
+    // The director pinned the unified callback under the Mercado Pago name
+    // on Render — the connector configuration service accepts EITHER name
+    // and both point at the same handler.
+    expect(
+      resolveMercadoLivreRedirectUri({
+        MERCADOPAGO_REDIRECT_URI: "https://app.example.com/api/mercadolivre/callback",
+        APP_URL: "https://app.brobond.ai",
+        NEXTAUTH_URL: RENDER_URL,
+      }),
+    ).toBe("https://app.example.com/api/mercadolivre/callback");
+  });
+
+  it("prefers MERCADOLIVRE_REDIRECT_URI when both ecosystem variables are set", () => {
+    expect(
+      resolveMercadoLivreRedirectUri({
+        MERCADOLIVRE_REDIRECT_URI: "https://meli.example.com/api/mercadolivre/callback",
+        MERCADOPAGO_REDIRECT_URI: "https://mp.example.com/api/mercadolivre/callback",
+      }),
+    ).toBe("https://meli.example.com/api/mercadolivre/callback");
+  });
+
   it("strips trailing slashes instead of producing a doubled path", () => {
-    expect(resolveMercadoLivreRedirectUri(undefined, { APP_URL: "https://app.brobond.ai/" })).toBe(
+    expect(resolveMercadoLivreRedirectUri({ APP_URL: "https://app.brobond.ai/" })).toBe(
       "https://app.brobond.ai/api/mercadolivre/callback",
     );
     expect(
-      resolveMercadoLivreRedirectUri(undefined, {
-        MERCADOLIVRE_REDIRECT_URI: "https://app.brobond.ai/api/mercadolivre/callback/",
+      resolveMercadoLivreRedirectUri({
+        MERCADOPAGO_REDIRECT_URI: "https://app.brobond.ai/api/mercadolivre/callback/",
       }),
     ).toBe("https://app.brobond.ai/api/mercadolivre/callback");
   });
 
-  it("never derives the URI from the wildcard address Render binds to", () => {
-    const candidates = mercadoLivreRedirectUriCandidates(callbackRequest(), {});
+  it("resolves every candidate statically — never from a request", () => {
+    // There is no request parameter to pass anymore (the compiler enforces
+    // it); what still must hold is that a wildcard/unroutable bind address
+    // can never leak into a candidate, even with nothing configured.
+    const candidates = mercadoLivreRedirectUriCandidates({});
     expect(candidates.every((candidate) => !candidate.includes("0.0.0.0"))).toBe(true);
-    // The proxy's forwarded host is used instead of the bind address.
-    expect(candidates[0]).toBe(`${RENDER_URL}/api/mercadolivre/callback`);
-  });
-
-  it("keeps the request's real path, so the /api/connectors alias round-trips", () => {
-    const candidates = mercadoLivreRedirectUriCandidates(
-      callbackRequest("/api/connectors/mercadolivre/callback"),
-      { APP_URL: "https://app.brobond.ai" },
-    );
-    expect(candidates).toEqual([
-      "https://app.brobond.ai/api/mercadolivre/callback",
-      `${RENDER_URL}/api/connectors/mercadolivre/callback`,
-      "http://localhost:3000/api/mercadolivre/callback",
-    ]);
+    expect(candidates).toEqual(["http://localhost:3000/api/mercadolivre/callback"]);
   });
 
   it("de-duplicates identical candidates", () => {
-    const candidates = mercadoLivreRedirectUriCandidates(callbackRequest(), {
+    const candidates = mercadoLivreRedirectUriCandidates({
       APP_URL: RENDER_URL,
       NEXTAUTH_URL: RENDER_URL,
-      MERCADOLIVRE_REDIRECT_URI: `${RENDER_URL}/api/mercadolivre/callback`,
+      MERCADOPAGO_REDIRECT_URI: `${RENDER_URL}/api/mercadolivre/callback`,
     });
     expect(
       candidates.filter((uri) => uri === `${RENDER_URL}/api/mercadolivre/callback`),
@@ -157,6 +172,24 @@ describe("mercadoLivreRedirectUriCandidates() — the domain divergence fix", ()
     expect(url.searchParams.get("state")).toBe("state-123");
     expect(url.searchParams.get("redirect_uri")).toBe(
       "https://app.brobond.ai/api/mercadolivre/callback",
+    );
+  });
+
+  it("sends the SAME static redirect URI on the authorization URL and the exchange", async () => {
+    process.env.MERCADOPAGO_REDIRECT_URI = "https://app.example.com/api/mercadolivre/callback";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse(tokenPairPayload()));
+
+    await exchangeMercadoLivreCode("TG-code", CONFIG);
+
+    const authorizationUrl = new URL(buildMercadoLivreAuthorizationUrl("state-123", CONFIG));
+    const exchangeBody = new URLSearchParams(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://app.example.com/api/mercadolivre/callback",
+    );
+    expect(exchangeBody.get("redirect_uri")).toBe(
+      "https://app.example.com/api/mercadolivre/callback",
     );
   });
 
@@ -179,22 +212,17 @@ describe("mercadoLivreRedirectUriCandidates() — the domain divergence fix", ()
 });
 
 // ------------------------------------------------------------------
-// 2. Code exchange
+// 2. Code exchange — the STATIC redirect URI is replayed verbatim
 // ------------------------------------------------------------------
 
-describe("exchangeMercadoLivreCode() — redirect_uri recovery", () => {
-  const tokenPayload = {
-    access_token: "APP_USR-access",
-    refresh_token: "TG-refresh",
-    expires_in: 21_600,
-    user_id: 987,
-  };
+describe("exchangeMercadoLivreCode() — static redirect_uri replay", () => {
+  const tokenPayload = tokenPairPayload();
 
-  it("sends the configured redirect URI and returns the token pair", async () => {
+  it("sends the resolved static redirect URI and returns the token pair", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(tokenPayload));
 
     const tokens = await exchangeMercadoLivreCode("TG-code", CONFIG, {
-      redirectUris: [`${RENDER_URL}/api/mercadolivre/callback`],
+      redirectUri: `${RENDER_URL}/api/mercadolivre/callback`,
     });
 
     expect(tokens.accessToken).toBe("APP_USR-access");
@@ -206,40 +234,47 @@ describe("exchangeMercadoLivreCode() — redirect_uri recovery", () => {
     expect(body.get("redirect_uri")).toBe(`${RENDER_URL}/api/mercadolivre/callback`);
   });
 
-  it("retries with the next candidate when Meli rejects the first redirect URI", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  it("reads the unified MERCADOPAGO_REDIRECT_URI when no explicit override is given", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(jsonResponse({ error: "invalid_grant" }, 400))
-      .mockResolvedValueOnce(jsonResponse(tokenPayload));
+      .mockResolvedValue(jsonResponse(tokenPairPayload()));
+    process.env.MERCADOPAGO_REDIRECT_URI = "https://app.example.com/api/mercadolivre/callback";
 
-    const tokens = await exchangeMercadoLivreCode("TG-code", CONFIG, {
-      redirectUris: [
-        "https://stale.example.com/api/mercadolivre/callback",
-        `${RENDER_URL}/api/mercadolivre/callback`,
-      ],
-    });
+    await exchangeMercadoLivreCode("TG-code", CONFIG);
 
-    expect(tokens.accessToken).toBe("APP_USR-access");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const retried = new URLSearchParams(String(fetchMock.mock.calls[1]?.[1]?.body));
-    expect(retried.get("redirect_uri")).toBe(`${RENDER_URL}/api/mercadolivre/callback`);
+    const body = new URLSearchParams(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body.get("redirect_uri")).toBe("https://app.example.com/api/mercadolivre/callback");
   });
 
-  it("does not burn candidates on a provider outage (5xx)", async () => {
+  it("never retries with another candidate — the static value is the contract", async () => {
+    // PR016.2 removed the request-derived candidate probing: one grant, one
+    // redirect_uri, one attempt. A rejection is surfaced immediately with
+    // the URI that was presented (the one to register in DevCenter).
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ error: "invalid_grant" }, 400));
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await expect(exchangeMercadoLivreCode("TG-code", CONFIG)).rejects.toBeInstanceOf(
+      ProviderApiError,
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry on a provider outage (5xx)", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(jsonResponse({ message: "internal error" }, 503));
 
     await expect(
       exchangeMercadoLivreCode("TG-code", CONFIG, {
-        redirectUris: ["https://a.example.com/cb", "https://b.example.com/cb"],
+        redirectUri: "https://a.example.com/cb",
       }),
     ).rejects.toBeInstanceOf(ProviderApiError);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("logs the exact raw token body when Mercado Livre rejects the exchange", async () => {
+  it("logs the exact raw token body (and the redirect URI) when Meli rejects the exchange", async () => {
     const rawBody = '{"error":"invalid_scope","message":"application requires approval"}';
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -252,7 +287,7 @@ describe("exchangeMercadoLivreCode() — redirect_uri recovery", () => {
 
     await expect(
       exchangeMercadoLivreCode("TG-code", CONFIG, {
-        redirectUris: ["https://app.example.com/api/mercadolivre/callback"],
+        redirectUri: "https://app.example.com/api/mercadolivre/callback",
       }),
     ).rejects.toBeInstanceOf(ProviderApiError);
 
@@ -262,6 +297,7 @@ describe("exchangeMercadoLivreCode() — redirect_uri recovery", () => {
         status: 400,
         statusText: "Bad Request",
         contentType: "application/json",
+        redirectUri: "https://app.example.com/api/mercadolivre/callback",
         rawBody,
       }),
     );
@@ -273,7 +309,7 @@ describe("exchangeMercadoLivreCode() — redirect_uri recovery", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ error: "invalid_grant" }, 400));
 
     const error = await exchangeMercadoLivreCode("TG-code", CONFIG, {
-      redirectUris: ["https://a.example.com/cb"],
+      redirectUri: "https://a.example.com/cb",
     }).catch((caught: unknown) => caught);
 
     expect(requiresReauthentication(error)).toBe(true);

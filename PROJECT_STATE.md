@@ -1,5 +1,56 @@
 # PROJECT STATE — Brobond AI Commerce OS
 
+### PR016.2 — Redirect URI estático unificado + crypto catch do Mercado Pago (2026-10-02) — implemented
+
+- **Contexto.** O diretor criou na Render a variável de ambiente estática
+  `MERCADOPAGO_REDIRECT_URI` apontando para o endpoint unificado de callback
+  do ecossistema (`/api/mercadolivre/callback`). Duas frentes de
+  estabilização do motor de sincronização: amarrar as variáveis de
+  redirecionamento e tratar com graciosidade os tokens antigos salvos antes
+  da rotação da `CONNECTOR_ENCRYPTION_KEY`.
+- **Amarração das variáveis de redirecionamento.** Novo serviço de
+  configuração de conectores
+  (`modules/connectors/core/connector.service.ts`): a fonte única do
+  redirect URI do ecossistema, aceitando **tanto** `MERCADOLIVRE_REDIRECT_URI`
+  **quanto** `MERCADOPAGO_REDIRECT_URI` (o mesmo handler unificado; o nome
+  Mercado Livre tem precedência quando ambos existem), com fallback
+  `APP_URL` → `NEXTAUTH_URL` → `localhost:3000` — todos estáticos. O módulo é
+  puro (injetável, sem `server-only`) e exportado pelo barrel do core. A
+  troca de tokens do fluxo financeiro
+  (`exchangeMercadoLivreCode`) passa a ler **esse valor estático**: o loop de
+  candidatos derivados de request headers (`X-Forwarded-Host`/`request.url`)
+  foi **eliminado** — a URL de autorização e a troca de código leem a mesma
+  constante, então as duas pernas não podem divergir por construção
+  (requisito byte a byte do Meli). `handleMercadoLivreCallback` não recebe
+  mais o request; o log de rejeição da troca agora nomeia o `redirectUri`
+  apresentado (o valor a registrar no DevCenter). `.env.example` documenta o
+  par de variáveis.
+- **Crypto catch (REAUTH_REQUIRED).** O processo de leitura +
+  descriptografia AES-256-GCM do token (`getValidAccessToken`) está envolto
+  em um try/catch robusto: um token antigo que não abre mais (salvo antes da
+  rotação da `CONNECTOR_ENCRYPTION_KEY`) vira o novo erro de domínio
+  `ConnectorTokenUndecryptableError` (especialização de
+  `ConnectorReauthRequiredError`), o canal é estacionado no PostgreSQL no
+  status dedicado **`REAUTH_REQUIRED`** (novo valor no enum `ConnectionStatus`
+  - migration `20261002120000_connector_reauth_required`) e o painel renderiza
+    o botão de conexão limpo — o card do Mercado Pago deixa de travar no estado
+    "Conectado/Credenciais protegidas" e oferece o formulário de chaves de
+    produção. A gravação do status é best-effort (uma falha de banco nunca vira
+    um segundo crash); o par de ambiente da Render **não** é usado como
+    fallback silencioso. `syncProvider` registra `REAUTH_REQUIRED` (não
+    EXPIRED/ERROR) e o worker do Motor Financeiro
+    (`processSaleIngestionEvent`) defere a entrega com graciosidade: o evento
+    permanece pendente no inbox e o scanner retenta depois da reconexão — o
+    servidor nunca sofre crash. Status novo no painel: badge "Reconectar"
+    (`CONNECTION_STATUS_LABELS`/`STATUS_STYLES`) e banner dedicado no grid e na
+    tela isolada do conector.
+- **Tests.** +20 testes: `tests/connector-unified-redirect-uri.test.ts`
+  (vinculação das duas variáveis, precedência, candidatos estáticos),
+  `tests/mercadopago-reauth-crypto-catch.test.ts` (crypto catch completo:
+  erro de domínio, REAUTH_REQUIRED persistido, card destravado, sync e
+  worker), além dos contratos atualizados de autorização/callback/reauth do
+  Mercado Livre. **3.015 passando** (3.014 + 1 skipped pré-existente).
+
 ### PR016.1 — Mercado Livre OAuth redirect URI + reautenticação (2026-10-02) — implemented
 
 - **Sintoma.** Com as chaves corretas e uma `CONNECTOR_ENCRYPTION_KEY` válida

@@ -199,12 +199,14 @@ describe("GET /api/mercadolivre/callback", () => {
     expect(response.headers.get("location")).toBe(
       "https://brobond-ai-commerce.onrender.com/dashboard/connectors/mercado-livre?oauth=connected",
     );
-    // PR016.1 — the request travels with the payload so the exchange can
-    // replay the exact `redirect_uri` Meli just used.
-    expect(handleMercadoLivreCallback).toHaveBeenCalledWith(
-      { code: "TG-abc", state: OAUTH_STATE },
-      { request },
-    );
+    // PR016.2 — only the validated payload travels to the service: the
+    // exchange replays the STATIC unified redirect URI
+    // (MERCADOLIVRE_REDIRECT_URI / MERCADOPAGO_REDIRECT_URI) and no longer
+    // consumes anything from the inbound request.
+    expect(handleMercadoLivreCallback).toHaveBeenCalledWith({
+      code: "TG-abc",
+      state: OAUTH_STATE,
+    });
   });
 
   it("uses the same absolute base for the error redirect", async () => {

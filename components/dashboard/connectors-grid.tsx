@@ -69,6 +69,15 @@ const STATUS_STYLES: Record<ConnectionStatus, { label: string; className: string
     label: "Erro",
     className: "border-red-500/30 bg-red-500/10 text-red-300",
   },
+  /**
+   * The stored credential no longer decrypts (CONNECTOR_ENCRYPTION_KEY
+   * rotation) — same action as EXPIRED, distinct semantics (PR016.2): the
+   * card unlocks and offers the clean connect button.
+   */
+  REAUTH_REQUIRED: {
+    label: "Reconectar",
+    className: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+  },
 };
 
 const LOCKED_STATUS_STYLE = {
@@ -138,13 +147,18 @@ function MarketplaceCard({
   const connectLabel = connectorConnectLabel(provider, connector.connected);
   const catalogLabel = CONNECTOR_PROVIDER_CATALOG_LABELS[provider] ?? "o catálogo";
   /**
-   * An OAuth2 channel without a live credential: the panel must send the
-   * operator through the authorization flow instead of pretending a sync is
-   * possible. EXPIRED/ERROR land here too — a revoked Mercado Livre token
-   * and a never-connected one need the exact same action (PR016.1).
+   * A channel without a live credential: the panel must send the operator
+   * through the connection flow instead of pretending a sync is possible.
+   * EXPIRED/ERROR land here too — a revoked Mercado Livre token and a
+   * never-connected one need the exact same action (PR016.1). A channel
+   * parked in REAUTH_REQUIRED (credential that no longer decrypts after a
+   * key rotation) lands here regardless of its auth type — the Mercado Pago
+   * keys form IS the reconnection flow for it (PR016.2).
    */
   const needsAuthorization =
-    !isLockedMercadoPago && connector.authType === "oauth2" && !connector.connected;
+    !isLockedMercadoPago &&
+    !connector.connected &&
+    (connector.authType === "oauth2" || connector.status === "REAUTH_REQUIRED");
 
   useEffect(() => {
     if (!isLockedMercadoPago) return;
