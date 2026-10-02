@@ -41,8 +41,9 @@ async function run() {
 
   // PR014 — Motor Financeiro Unificado: alongside the outbox poller, run the
   // BullMQ worker that drains the `sale-ingestion` queue (Mercado Livre
-  // orders + Mercado Pago payments captured by the webhook routes) and the
-  // self-healing sweep that re-enqueues deliveries recorded while the
+  // orders/payments/items/shipments + Mercado Pago payments captured by the
+  // webhook routes), plus the self-healing sweep that re-enqueues deliveries
+  // recorded while the
   // infrastructure was unavailable.
   const saleWorker = startSaleIngestionWorker();
   const stopSaleScanner = startPendingSaleEventScanner();

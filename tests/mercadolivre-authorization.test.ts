@@ -34,6 +34,7 @@ import {
   fetchMercadoLivreItems,
   hasMercadoLivreAuthorization,
   mercadoLivreRedirectUriCandidates,
+  resolveMercadoLivreNotificationOrderId,
   resolveMercadoLivreRedirectUri,
 } from "@/modules/marketplace/mercadolivre/mercadolivre.service";
 
@@ -397,5 +398,37 @@ describe("fetchMercadoLivreItems() — provider failures become instructions", (
     await expect(fetchMercadoLivreItems("APP_USR-token", "123456", 50, CONFIG)).resolves.toEqual(
       [],
     );
+  });
+});
+
+describe("Mercado Livre webhook resource resolution", () => {
+  it.each([
+    ["payments", "/payments/987", { order: { id: 123456789 } }, "/payments/987"],
+    ["payments", "/collections/988", { order_id: "123456789" }, "/collections/988"],
+    ["shipments", "/shipments/654", { order_id: "123456789" }, "/shipments/654"],
+  ])("resolves %s resources to the canonical order", async (topic, resource, payload, path) => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(payload));
+
+    await expect(
+      resolveMercadoLivreNotificationOrderId("APP_USR-token", topic, resource, CONFIG),
+    ).resolves.toBe("123456789");
+    expect(new URL(String(fetchMock.mock.calls[0]?.[0])).pathname).toBe(path);
+  });
+
+  it("uses the order id directly and ignores item events", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    await expect(
+      resolveMercadoLivreNotificationOrderId(
+        "APP_USR-token",
+        "orders_v2",
+        "/orders/123456789",
+        CONFIG,
+      ),
+    ).resolves.toBe("123456789");
+    await expect(
+      resolveMercadoLivreNotificationOrderId("APP_USR-token", "items", "/items/MLB123", CONFIG),
+    ).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

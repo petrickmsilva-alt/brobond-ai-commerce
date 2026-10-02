@@ -125,15 +125,19 @@ describe("handleProviderWebhook — sale deliveries go to the worker", () => {
     expect(mockedRepository.markEventProcessed).not.toHaveBeenCalled();
   });
 
-  it("non-sale topics stay terminal in the inbox (no worker handoff)", async () => {
+  it.each([
+    ["Payments", "/payments/1"],
+    ["Orders_v2", "/orders/2"],
+    ["Items", "/items/MLB1"],
+    ["Shipments", "/shipments/3"],
+  ])("normalizes and enqueues the enabled Meli %s topic", async (topic, resource) => {
     mockedRepository.findByShopId.mockResolvedValue({
       id: "conn_1",
       organizationId: "org_1",
     } as never);
     mockedRepository.hasEvent.mockResolvedValue(false);
 
-    const body = { _id: "meli-evt-2", resource: "/items/MLB1", user_id: "12345", topic: "items" };
-
+    const body = { _id: `meli-${topic}`, resource, user_id: "12345", topic };
     const result = await handleProviderWebhook(
       "MERCADOLIVRE",
       webhookRequest(body),
@@ -141,12 +145,16 @@ describe("handleProviderWebhook — sale deliveries go to the worker", () => {
     );
 
     expect(result).toEqual({ received: true });
-    expect(mockedEnqueue).not.toHaveBeenCalled();
-    expect(mockedRepository.markEventProcessed).toHaveBeenCalledWith(
+    expect(mockedRepository.recordEvent).toHaveBeenCalledWith(
       "org_1",
-      "MERCADOLIVRE",
-      "meli:meli-evt-2",
+      expect.objectContaining({ topic: topic.toLowerCase() }),
     );
+    expect(mockedEnqueue).toHaveBeenCalledWith({
+      organizationId: "org_1",
+      provider: "MERCADOLIVRE",
+      externalEventId: `meli:meli-${topic}`,
+    });
+    expect(mockedRepository.markEventProcessed).not.toHaveBeenCalled();
   });
 
   it("a Redis outage never fails the provider: the event stays pending", async () => {

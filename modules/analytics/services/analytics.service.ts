@@ -132,6 +132,33 @@ export function createAnalyticsService(db: AnalyticsDatabase) {
       };
     },
 
+    /**
+     * Recompute every already-materialized period containing a changed sale.
+     * Called by the marketplace worker immediately after an idempotent Sale
+     * create/update. A period not materialized yet remains lazy; the normal
+     * dashboard read computes it on first access.
+     */
+    async refreshForSale(
+      organizationId: string,
+      occurredAt: Date,
+      now: Date = new Date(),
+    ): Promise<number> {
+      const orgId = assertOrganizationId(organizationId);
+      const ranges = await repo.listSnapshotsContainingDate(orgId, occurredAt);
+
+      for (const { from, to } of ranges) {
+        const days = Math.max(1, Math.round((to.getTime() - from.getTime()) / 86_400_000));
+        const computed = await compute(orgId, from, to, days, now);
+        await repo.upsertSnapshot(
+          orgId,
+          { from, to },
+          computed.metrics as unknown as Prisma.InputJsonValue,
+          now,
+        );
+      }
+      return ranges.length;
+    },
+
     /** Force recomputation of the (tenant, period) snapshot. */
     async refresh(
       organizationId: string,

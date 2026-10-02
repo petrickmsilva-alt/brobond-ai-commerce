@@ -41,12 +41,25 @@ vi.mock("@/modules/sales/sales.service", () => ({
   },
 }));
 
+vi.mock("@/modules/analytics/services/analytics.service", () => ({
+  analyticsService: {
+    refreshForSale: vi.fn(async () => 0),
+  },
+}));
+
 vi.mock("@/modules/marketplace/mercadolivre/mercadolivre.service", async (importOriginal) => {
   const actual =
     await importOriginal<
       typeof import("@/modules/marketplace/mercadolivre/mercadolivre.service")
     >();
-  return { ...actual, fetchMercadoLivreOrder: vi.fn() };
+  return {
+    ...actual,
+    fetchMercadoLivreOrder: vi.fn(),
+    resolveMercadoLivreNotificationOrderId: vi.fn(async (_token, topic, resource) => {
+      if (topic === "items") return null;
+      return /\/orders\/(\d+)/.exec(resource)?.[1] ?? null;
+    }),
+  };
 });
 
 vi.mock("@/modules/marketplace/mercadopago/mercadopago.service", async (importOriginal) => {
@@ -58,9 +71,11 @@ vi.mock("@/modules/marketplace/mercadopago/mercadopago.service", async (importOr
 import { marketplaceRepository } from "@/modules/marketplace/core/connector.repository";
 import { connectorRepository } from "@/modules/connectors/core/connector.repository";
 import { salesService } from "@/modules/sales/sales.service";
+import { analyticsService } from "@/modules/analytics/services/analytics.service";
 import {
   fetchMercadoLivreOrder,
   meliOrderStatusToSaleStatus,
+  resolveMercadoLivreNotificationOrderId,
 } from "@/modules/marketplace/mercadolivre/mercadolivre.service";
 import {
   fetchMercadoPagoPayment,
@@ -74,7 +89,9 @@ import {
 const mockedRepository = vi.mocked(marketplaceRepository);
 const mockedFrameworkRepository = vi.mocked(connectorRepository);
 const mockedSalesService = vi.mocked(salesService);
+const mockedAnalyticsService = vi.mocked(analyticsService);
 const mockedFetchMeliOrder = vi.mocked(fetchMercadoLivreOrder);
+const mockedResolveMeliOrderId = vi.mocked(resolveMercadoLivreNotificationOrderId);
 const mockedFetchMpPayment = vi.mocked(fetchMercadoPagoPayment);
 
 function connectorEvent(overrides: Partial<ConnectorEvent> = {}): ConnectorEvent {
@@ -118,17 +135,19 @@ beforeEach(() => {
 });
 
 describe("isSaleIngestionEvent — the (provider, topic) gate", () => {
-  it("accepts the Mercado Livre order topics", () => {
+  it("accepts every enabled Mercado Livre DevCenter topic", () => {
+    for (const topic of ["Payments", "Orders_v2", "Items", "Shipments"]) {
+      expect(isSaleIngestionEvent("MERCADOLIVRE", topic)).toBe(true);
+    }
     expect(isSaleIngestionEvent("MERCADOLIVRE", "orders")).toBe(true);
-    expect(isSaleIngestionEvent("MERCADOLIVRE", "orders_v2")).toBe(true);
   });
 
   it("accepts the Mercado Pago payment topic", () => {
     expect(isSaleIngestionEvent("MERCADOPAGO", "payment")).toBe(true);
   });
 
-  it("rejects catalog/non-sale topics and other providers", () => {
-    expect(isSaleIngestionEvent("MERCADOLIVRE", "items")).toBe(false);
+  it("rejects unsupported topics and other providers", () => {
+    expect(isSaleIngestionEvent("MERCADOLIVRE", "questions")).toBe(false);
     expect(isSaleIngestionEvent("MERCADOPAGO", "merchant_order")).toBe(false);
     expect(isSaleIngestionEvent("SHOPEE", "orders")).toBe(false);
     expect(isSaleIngestionEvent("MERCADOLIVRE", null)).toBe(false);
@@ -199,10 +218,76 @@ describe("processSaleIngestionEvent", () => {
       "MERCADOLIVRE",
       { imported: 1, duplicates: 0, failed: 0 },
     );
+    expect(mockedAnalyticsService.refreshForSale).toHaveBeenCalledWith(
+      "org_1",
+      new Date("2026-10-01T10:00:00.000Z"),
+    );
     expect(mockedRepository.markEventProcessed).toHaveBeenCalledWith(
       "org_1",
       "MERCADOLIVRE",
       "meli:evt-1",
+    );
+  });
+
+  it.each([
+    ["payments", "/payments/987", "meli:payment-1"],
+    ["shipments", "/shipments/654", "meli:shipment-1"],
+  ])(
+    "resolves a Meli %s event back to its order before upserting",
+    async (topic, resource, externalEventId) => {
+      mockedRepository.findEvent.mockResolvedValue(
+        connectorEvent({ topic, externalEventId, payload: { topic, resource, user_id: "12345" } }),
+      );
+      mockedResolveMeliOrderId.mockResolvedValueOnce("123456789");
+      mockedFetchMeliOrder.mockResolvedValue({
+        id: "123456789",
+        status: "paid",
+        totalAmountCents: 18_990,
+        currencyId: "BRL",
+        dateCreated: new Date("2026-10-01T09:30:00.000Z"),
+        dateClosed: new Date("2026-10-01T09:35:00.000Z"),
+        buyerNickname: null,
+        itemCount: 2,
+      });
+      mockedSalesService.upsertIngestedSale.mockResolvedValue({
+        sale: fakeSale(),
+        outcome: "unchanged",
+      });
+
+      const result = await processSaleIngestionEvent({
+        organizationId: "org_1",
+        provider: "MERCADOLIVRE",
+        externalEventId,
+      });
+
+      expect(mockedResolveMeliOrderId).toHaveBeenCalledWith("token", topic, resource);
+      expect(mockedFetchMeliOrder).toHaveBeenCalledWith("token", "123456789");
+      expect(result).toMatchObject({ status: "processed", outcome: "unchanged" });
+    },
+  );
+
+  it("consumes an Items event without fabricating a Sale", async () => {
+    mockedRepository.findEvent.mockResolvedValue(
+      connectorEvent({
+        topic: "items",
+        externalEventId: "meli:item-1",
+        payload: { topic: "items", resource: "/items/MLB123", user_id: "12345" },
+      }),
+    );
+    mockedResolveMeliOrderId.mockResolvedValueOnce(null);
+
+    const result = await processSaleIngestionEvent({
+      organizationId: "org_1",
+      provider: "MERCADOLIVRE",
+      externalEventId: "meli:item-1",
+    });
+
+    expect(result.status).toBe("skipped");
+    expect(mockedSalesService.upsertIngestedSale).not.toHaveBeenCalled();
+    expect(mockedRepository.markEventProcessed).toHaveBeenCalledWith(
+      "org_1",
+      "MERCADOLIVRE",
+      "meli:item-1",
     );
   });
 

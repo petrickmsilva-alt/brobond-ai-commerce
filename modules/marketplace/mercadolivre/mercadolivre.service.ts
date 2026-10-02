@@ -532,6 +532,66 @@ export async function fetchMercadoLivreOrder(
   };
 }
 
+interface MeliRelatedResourceResponse {
+  order_id?: number | string;
+  order?: { id?: number | string };
+  orders?: Array<{ id?: number | string }>;
+}
+
+type MeliNotificationResource = "orders" | "payments" | "collections" | "shipments";
+
+function resourceReference(
+  resource: string,
+  allowedSegments: readonly MeliNotificationResource[],
+): { segment: MeliNotificationResource; id: string } | null {
+  const match = /^\/(orders|payments|collections|shipments)\/([^/?#]+)/i.exec(resource.trim());
+  if (!match?.[1] || !match[2]) return null;
+  const segment = match[1].toLowerCase() as MeliNotificationResource;
+  return allowedSegments.includes(segment) ? { segment, id: match[2] } : null;
+}
+
+/**
+ * Resolve every sale-related Mercado Livre notification to its canonical
+ * order id. `payments` and `shipments` point to their own resources, so the
+ * worker follows that resource through the official API before fetching the
+ * authoritative order. `items` intentionally returns null: a listing change
+ * is captured by the worker but cannot create revenue without an order.
+ */
+export async function resolveMercadoLivreNotificationOrderId(
+  accessToken: string,
+  topic: string,
+  resource: string,
+  config: MercadoLivreConfig = getMercadoLivreConfig(),
+): Promise<string | null> {
+  const normalizedTopic = topic.trim().toLowerCase();
+  if (normalizedTopic === "orders" || normalizedTopic === "orders_v2") {
+    return resourceReference(resource, ["orders"])?.id ?? null;
+  }
+  if (normalizedTopic === "items") return null;
+
+  const reference =
+    normalizedTopic === "payments"
+      ? resourceReference(resource, ["payments", "collections"])
+      : normalizedTopic === "shipments"
+        ? resourceReference(resource, ["shipments"])
+        : null;
+  if (!reference) return null;
+
+  assertMercadoLivreAuthorization(accessToken);
+  const url = new URL(
+    `/${reference.segment}/${encodeURIComponent(reference.id)}`,
+    config.apiBaseUrl,
+  );
+  const { payload: raw } = await meliAuthorizedGet(
+    url,
+    accessToken,
+    `Não foi possível resolver ${reference.segment}/${reference.id} do Mercado Livre.`,
+  );
+  const payload = raw as MeliRelatedResourceResponse | undefined;
+  const orderId = payload?.order?.id ?? payload?.order_id ?? payload?.orders?.[0]?.id;
+  return orderId === undefined || orderId === null ? null : String(orderId);
+}
+
 /** Map a Meli order status onto the `Sale` lifecycle. */
 export function meliOrderStatusToSaleStatus(status: string): "PAID" | "PENDING" | "CANCELLED" {
   switch (status) {

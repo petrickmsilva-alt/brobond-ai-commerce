@@ -200,6 +200,27 @@ export function createAnalyticsRepository(db: AnalyticsDatabase) {
       };
     },
 
+    /**
+     * Existing materialized periods affected by one changed sale. The worker
+     * uses these ranges to refresh every visible Hub analytics table without
+     * guessing which day-window the operator currently selected.
+     */
+    async listSnapshotsContainingDate(
+      organizationId: string,
+      occurredAt: Date,
+    ): Promise<AnalyticsPeriodRange[]> {
+      const rows = await db.analyticsSnapshot.findMany({
+        where: {
+          organizationId: assertOrganizationId(organizationId),
+          from: { lte: occurredAt },
+          to: { gt: occurredAt },
+        },
+        select: { from: true, to: true },
+        orderBy: { from: "asc" },
+      });
+      return rows.map((row) => ({ from: row.from, to: row.to }));
+    },
+
     /** Materialized snapshot lookup by the (tenant, period) unique key. */
     async findSnapshot(
       organizationId: string,

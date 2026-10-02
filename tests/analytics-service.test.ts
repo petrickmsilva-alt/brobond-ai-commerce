@@ -41,7 +41,6 @@ function fakeDb(overrides: Record<string, unknown> = {}) {
           campaign: { name: "Inverno" },
         },
       ]),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       aggregate: vi.fn(async (): Promise<any> => ({ _max: { updatedAt: null } })),
     },
     aIGeneratedMessage: {
@@ -52,7 +51,7 @@ function fakeDb(overrides: Record<string, unknown> = {}) {
       groupBy: vi.fn(async () => []),
     },
     analyticsSnapshot: {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      findMany: vi.fn(async (): Promise<Array<{ from: Date; to: Date }>> => []),
       findUnique: vi.fn(async (): Promise<any> => null),
       upsert: vi.fn(async ({ create, update, where }) => {
         const key = where.organizationId_from_to;
@@ -199,6 +198,28 @@ describe("analytics service — PR008", () => {
     expect(dbRaw.sale.findMany).toHaveBeenCalledTimes(1);
     expect(dbRaw.analyticsSnapshot.upsert).toHaveBeenCalledTimes(1);
     expect(refreshed.computedAt).toBe(NOW.toISOString());
+  });
+
+  it("refreshes every materialized period affected by an ingested sale", async () => {
+    const { db, dbRaw } = fakeDb();
+    dbRaw.analyticsSnapshot.findMany.mockResolvedValue([
+      { from: FROM, to: TO },
+      { from: new Date("2026-09-16T00:00:00.000Z"), to: TO },
+    ]);
+
+    const refreshed = await createAnalyticsService(db).refreshForSale(
+      "org_a",
+      new Date("2026-09-20T10:00:00.000Z"),
+      NOW,
+    );
+
+    expect(refreshed).toBe(2);
+    expect(dbRaw.analyticsSnapshot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organizationId: "org_a" }),
+      }),
+    );
+    expect(dbRaw.analyticsSnapshot.upsert).toHaveBeenCalledTimes(2);
   });
 
   it("honors the requested day count when resolving the period", async () => {

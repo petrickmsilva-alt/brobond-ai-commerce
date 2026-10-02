@@ -133,7 +133,7 @@ function parseMercadoLivreEvent(request: Request, rawBody: string): ParsedWebhoo
     }
   }
   const body = asRecord(JSON.parse(rawBody));
-  const topic = typeof body.topic === "string" ? body.topic : "unknown";
+  const topic = typeof body.topic === "string" ? body.topic.trim().toLowerCase() : "unknown";
   const userId = body.user_id !== undefined ? String(body.user_id) : null;
   const id = typeof body._id === "string" ? body._id : `${topic}:${String(body.resource ?? "-")}`;
   return {
@@ -225,11 +225,10 @@ export async function handleProviderWebhook(
     payload: event.payload as Prisma.InputJsonValue,
   });
 
-  // PR014 — Motor Financeiro: sale-relevant deliveries (Mercado Livre
-  // orders, Mercado Pago payments) are handed to the BullMQ/Redis worker
-  // for background processing — the provider always gets a fast 200 once
-  // the event is durably stored. Everything else (catalog pushes, non-sale
-  // topics) is terminal here and stamped processed immediately.
+  // Mercado Livre's enabled order/payment/item/shipment deliveries and
+  // Mercado Pago payments are handed to BullMQ. The provider always gets a
+  // fast 200 once the event is durably stored; Items are acknowledged by the
+  // worker without fabricating revenue. Unsupported topics are terminal here.
   if (isSaleIngestionEvent(provider, event.topic)) {
     try {
       await enqueueSaleIngestion({

@@ -9,9 +9,11 @@ import { marketplaceRepository } from "../core/connector.repository";
 import { marketplaceService } from "../core/connector.service";
 import type { ConnectorPlatform } from "@prisma/client";
 import { connectorRepository } from "@/modules/connectors/core/connector.repository";
+import { analyticsService } from "@/modules/analytics/services/analytics.service";
 import {
   fetchMercadoLivreOrder,
   meliOrderStatusToSaleStatus,
+  resolveMercadoLivreNotificationOrderId,
 } from "../mercadolivre/mercadolivre.service";
 import {
   fetchMercadoPagoPayment,
@@ -25,8 +27,9 @@ import {
  * Connects the webhook inbox (`ConnectorEvent`) to the financial model
  * (`Sale`) through the BullMQ/Redis worker:
  *
- *   1. a Mercado Livre `orders`/`orders_v2` notification or a Mercado Pago
- *      `payment` notification is ingested (verified + tenant-resolved) by
+ *   1. a Mercado Livre `orders_v2`, `payments`, `items` or `shipments`
+ *      notification (plus legacy `orders`) or a Mercado Pago `payment`
+ *      notification is ingested (verified + tenant-resolved) by
  *      `modules/marketplace/webhooks/handlers.ts` and enqueued for
  *      background processing;
  *   2. the worker calls `processSaleIngestionEvent()`, which re-reads the
@@ -42,8 +45,18 @@ import {
  * status always come from the provider's official API response.
  */
 
-/** Mercado Livre topics that carry order/sale information. */
-export const MERCADOLIVRE_SALE_TOPICS = ["orders", "orders_v2"] as const;
+/**
+ * Mercado Livre DevCenter topics handled asynchronously. Payments and
+ * shipments are resolved back to their canonical order; items are consumed
+ * and acknowledged by the worker but never fabricate a Sale.
+ */
+export const MERCADOLIVRE_SALE_TOPICS = [
+  "orders",
+  "orders_v2",
+  "payments",
+  "shipments",
+  "items",
+] as const;
 
 /** Mercado Pago notification types that carry payment information. */
 export const MERCADOPAGO_SALE_TOPICS = ["payment"] as const;
@@ -57,11 +70,12 @@ export const SALE_INGESTION_PROVIDERS: readonly ConnectorProvider[] = [
 /** Does this (provider, topic) pair carry sale-relevant data? */
 export function isSaleIngestionEvent(provider: ConnectorProvider, topic: string | null): boolean {
   if (!topic) return false;
+  const normalizedTopic = topic.trim().toLowerCase();
   switch (provider) {
     case "MERCADOLIVRE":
-      return (MERCADOLIVRE_SALE_TOPICS as readonly string[]).includes(topic);
+      return (MERCADOLIVRE_SALE_TOPICS as readonly string[]).includes(normalizedTopic);
     case "MERCADOPAGO":
-      return (MERCADOPAGO_SALE_TOPICS as readonly string[]).includes(topic);
+      return (MERCADOPAGO_SALE_TOPICS as readonly string[]).includes(normalizedTopic);
     default:
       return false;
   }
@@ -90,12 +104,6 @@ function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
 
-/** `"/orders/1234567890"` → `"1234567890"`. */
-function meliOrderIdFromResource(resource: string): string | null {
-  const match = /\/orders\/(\d+)/.exec(resource);
-  return match ? (match[1] ?? null) : null;
-}
-
 export interface SaleIngestionResult {
   provider: ConnectorProvider;
   externalEventId: string;
@@ -112,16 +120,18 @@ export interface SaleIngestionResult {
 
 async function resolveMercadoLivreDraft(
   organizationId: string,
+  topic: string | null,
   payload: Record<string, unknown>,
 ): Promise<IngestedSaleDraft | null> {
   const resource = typeof payload.resource === "string" ? payload.resource : "";
-  const orderId = meliOrderIdFromResource(resource);
-  if (!orderId) return null;
+  if (!topic || !resource) return null;
 
   const { accessToken } = await marketplaceService.getValidAccessToken(
     organizationId,
     "MERCADOLIVRE",
   );
+  const orderId = await resolveMercadoLivreNotificationOrderId(accessToken, topic, resource);
+  if (!orderId) return null;
   const order = await fetchMercadoLivreOrder(accessToken, orderId);
 
   return {
@@ -158,6 +168,37 @@ async function resolveMercadoPagoDraft(
   };
 }
 
+async function refreshAnalyticsAfterSale(
+  organizationId: string,
+  sale: { occurredAt: Date } | null,
+  outcome: "created" | "updated" | "unchanged" | "ignored",
+): Promise<void> {
+  if (!sale || (outcome !== "created" && outcome !== "updated")) return;
+  try {
+    const refreshedSnapshots = await analyticsService.refreshForSale(
+      organizationId,
+      sale.occurredAt,
+    );
+    log({
+      event: "SALE_ANALYTICS_REFRESHED",
+      level: "info",
+      context: { organizationId, refreshedSnapshots },
+    });
+  } catch (error) {
+    // Sale ingestion remains durable even if analytics recomputation has a
+    // transient failure. `getDashboard()` also detects stale snapshots from
+    // Sale.updatedAt and repairs them on the next Hub read.
+    log({
+      event: "SALE_ANALYTICS_REFRESH_DEFERRED",
+      level: "error",
+      context: {
+        organizationId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+  }
+}
+
 /**
  * Process one webhook delivery end-to-end. Safe to call repeatedly: the
  * event is stamped `processedAt` only after a terminal outcome, and the
@@ -185,7 +226,7 @@ export async function processSaleIngestionEvent(input: {
   const payload = asRecord(event.payload);
   const draft =
     provider === "MERCADOLIVRE"
-      ? await resolveMercadoLivreDraft(organizationId, payload)
+      ? await resolveMercadoLivreDraft(organizationId, event.topic, payload)
       : provider === "MERCADOPAGO"
         ? await resolveMercadoPagoDraft(organizationId, payload)
         : null;
@@ -209,6 +250,7 @@ export async function processSaleIngestionEvent(input: {
     });
     // A pending payment settles through a LATER notification (its own event
     // id); a refund for an unknown order has nothing to update. Terminal.
+    await refreshAnalyticsAfterSale(organizationId, sale, outcome);
     await marketplaceRepository.markEventProcessed(organizationId, provider, externalEventId);
     return {
       provider,
@@ -228,6 +270,8 @@ export async function processSaleIngestionEvent(input: {
     quantity: draft.quantity,
     occurredAt: draft.occurredAt,
   });
+
+  await refreshAnalyticsAfterSale(organizationId, sale, outcome);
 
   // Consolidate the counters on BOTH stores (unified Connector row and the
   // PR005 ConnectorStatus row) — same convention as a sync run, minus the
