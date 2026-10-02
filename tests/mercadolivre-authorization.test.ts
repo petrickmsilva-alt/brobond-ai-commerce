@@ -153,14 +153,14 @@ describe("mercadoLivreRedirectUriCandidates() — the domain divergence fix", ()
     expect(url.origin).toBe("https://auth.mercadolivre.com.br");
     expect(url.searchParams.get("response_type")).toBe("code");
     expect(url.searchParams.get("client_id")).toBe(CONFIG.clientId);
-    expect(url.searchParams.get("scope")).toBe("read offline_access");
+    expect(url.searchParams.has("scope")).toBe(false);
     expect(url.searchParams.get("state")).toBe("state-123");
     expect(url.searchParams.get("redirect_uri")).toBe(
       "https://app.brobond.ai/api/mercadolivre/callback",
     );
   });
 
-  it("normalizes copied client ids and requests no write scopes", () => {
+  it("normalizes copied client ids and sends no public-app scope parameter", () => {
     process.env.APP_URL = "https://app.brobond.ai";
     const url = new URL(
       buildMercadoLivreAuthorizationUrl("state-minimum-scope", {
@@ -171,8 +171,10 @@ describe("mercadoLivreRedirectUriCandidates() — the domain divergence fix", ()
     );
 
     expect(url.searchParams.get("client_id")).toBe("app-client-id");
-    expect(url.searchParams.getAll("scope")).toEqual(["read offline_access"]);
-    expect(url.searchParams.get("scope")).not.toMatch(/write/i);
+    expect(url.searchParams.has("scope")).toBe(false);
+    expect([...url.searchParams.keys()].sort()).toEqual(
+      ["client_id", "redirect_uri", "response_type", "state"].sort(),
+    );
   });
 });
 
@@ -237,8 +239,37 @@ describe("exchangeMercadoLivreCode() — redirect_uri recovery", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("logs the exact raw token body when Mercado Livre rejects the exchange", async () => {
+    const rawBody = '{"error":"invalid_scope","message":"application requires approval"}';
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(rawBody, {
+        status: 400,
+        statusText: "Bad Request",
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    await expect(
+      exchangeMercadoLivreCode("TG-code", CONFIG, {
+        redirectUris: ["https://app.example.com/api/mercadolivre/callback"],
+      }),
+    ).rejects.toBeInstanceOf(ProviderApiError);
+
+    expect(consoleError).toHaveBeenCalledWith(
+      "[mercadolivre.oauth.token] resposta rejeitada pelo Mercado Livre",
+      expect.objectContaining({
+        status: 400,
+        statusText: "Bad Request",
+        contentType: "application/json",
+        rawBody,
+      }),
+    );
+  });
+
   it("surfaces an unrecoverable rejection as a reauthentication failure", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ error: "invalid_grant" }, 400));
 
     const error = await exchangeMercadoLivreCode("TG-code", CONFIG, {

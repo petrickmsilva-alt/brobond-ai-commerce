@@ -239,7 +239,11 @@ describe("GET /api/mercadolivre/callback", () => {
     expect(location.searchParams.get("provider_detail")).toBe(detail);
     expect(consoleWarn).toHaveBeenCalledWith(
       "[mercadolivre.oauth.callback] Mercado Livre rejeitou a autorização",
-      { error: "invalid_scope", detail },
+      {
+        error: "invalid_scope",
+        detail,
+        rawResponse: { error: "invalid_scope", error_description: detail },
+      },
     );
     expect(handleMercadoLivreCallback).not.toHaveBeenCalled();
     consoleWarn.mockRestore();

@@ -25,13 +25,28 @@ export type MercadoLivreCallbackReason =
  * Prefer the commercial explanation, falling back to the protocol error code.
  * Authorization codes, state and credentials are never included.
  */
-function mercadoLivreCallbackError(url: URL): { code: string; detail: string } | null {
+function mercadoLivreCallbackError(url: URL): {
+  code: string;
+  detail: string;
+  rawResponse: Record<string, string>;
+} | null {
   const code = url.searchParams.get("error");
   if (!code) return null;
 
-  const detail =
-    url.searchParams.get("error_description") ?? url.searchParams.get("message") ?? code;
-  return { code, detail };
+  const description = url.searchParams.get("error_description");
+  const message = url.searchParams.get("message");
+  return {
+    code,
+    detail: description ?? message ?? code,
+    // The OAuth callback is a GET and therefore has no response body. Preserve
+    // the recognized provider error fields verbatim while excluding
+    // `state` and the authorization `code`, which are security material.
+    rawResponse: {
+      error: code,
+      ...(description !== null ? { error_description: description } : {}),
+      ...(message !== null ? { message } : {}),
+    },
+  };
 }
 
 /**
@@ -86,6 +101,7 @@ export async function GET(request: Request) {
     console.warn("[mercadolivre.oauth.callback] Mercado Livre rejeitou a autorização", {
       error: providerError.code,
       detail: providerError.detail,
+      rawResponse: providerError.rawResponse,
     });
     return redirectToDashboard(
       request,

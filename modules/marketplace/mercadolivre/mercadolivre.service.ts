@@ -132,8 +132,6 @@ export function getMercadoLivreRedirectUri(): string {
   return resolveMercadoLivreRedirectUri();
 }
 
-const MERCADOLIVRE_MINIMUM_SCOPES = ["read", "offline_access"] as const;
-
 /**
  * Normalize the public application identifier before it reaches Meli.
  *
@@ -147,11 +145,14 @@ function normalizeAuthorizationClientId(clientId: string): string {
 }
 
 /**
- * Seller authorization URL (official OAuth2, CSRF `state` supported).
+ * Seller authorization URL for a private/in-house Mercado Livre application.
  *
- * Only the scopes required to read the initial catalogue and obtain a refresh
- * token are requested. Write scopes require additional DevCenter approval and
- * can make an otherwise valid seller/account pairing fail during consent.
+ * Mercado Livre's owner-account flow derives permissions from the application
+ * configuration in DevCenter. Sending `scope` (including `offline_access`)
+ * opts into public/third-party permission validation and can trigger the
+ * yellow commercial-homologation rejection screen. Keep the authorization
+ * request deliberately strict: protocol fields plus the one-time CSRF state.
+ * Refresh-token issuance remains part of the authorization-code exchange.
  */
 export function buildMercadoLivreAuthorizationUrl(
   state: string,
@@ -162,7 +163,6 @@ export function buildMercadoLivreAuthorizationUrl(
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", normalizeAuthorizationClientId(config.clientId));
   url.searchParams.set("redirect_uri", resolveMercadoLivreRedirectUri(request));
-  url.searchParams.set("scope", MERCADOLIVRE_MINIMUM_SCOPES.join(" "));
   url.searchParams.set("state", state);
   return url.toString();
 }
@@ -181,7 +181,30 @@ interface MeliTokenResponse {
   user_id?: number;
   token_type?: string;
   error?: string;
+  error_description?: string;
   message?: string;
+  cause?: unknown;
+}
+
+function parseMeliTokenResponse(rawBody: string): MeliTokenResponse | undefined {
+  if (!rawBody) return undefined;
+  try {
+    return JSON.parse(rawBody) as MeliTokenResponse;
+  } catch {
+    return undefined;
+  }
+}
+
+function logMeliTokenRejection(response: Response, rawBody: string): void {
+  console.error("[mercadolivre.oauth.token] resposta rejeitada pelo Mercado Livre", {
+    status: response.status,
+    statusText: response.statusText,
+    contentType: response.headers.get("content-type"),
+    // Never print a HTTP-200 payload: even an incomplete successful response
+    // may contain a live access token. Non-2xx bodies contain Meli's exact
+    // rejection and are required for DevCenter diagnosis.
+    rawBody: response.ok ? "[omitted: response may contain credentials]" : rawBody,
+  });
 }
 
 async function meliTokenRequest(
@@ -209,11 +232,16 @@ async function meliTokenRequest(
   } catch {
     throw new ProviderApiError("Falha de rede ao contatar o Mercado Livre.", 503, PROVIDER);
   }
-  const payload = (await response.json().catch(() => undefined)) as MeliTokenResponse | undefined;
+  const rawBody = await response.text().catch(() => "");
+  const payload = parseMeliTokenResponse(rawBody);
   if (!response.ok || !payload?.access_token || !payload.refresh_token || !payload.expires_in) {
+    logMeliTokenRejection(response, rawBody);
     const status = response.status || 502;
     throw new ProviderApiError(
-      payload?.message || payload?.error || "O Mercado Livre rejeitou a troca de token.",
+      payload?.error_description ||
+        payload?.message ||
+        payload?.error ||
+        "O Mercado Livre rejeitou a troca de token.",
       status,
       PROVIDER,
       // A rejected grant is never fixed by retrying — only by authorizing
