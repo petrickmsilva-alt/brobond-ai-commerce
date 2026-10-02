@@ -4,6 +4,7 @@ import {
   verifyMetaWebhookChallenge,
   verifyMetaWebhookSignature,
 } from "@/modules/delivery/core/webhook-security";
+import { handleProviderWebhook } from "@/modules/marketplace/webhooks/handlers";
 
 export const runtime = "nodejs";
 
@@ -40,7 +41,13 @@ export async function POST(request: Request) {
   }
 
   try {
-    await instagramWebhookHandler.handle(rawBody);
+    // Messaging receipts/DMs go to the delivery handler. Catalog/product
+    // `changes[]` simultaneously enter the tenant-scoped ConnectorEvent inbox
+    // used by Instagram Shopping. Both paths are idempotent.
+    await Promise.all([
+      instagramWebhookHandler.handle(rawBody),
+      handleProviderWebhook("INSTAGRAM", request, rawBody),
+    ]);
     // Meta expects a fast 200 acknowledgement; retries stop afterwards.
     return new NextResponse(null, { status: 200 });
   } catch (error) {

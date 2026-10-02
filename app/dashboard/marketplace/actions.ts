@@ -21,6 +21,7 @@ import {
 } from "@/modules/marketplace/core/errors";
 import { marketplaceSyncService } from "@/modules/marketplace/core/sync.service";
 import type { ConnectorProvider } from "@prisma/client";
+import { TikTokPendingApprovalError } from "@/modules/connectors/tiktok/pending-approval.service";
 
 /**
  * Marketplace server actions (PR012) — the ONLY write path from the
@@ -46,6 +47,9 @@ function fail(error: unknown): MarketplaceActionResult<never> {
   }
   if (error instanceof AuthorizationError) {
     return { ok: false, error: "Você não tem permissão para executar esta ação." };
+  }
+  if (error instanceof TikTokPendingApprovalError) {
+    return { ok: false, error: error.message };
   }
   if (error instanceof ConnectorNotConnectedError || error instanceof MarketplaceError) {
     // Sanitized, already-actionable domain message. `requiresReauth` tells

@@ -139,6 +139,7 @@ export const CONNECTION_STATUSES = [
   "CONNECTED",
   "EXPIRED",
   "ERROR",
+  "PENDING_APPROVAL",
   "REAUTH_REQUIRED",
 ] as const;
 
@@ -150,6 +151,7 @@ export const CONNECTION_STATUS_LABELS: Record<ConnectionStatusName, string> = {
   CONNECTED: "Conectado",
   EXPIRED: "Expirado",
   ERROR: "Erro",
+  PENDING_APPROVAL: "Aguardando homologação",
   /** The stored credential can no longer be decrypted (key rotation). */
   REAUTH_REQUIRED: "Reconectar",
 };

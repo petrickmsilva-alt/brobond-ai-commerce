@@ -18,7 +18,8 @@ import {
 import type { MarketplaceSyncResultDTO } from "./connector.dto";
 import { fetchInstagramContent } from "../instagram/instagram-bridge.service";
 import { fetchTikTokContent } from "../tiktok/tiktok-bridge.service";
-import { fetchShopeeProducts } from "../shopee/shopee.service";
+import { ShopeeConnector } from "@/modules/connectors/shopee/shopee.connector";
+import { TikTokPendingApprovalError } from "@/modules/connectors/tiktok/pending-approval.service";
 import { fetchMercadoLivreItems } from "../mercadolivre/mercadolivre.service";
 import { fetchMercadoPagoPayments } from "../mercadopago/mercadopago.service";
 import {
@@ -69,11 +70,8 @@ async function fetchProviderContent(
       return fetchTikTokContent(organizationId, limit);
     case "INSTAGRAM":
       return fetchInstagramContent(organizationId, limit);
-    case "SHOPEE": {
-      const { accessToken, shopId } = await service.getValidAccessToken(organizationId, provider);
-      if (!shopId) throw new ConnectorNotConnectedError(provider);
-      return fetchShopeeProducts(accessToken, shopId, limit);
-    }
+    case "SHOPEE":
+      return new ShopeeConnector().syncProducts(organizationId, limit);
     case "MERCADOLIVRE": {
       const { accessToken, shopId } = await service.getValidAccessToken(organizationId, provider);
       if (!shopId) throw new ConnectorNotConnectedError(provider);
@@ -135,11 +133,13 @@ export function createMarketplaceSyncService(deps: MarketplaceSyncDependencies =
         // flattened into EXPIRED, which would hide the clean connect button.
         const reauth = requiresReauthentication(error);
         const status =
-          error instanceof ConnectorTokenUndecryptableError
-            ? ("REAUTH_REQUIRED" as const)
-            : reauth
-              ? ("EXPIRED" as const)
-              : ("ERROR" as const);
+          error instanceof TikTokPendingApprovalError
+            ? ("PENDING_APPROVAL" as const)
+            : error instanceof ConnectorTokenUndecryptableError
+              ? ("REAUTH_REQUIRED" as const)
+              : reauth
+                ? ("EXPIRED" as const)
+                : ("ERROR" as const);
         // Record the failure on BOTH stores so the cards show a real ERROR.
         await repository.recordSyncResult(organizationId, provider, {
           status,

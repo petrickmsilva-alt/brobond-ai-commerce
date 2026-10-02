@@ -166,12 +166,11 @@ export async function refreshShopeeToken(
   shopId: string,
   config: ShopeeConfig = getShopeeConfig(),
 ): Promise<ShopeeTokenSet> {
-  const data = await shopeePost<ShopeeTokenResponse>(
-    config,
-    "/api/v2/auth/access_token/get",
-    { refresh_token: refreshToken, shop_id: Number(shopId), partner_id: config.partnerId },
-    { shopId },
-  );
+  const data = await shopeePost<ShopeeTokenResponse>(config, "/api/v2/auth/access_token/get", {
+    refresh_token: refreshToken,
+    shop_id: Number(shopId),
+    partner_id: config.partnerId,
+  });
   if (!data.access_token || !data.refresh_token || !data.expire_in) {
     throw new ProviderApiError("A Shopee não renovou o token de acesso.", 502, PROVIDER);
   }
@@ -191,8 +190,18 @@ interface ShopeeItemBaseInfoResponse {
     item_list?: Array<{
       item_id: number;
       item_name?: string;
+      item_sku?: string;
+      description?: string;
+      original_price?: number;
+      current_price?: number;
+      currency?: string;
       image?: { image_url_list?: string[] };
-      stock_info_v2?: { summary_info?: { total_reserved_stock?: number } };
+      stock_info_v2?: {
+        summary_info?: {
+          total_available_stock?: number;
+          total_reserved_stock?: number;
+        };
+      };
     }>;
   };
 }
@@ -291,10 +300,15 @@ export async function fetchShopeeProducts(
     type: "PRODUCT",
     title: item.item_name ?? `Item Shopee ${item.item_id}`,
     thumbnailUrl: item.image?.image_url_list?.[0],
+    caption: item.description,
     raw: {
       provider: "shopee",
       shopId,
       itemId: item.item_id,
+      sku: item.item_sku,
+      price: item.current_price ?? item.original_price ?? 0,
+      currency: item.currency ?? "BRL",
+      stockQuantity: item.stock_info_v2?.summary_info?.total_available_stock ?? 0,
     },
   }));
 }

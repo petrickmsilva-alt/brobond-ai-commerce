@@ -69,6 +69,10 @@ const STATUS_STYLES: Record<ConnectionStatus, { label: string; className: string
     label: "Erro",
     className: "border-red-500/30 bg-red-500/10 text-red-300",
   },
+  PENDING_APPROVAL: {
+    label: "Aguardando homologação",
+    className: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+  },
   /**
    * The stored credential no longer decrypts (CONNECTOR_ENCRYPTION_KEY
    * rotation) — same action as EXPIRED, distinct semantics (PR016.2): the
@@ -424,14 +428,18 @@ function MarketplaceCard({
                 <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
                 <div>
                   <p className="text-xs font-medium text-amber-100">
-                    {connector.status === "DISCONNECTED"
-                      ? "Autorização pendente"
-                      : "Autorização necessária"}
+                    {connector.status === "PENDING_APPROVAL"
+                      ? "Cadastro em análise"
+                      : connector.status === "DISCONNECTED"
+                        ? "Autorização pendente"
+                        : "Autorização necessária"}
                   </p>
                   <p className="mt-0.5 text-[11px] leading-relaxed text-amber-100/60">
-                    {connector.status === "DISCONNECTED"
-                      ? `Conecte a conta para que o painel possa listar ${catalogLabel}. Nenhuma chamada à API é feita sem um token válido.`
-                      : `A autorização expirou ou foi revogada. Reautentique o canal para voltar a listar ${catalogLabel}.`}
+                    {connector.status === "PENDING_APPROVAL"
+                      ? "Aguardando homologação e aprovação do cadastro da loja no TikTok Seller Center"
+                      : connector.status === "DISCONNECTED"
+                        ? `Conecte a conta para que o painel possa listar ${catalogLabel}. Nenhuma chamada à API é feita sem um token válido.`
+                        : `A autorização expirou ou foi revogada. Reautentique o canal para voltar a listar ${catalogLabel}.`}
                   </p>
                 </div>
               </div>

@@ -9,6 +9,10 @@ import {
 } from "@/modules/connectors/tiktok/auth/token.service";
 import { marketplaceRepository } from "../core/connector.repository";
 import { encryptConnectorSecret } from "../core/crypto.service";
+import {
+  hasMockTikTokCredentials,
+  markTikTokPendingApproval,
+} from "@/modules/connectors/tiktok/pending-approval.service";
 
 /**
  * TikTok Shop bridge (PR012) — official Shop API, server-side ONLY.
@@ -26,6 +30,10 @@ const PROVIDER = "TIKTOK" as const;
  * Called after a successful OAuth callback and before every sync.
  */
 export async function mirrorTikTokConnection(organizationId: string): Promise<Connector | null> {
+  if (hasMockTikTokCredentials()) {
+    await markTikTokPendingApproval(organizationId, "mock_credentials");
+    return marketplaceRepository.findByProvider(organizationId, PROVIDER);
+  }
   const accounts = await tiktokTokenRepository.findConnected(organizationId);
   const account = accounts[0];
   if (!account) return null;

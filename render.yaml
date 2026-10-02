@@ -106,6 +106,37 @@ services:
         sync: false
       - key: MERCADOLIVRE_CLIENT_SECRET
         sync: false
+      # Shopee Open Platform v2. Register ${APP_URL}/api/shopee/callback and
+      # ${APP_URL}/api/webhooks/shopee in the Partner Center.
+      - key: SHOPEE_PARTNER_ID
+        sync: false
+      - key: SHOPEE_PARTNER_KEY
+        sync: false
+      - key: SHOPEE_REDIRECT_URI
+        sync: false
+      # TikTok Shop Partner Center. Values containing `mock` intentionally
+      # place the connector in PENDING_APPROVAL without crashing the service.
+      - key: TIKTOK_APP_KEY
+        sync: false
+      - key: TIKTOK_APP_SECRET
+        sync: false
+      - key: TIKTOK_ENCRYPTION_KEY
+        sync: false
+      - key: TIKTOK_REDIRECT_URI
+        sync: false
+      # Meta Graph API v21.0: Instagram Shopping OAuth and signed webhooks.
+      - key: META_APP_ID
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_ENCRYPTION_KEY
+        sync: false
+      - key: META_VERIFY_TOKEN
+        sync: false
+      - key: META_GRAPH_API_VERSION
+        value: "v21.0"
+      - key: META_INSTAGRAM_REDIRECT_URI
+        sync: false
       # The web process may run without Redis, but does not start a worker.
       - key: REDIS_URL
         sync: false

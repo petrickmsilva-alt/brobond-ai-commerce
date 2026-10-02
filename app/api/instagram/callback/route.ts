@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { exchangeCode } from "@/modules/delivery/instagram/auth.service";
 import { deliveryOAuthCallbackSchema } from "@/modules/delivery/validators";
-import { mirrorInstagramConnection } from "@/modules/marketplace/instagram/instagram-bridge.service";
+import { InstagramConnector } from "@/modules/connectors/instagram/instagram.connector";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,13 +28,10 @@ export async function GET(request: Request) {
   if (!parsed.success) return redirectToDashboard(request, "error");
 
   try {
-    const accounts = await exchangeCode(parsed.data);
-    // PR012: mirror the credential into the unified Connector model so the
-    // Instagram Shopping card reflects the real state (best-effort — never
-    // fails the OAuth redirect).
-    if (accounts[0]?.organizationId) {
-      await mirrorInstagramConnection(accounts[0].organizationId).catch(() => undefined);
-    }
+    // The connector completes both stores: DeliveryAccount receives the
+    // page-scoped token encrypted for messaging and the unified Connector
+    // receives an AES-256-GCM copy protected by CONNECTOR_ENCRYPTION_KEY.
+    await new InstagramConnector().exchangeAuthorizationCode(parsed.data);
     return redirectToDashboard(request, "connected");
   } catch (error) {
     console.error(

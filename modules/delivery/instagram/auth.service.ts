@@ -169,9 +169,13 @@ export function createInstagramOAuthService(deps: InstagramOAuthDependencies = {
         );
       }
 
-      const encryptedAccessToken = encrypt(accessToken);
       const results: DeliveryAccount[] = [];
       for (const account of accounts) {
+        // /me/accounts returns a Page Access Token derived from the long-lived
+        // user token. Prefer that page-scoped credential for messaging and
+        // catalog calls; fall back only when Meta omits it for a test/system
+        // user. Every value is encrypted before the repository sees it.
+        const encryptedAccessToken = encrypt(account.pageAccessToken ?? accessToken);
         const saved = await repository.upsertConnectedAccount(stored.organizationId, {
           channel: "INSTAGRAM",
           accountId: account.id,

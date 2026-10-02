@@ -6,6 +6,11 @@ import { prisma } from "@/lib/prisma";
 import { tenantWhere } from "@/lib/tenant";
 import { TIKTOK_AUTH_BASE_URL, TikTokApiClient, getTikTokApiConfig } from "../api/client";
 import {
+  hasMockTikTokCredentials,
+  isTikTokAuthenticationError,
+  throwTikTokPendingApproval,
+} from "../pending-approval.service";
+import {
   createTikTokTokenRepository,
   decryptAccountTokens,
   hashOAuthState,
@@ -184,6 +189,9 @@ export function createTikTokOAuthService(deps: TikTokOAuthDependencies = {}) {
   return {
     async connectTikTok(organizationId: string): Promise<{ authorizationUrl: string }> {
       const scope = tenantWhere(organizationId);
+      if (hasMockTikTokCredentials()) {
+        return throwTikTokPendingApproval(scope.organizationId, "mock_credentials");
+      }
       const state = randomState();
       const current = now();
       await db.tikTokOAuthState.deleteMany({
@@ -216,15 +224,27 @@ export function createTikTokOAuthService(deps: TikTokOAuthDependencies = {}) {
         throw new TikTokOAuthError("TikTok authorization state has already been used.");
       }
 
-      const tokenData = await requestToken(
-        {
-          app_key: required("TIKTOK_APP_KEY"),
-          app_secret: required("TIKTOK_APP_SECRET"),
-          auth_code: input.code,
-          grant_type: "authorized_code",
-        },
-        doFetch,
-      );
+      let tokenData: TikTokTokenResponseData;
+      try {
+        tokenData = await requestToken(
+          {
+            app_key: required("TIKTOK_APP_KEY"),
+            app_secret: required("TIKTOK_APP_SECRET"),
+            auth_code: input.code,
+            grant_type: "authorized_code",
+          },
+          doFetch,
+        );
+      } catch (error) {
+        if (isTikTokAuthenticationError(error)) {
+          return throwTikTokPendingApproval(
+            stored.organizationId,
+            "authentication_rejected",
+            error,
+          );
+        }
+        throw error;
+      }
       const tokenSet = parseTokenSet(tokenData, current);
       const apiConfig = getTikTokApiConfig();
       const client = makeClient(apiConfig);

@@ -27,6 +27,36 @@ export class InstagramConnector implements Connector {
   readonly name = "Instagram Shopping";
   readonly implemented = true;
 
+  /**
+   * Complete Meta OAuth, capture the long-lived Page Access Token discovered
+   * through /me/accounts and mirror it onto the unified Connector model. The
+   * bridge applies AES-256-GCM with CONNECTOR_ENCRYPTION_KEY before the token
+   * is persisted as an Instagram Shopping credential.
+   */
+  async exchangeAuthorizationCode(input: {
+    code: string;
+    state: string;
+  }): Promise<{ organizationId: string; accountIds: string[] }> {
+    const [{ exchangeCode }, { mirrorInstagramConnection }] = await Promise.all([
+      import("@/modules/delivery/instagram/auth.service"),
+      import("@/modules/marketplace/instagram/instagram-bridge.service"),
+    ]);
+    const accounts = await exchangeCode(input);
+    const organizationId = accounts[0]?.organizationId;
+    if (!organizationId) {
+      throw new InstagramConnectionRequiredError(
+        "Instagram OAuth completed without a linked Business account.",
+      );
+    }
+    const mirrored = await mirrorInstagramConnection(organizationId);
+    if (!mirrored) {
+      throw new InstagramConnectionRequiredError(
+        "Instagram credential could not be encrypted and persisted.",
+      );
+    }
+    return { organizationId, accountIds: accounts.map((account) => account.accountId) };
+  }
+
   async fetchContent(options: FetchContentOptions = {}): Promise<NormalizedContent[]> {
     if (!options.organizationId) {
       throw new InstagramConnectionRequiredError(

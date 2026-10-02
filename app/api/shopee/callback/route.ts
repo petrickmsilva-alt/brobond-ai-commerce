@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/session";
-import { marketplaceService } from "@/modules/marketplace/core/connector.service";
+import { ShopeeConnector } from "@/modules/connectors/shopee/shopee.connector";
 import { shopeeCallbackSchema } from "@/modules/marketplace/core/connector.validator";
 import { connectorProviderPath } from "@/modules/marketplace/core/providers";
 
@@ -39,7 +39,11 @@ export async function GET(request: Request) {
     });
     if (!parsed.success) return redirectToDashboard(request, "error");
 
-    await marketplaceService.handleShopeeCallback(organizationId, parsed.data);
+    await new ShopeeConnector().exchangeAuthorizationCode(
+      organizationId,
+      parsed.data.code,
+      parsed.data.shop_id,
+    );
     return redirectToDashboard(request, "connected");
   } catch (error) {
     console.error(

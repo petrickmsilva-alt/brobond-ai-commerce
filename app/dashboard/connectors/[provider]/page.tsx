@@ -251,11 +251,13 @@ export default async function ConnectorProviderPage({
         >
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            {card.status === "DISCONNECTED"
-              ? `${CONNECTOR_PROVIDER_LABELS[provider]} ainda não foi autorizado neste workspace. Use "${connectorConnectLabel(provider)}" no card abaixo — o painel não consulta a API sem um token válido.`
-              : card.status === "REAUTH_REQUIRED"
-                ? `As credenciais salvas de ${CONNECTOR_PROVIDER_LABELS[provider]} não podem mais ser abertas (a chave de criptografia foi trocada). Use "${connectorConnectLabel(provider, true)}" no card abaixo para reconectar e gerar credenciais novas.`
-                : `A autorização de ${CONNECTOR_PROVIDER_LABELS[provider]} não está mais válida. Use "${connectorConnectLabel(provider, true)}" no card abaixo para reautenticar o canal.`}
+            {card.status === "PENDING_APPROVAL"
+              ? "Aguardando homologação e aprovação do cadastro da loja no TikTok Seller Center"
+              : card.status === "DISCONNECTED"
+                ? `${CONNECTOR_PROVIDER_LABELS[provider]} ainda não foi autorizado neste workspace. Use "${connectorConnectLabel(provider)}" no card abaixo — o painel não consulta a API sem um token válido.`
+                : card.status === "REAUTH_REQUIRED"
+                  ? `As credenciais salvas de ${CONNECTOR_PROVIDER_LABELS[provider]} não podem mais ser abertas (a chave de criptografia foi trocada). Use "${connectorConnectLabel(provider, true)}" no card abaixo para reconectar e gerar credenciais novas.`
+                  : `A autorização de ${CONNECTOR_PROVIDER_LABELS[provider]} não está mais válida. Use "${connectorConnectLabel(provider, true)}" no card abaixo para reautenticar o canal.`}
             {card.lastError && (
               <span className="mt-1 block text-xs text-amber-200/60">{card.lastError}</span>
             )}

@@ -22,7 +22,10 @@ import {
 export const INSTAGRAM_OAUTH_SCOPES = [
   "instagram_business_basic",
   "instagram_business_manage_messages",
+  "instagram_basic",
   "pages_show_list",
+  "pages_read_engagement",
+  "catalog_management",
 ] as const;
 
 export interface MetaTokenResponse {
@@ -37,11 +40,14 @@ export interface InstagramBusinessAccount {
   id: string;
   username?: string;
   name?: string;
+  /** Long-lived Page Access Token returned by /me/accounts. */
+  pageAccessToken?: string;
 }
 
 interface FacebookPage {
   id?: string;
   name?: string;
+  access_token?: string;
   instagram_business_account?: { id?: string; username?: string };
 }
 
@@ -102,7 +108,7 @@ export class InstagramClient {
     const response = await this.http.request<{ data?: FacebookPage[] }>({
       path: "/me/accounts",
       accessToken: userAccessToken,
-      query: { fields: "id,name,instagram_business_account{id,username}" },
+      query: { fields: "id,name,access_token,instagram_business_account{id,username}" },
     });
     return (response.data ?? [])
       .filter((page) => page.instagram_business_account?.id)
@@ -110,6 +116,7 @@ export class InstagramClient {
         id: page.instagram_business_account!.id!,
         username: page.instagram_business_account!.username,
         name: page.name,
+        ...(page.access_token ? { pageAccessToken: page.access_token } : {}),
       }));
   }
 

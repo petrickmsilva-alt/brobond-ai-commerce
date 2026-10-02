@@ -324,6 +324,9 @@ enum ConnectionStatus {
   CONNECTED
   EXPIRED
   ERROR
+  /// TikTok Shop application/store registration is still under Seller Center review.
+  /// This is operationally expected and must never be treated as a server failure.
+  PENDING_APPROVAL
   /// The stored credential can no longer be opened (e.g. it was encrypted
   /// with a previous CONNECTOR_ENCRYPTION_KEY). Only reconnecting the
   /// account re-encrypts with the current key — the panel renders the clean
@@ -497,6 +500,9 @@ model Product {
   /// Stable product identifier from the official TikTok Shop API. It is the
   /// idempotency key used by PR009 imports; null for products created locally.
   tiktokProductId String?
+  /// Stable `${shop_id}:${item_id}` identifier from Shopee Open Platform v2.
+  /// Used as the tenant-scoped idempotency key by catalog synchronization.
+  shopeeProductId String?
 
   /**
    * Aggregate stock on hand (variant stock is tracked per ProductVariant).
@@ -534,6 +540,7 @@ model Product {
   @@unique([organizationId, slug])
   @@unique([organizationId, sku])
   @@unique([organizationId, tiktokProductId])
+  @@unique([organizationId, shopeeProductId])
   @@index([status])
   @@index([organizationId])
   @@index([organizationId, status])
