@@ -20,6 +20,7 @@ import {
   fetchMercadoPagoPayment,
   mercadoPagoStatusToSaleStatus,
 } from "../mercadopago/mercadopago.service";
+import { fetchNuvemshopOrder } from "@/modules/connectors/nuvemshop/nuvemshop.service";
 
 /**
  * Sale ingestion service (PR014 — Motor Financeiro Unificado do Hub
@@ -62,10 +63,19 @@ export const MERCADOLIVRE_SALE_TOPICS = [
 /** Mercado Pago notification types that carry payment information. */
 export const MERCADOPAGO_SALE_TOPICS = ["payment"] as const;
 
+/** Nuvemshop order lifecycle topics registered during OAuth installation. */
+export const NUVEMSHOP_SALE_TOPICS = [
+  "order/created",
+  "order/paid",
+  "order/updated",
+  "order/cancelled",
+] as const;
+
 /** Providers whose webhooks feed the financial engine. */
 export const SALE_INGESTION_PROVIDERS: readonly ConnectorProvider[] = [
   "MERCADOLIVRE",
   "MERCADOPAGO",
+  "NUVEMSHOP",
 ];
 
 /** Does this (provider, topic) pair carry sale-relevant data? */
@@ -77,6 +87,8 @@ export function isSaleIngestionEvent(provider: ConnectorProvider, topic: string 
       return (MERCADOLIVRE_SALE_TOPICS as readonly string[]).includes(normalizedTopic);
     case "MERCADOPAGO":
       return (MERCADOPAGO_SALE_TOPICS as readonly string[]).includes(normalizedTopic);
+    case "NUVEMSHOP":
+      return (NUVEMSHOP_SALE_TOPICS as readonly string[]).includes(normalizedTopic);
     default:
       return false;
   }
@@ -169,6 +181,56 @@ async function resolveMercadoPagoDraft(
   };
 }
 
+async function resolveNuvemshopDraft(
+  organizationId: string,
+  payload: Record<string, unknown>,
+): Promise<IngestedSaleDraft | null> {
+  const orderId = payload.id !== undefined ? String(payload.id) : "";
+  const payloadStoreId = payload.store_id !== undefined ? String(payload.store_id) : "";
+  if (!orderId) return null;
+
+  const { accessToken, shopId } = await marketplaceService.getValidAccessToken(
+    organizationId,
+    "NUVEMSHOP",
+  );
+  // The worker trusts the store identity persisted during OAuth, never a
+  // caller-selected tenant/store. A mismatched payload is terminally ignored.
+  if (!shopId || (payloadStoreId && payloadStoreId !== shopId)) return null;
+  const order = await fetchNuvemshopOrder(accessToken, shopId, orderId);
+  return {
+    externalOrderId: order.id,
+    amountCents: order.amountCents,
+    currency: order.currency,
+    status: order.status,
+    quantity: order.quantity,
+    occurredAt: order.occurredAt,
+  };
+}
+
+async function recordSaleIngestionCounters(
+  organizationId: string,
+  provider: ConnectorProvider,
+  outcome: "created" | "updated" | "unchanged" | "ignored",
+): Promise<void> {
+  if (outcome === "ignored") return;
+  const counters =
+    outcome === "created" || outcome === "updated"
+      ? { imported: 1, duplicates: 0, failed: 0 }
+      : { imported: 0, duplicates: 1, failed: 0 };
+  await Promise.all([
+    marketplaceRepository.incrementIngestionCounters(organizationId, provider, {
+      imported: counters.imported,
+      duplicated: counters.duplicates,
+      failed: counters.failed,
+    }),
+    connectorRepository.recordIngestionCounters(organizationId, toFrameworkPlatform(provider), {
+      imported: counters.imported,
+      duplicates: counters.duplicates,
+      failed: counters.failed,
+    }),
+  ]);
+}
+
 async function refreshAnalyticsAfterSale(
   organizationId: string,
   sale: { occurredAt: Date } | null,
@@ -232,7 +294,9 @@ export async function processSaleIngestionEvent(input: {
         ? await resolveMercadoLivreDraft(organizationId, event.topic, payload)
         : provider === "MERCADOPAGO"
           ? await resolveMercadoPagoDraft(organizationId, payload)
-          : null;
+          : provider === "NUVEMSHOP"
+            ? await resolveNuvemshopDraft(organizationId, payload)
+            : null;
   } catch (error) {
     if (requiresReauthentication(error)) {
       // PR016.2 crypto catch on the financial flow: the channel's stored
@@ -275,15 +339,21 @@ export async function processSaleIngestionEvent(input: {
       status: draft.status,
       quantity: draft.quantity,
       occurredAt: draft.occurredAt,
+      // Nuvemshop emits a canonical order/created event. Persist that first
+      // PENDING state so every incoming sale is represented before payment.
+      createPending: provider === "NUVEMSHOP",
     });
     // A pending payment settles through a LATER notification (its own event
     // id); a refund for an unknown order has nothing to update. Terminal.
     await refreshAnalyticsAfterSale(organizationId, sale, outcome);
+    if (provider === "NUVEMSHOP") {
+      await recordSaleIngestionCounters(organizationId, provider, outcome);
+    }
     await marketplaceRepository.markEventProcessed(organizationId, provider, externalEventId);
     return {
       provider,
       externalEventId,
-      status: outcome === "updated" ? "processed" : "ignored",
+      status: outcome === "created" || outcome === "updated" ? "processed" : "ignored",
       outcome,
       saleId: sale?.id,
     };
@@ -304,18 +374,7 @@ export async function processSaleIngestionEvent(input: {
   // Consolidate the counters on BOTH stores (unified Connector row and the
   // PR005 ConnectorStatus row) — same convention as a sync run, minus the
   // sync-run semantics (no syncCount, no lastSyncAt stamp).
-  const counters =
-    outcome === "created" || outcome === "updated"
-      ? { imported: 1, duplicates: 0, failed: 0 }
-      : { imported: 0, duplicates: 1, failed: 0 };
-  await Promise.all([
-    marketplaceRepository.incrementIngestionCounters(organizationId, provider, counters),
-    connectorRepository.recordIngestionCounters(organizationId, toFrameworkPlatform(provider), {
-      imported: counters.imported,
-      duplicates: counters.duplicates,
-      failed: counters.failed,
-    }),
-  ]);
+  await recordSaleIngestionCounters(organizationId, provider, outcome);
 
   await marketplaceRepository.markEventProcessed(organizationId, provider, externalEventId);
 

@@ -86,9 +86,15 @@ describe("buildSeedSales() — PR008", () => {
     expect(channels.has("BROBOND")).toBe(true);
     expect(channels.size).toBeGreaterThan(1);
     for (const row of rows) {
-      expect(["BROBOND", "TIKTOK", "INSTAGRAM", "SHOPEE", "MERCADOLIVRE", "MERCADOPAGO"]).toContain(
-        row.channel,
-      );
+      expect([
+        "BROBOND",
+        "TIKTOK",
+        "INSTAGRAM",
+        "SHOPEE",
+        "NUVEMSHOP",
+        "MERCADOLIVRE",
+        "MERCADOPAGO",
+      ]).toContain(row.channel);
     }
   });
 });

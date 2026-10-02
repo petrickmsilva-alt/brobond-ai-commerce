@@ -68,6 +68,12 @@ vi.mock("@/modules/marketplace/mercadopago/mercadopago.service", async (importOr
   return { ...actual, fetchMercadoPagoPayment: vi.fn() };
 });
 
+vi.mock("@/modules/connectors/nuvemshop/nuvemshop.service", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/modules/connectors/nuvemshop/nuvemshop.service")>();
+  return { ...actual, fetchNuvemshopOrder: vi.fn() };
+});
+
 import { marketplaceRepository } from "@/modules/marketplace/core/connector.repository";
 import { connectorRepository } from "@/modules/connectors/core/connector.repository";
 import { salesService } from "@/modules/sales/sales.service";
@@ -81,6 +87,7 @@ import {
   fetchMercadoPagoPayment,
   mercadoPagoStatusToSaleStatus,
 } from "@/modules/marketplace/mercadopago/mercadopago.service";
+import { fetchNuvemshopOrder } from "@/modules/connectors/nuvemshop/nuvemshop.service";
 import {
   isSaleIngestionEvent,
   processSaleIngestionEvent,
@@ -93,6 +100,7 @@ const mockedAnalyticsService = vi.mocked(analyticsService);
 const mockedFetchMeliOrder = vi.mocked(fetchMercadoLivreOrder);
 const mockedResolveMeliOrderId = vi.mocked(resolveMercadoLivreNotificationOrderId);
 const mockedFetchMpPayment = vi.mocked(fetchMercadoPagoPayment);
+const mockedFetchNuvemshopOrder = vi.mocked(fetchNuvemshopOrder);
 
 function connectorEvent(overrides: Partial<ConnectorEvent> = {}): ConnectorEvent {
   return {
@@ -142,6 +150,12 @@ describe("isSaleIngestionEvent — the (provider, topic) gate", () => {
     expect(isSaleIngestionEvent("MERCADOLIVRE", "orders")).toBe(true);
   });
 
+  it("accepts Nuvemshop order lifecycle topics", () => {
+    for (const topic of ["order/created", "order/paid", "order/updated", "order/cancelled"]) {
+      expect(isSaleIngestionEvent("NUVEMSHOP", topic)).toBe(true);
+    }
+  });
+
   it("accepts the Mercado Pago payment topic", () => {
     expect(isSaleIngestionEvent("MERCADOPAGO", "payment")).toBe(true);
   });
@@ -174,6 +188,62 @@ describe("provider status mappers", () => {
 });
 
 describe("processSaleIngestionEvent", () => {
+  it("persists a first-seen Nuvemshop sale in the BullMQ worker", async () => {
+    mockedRepository.findEvent.mockResolvedValue(
+      connectorEvent({
+        provider: "NUVEMSHOP",
+        externalEventId: "nuvemshop:shop:order/created:987",
+        topic: "order/created",
+        payload: { store_id: "shop", event: "order/created", id: 987 },
+      }),
+    );
+    mockedFetchNuvemshopOrder.mockResolvedValue({
+      id: "987",
+      amountCents: 24_990,
+      currency: "BRL",
+      status: "PENDING",
+      quantity: 2,
+      occurredAt: new Date("2026-10-02T12:00:00.000Z"),
+    });
+    mockedSalesService.upsertIngestedSale.mockResolvedValue({
+      sale: fakeSale({
+        id: "sale_nuvemshop",
+        channel: "NUVEMSHOP",
+        status: "PENDING",
+        externalOrderId: "987",
+      }),
+      outcome: "created",
+    });
+
+    const result = await processSaleIngestionEvent({
+      organizationId: "org_1",
+      provider: "NUVEMSHOP",
+      externalEventId: "nuvemshop:shop:order/created:987",
+    });
+
+    expect(mockedFetchNuvemshopOrder).toHaveBeenCalledWith("token", "shop", "987");
+    expect(mockedSalesService.upsertIngestedSale).toHaveBeenCalledWith("org_1", {
+      channel: "NUVEMSHOP",
+      externalOrderId: "987",
+      amountCents: 24_990,
+      currency: "BRL",
+      status: "PENDING",
+      quantity: 2,
+      occurredAt: new Date("2026-10-02T12:00:00.000Z"),
+      createPending: true,
+    });
+    expect(result).toMatchObject({
+      status: "processed",
+      outcome: "created",
+      saleId: "sale_nuvemshop",
+    });
+    expect(mockedRepository.markEventProcessed).toHaveBeenCalledWith(
+      "org_1",
+      "NUVEMSHOP",
+      "nuvemshop:shop:order/created:987",
+    );
+  });
+
   it("ingests a PAID Mercado Livre order end-to-end", async () => {
     mockedRepository.findEvent.mockResolvedValue(connectorEvent());
     mockedFetchMeliOrder.mockResolvedValue({
@@ -211,7 +281,7 @@ describe("processSaleIngestionEvent", () => {
     expect(mockedRepository.incrementIngestionCounters).toHaveBeenCalledWith(
       "org_1",
       "MERCADOLIVRE",
-      { imported: 1, duplicates: 0, failed: 0 },
+      { imported: 1, duplicated: 0, failed: 0 },
     );
     expect(mockedFrameworkRepository.recordIngestionCounters).toHaveBeenCalledWith(
       "org_1",

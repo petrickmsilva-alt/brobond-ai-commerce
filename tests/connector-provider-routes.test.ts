@@ -40,6 +40,7 @@ describe("connector provider slug registry", () => {
     expect(connectorProviderPath("MERCADOLIVRE")).toBe("/dashboard/connectors/mercado-livre");
     expect(connectorProviderPath("MERCADOPAGO")).toBe("/dashboard/connectors/mercado-pago");
     expect(connectorProviderPath("SHOPEE")).toBe("/dashboard/connectors/shopee");
+    expect(connectorProviderPath("NUVEMSHOP")).toBe("/dashboard/connectors/nuvemshop");
     expect(connectorProviderPath("TIKTOK")).toBe("/dashboard/connectors/tiktok");
     expect(connectorProviderPath("INSTAGRAM")).toBe("/dashboard/connectors/instagram");
   });

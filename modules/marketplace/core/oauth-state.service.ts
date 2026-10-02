@@ -8,8 +8,8 @@ import type { MarketplaceDatabase } from "./connector.repository";
 import { hashConnectorOAuthState } from "./crypto.service";
 
 /**
- * Connector OAuth state service (PR012) — short-lived, one-time, server-side
- * CSRF states for the Shopee and Mercado Livre OAuth redirects.
+ * Connector OAuth state service — short-lived, one-time, server-side CSRF
+ * states for marketplace OAuth redirects (Mercado Livre and Nuvemshop).
  *
  * Same contract as the PR009 TikTok flow: the state is random (256 bits),
  * hashed (SHA-256) at rest, expires in ten minutes and is consumed exactly

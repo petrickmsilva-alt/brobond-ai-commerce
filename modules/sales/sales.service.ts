@@ -280,9 +280,9 @@ export const salesService = {
    * key `(organizationId, channel, externalOrderId)` so a replayed delivery
    * can never double-count revenue:
    *
-   *   - no existing row  → `created`, but only for `PAID` events — a
-   *     `PENDING`/`REFUNDED`/`CANCELLED` notification for a never-seen order
-   *     returns `ignored` (nothing to settle or refund);
+   *   - no existing row  → `created` for `PAID` events, or for a canonical
+   *     order-created `PENDING` event when `createPending` is true;
+   *     `REFUNDED`/`CANCELLED` for a never-seen order returns `ignored`;
    *   - existing row     → status transitions obey `canTransitionSaleStatus`
    *     (a terminal sale is never downgraded) and paid amounts are refreshed;
    *     identical replays return `unchanged`.
@@ -300,6 +300,8 @@ export const salesService = {
       status: SaleStatus | string;
       quantity?: number;
       occurredAt?: Date | string | null;
+      /** Persist a first-seen PENDING order (used by order-created webhooks). */
+      createPending?: boolean;
     },
   ): Promise<{
     sale: Sale | null;
@@ -328,9 +330,11 @@ export const salesService = {
     });
 
     if (!existing) {
-      if (status !== SaleStatus.PAID) {
-        // Nothing was ever sold under this id — a pending/refunded
+      if (status !== SaleStatus.PAID && !(status === SaleStatus.PENDING && input.createPending)) {
+        // Nothing was ever sold under this id — a refunded/cancelled
         // notification for an unknown order must not create revenue noise.
+        // Providers with a canonical order-created event may explicitly keep
+        // its PENDING lifecycle row through `createPending`.
         return { sale: null, outcome: "ignored" };
       }
       const sale = await prisma.sale.create({

@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -52,6 +53,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   delete process.env.MERCADOLIVRE_WEBHOOK_SECRET;
   delete process.env.MERCADOPAGO_WEBHOOK_SECRET;
+  delete process.env.NUVEMSHOP_CLIENT_SECRET;
 });
 
 describe("handleProviderWebhook — sale deliveries go to the worker", () => {
@@ -92,6 +94,45 @@ describe("handleProviderWebhook — sale deliveries go to the worker", () => {
       externalEventId: "meli:meli-evt-1",
     });
     // The worker — not the request — stamps processedAt after the upsert.
+    expect(mockedRepository.markEventProcessed).not.toHaveBeenCalled();
+  });
+
+  it("verifies and enqueues a Nuvemshop order-created notification", async () => {
+    process.env.NUVEMSHOP_CLIENT_SECRET = "nuvemshop-secret";
+    mockedRepository.findByShopId.mockResolvedValue({
+      id: "conn_nuvemshop",
+      organizationId: "org_nuvemshop",
+    } as never);
+    mockedRepository.hasEvent.mockResolvedValue(false);
+
+    const body = { store_id: 789, event: "order/created", id: 987 };
+    const rawBody = JSON.stringify(body);
+    const signature = createHmac("sha256", "nuvemshop-secret").update(rawBody).digest("base64");
+    const request = new Request("https://app.example.com/api/webhooks/nuvemshop", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-linkedstore-hmac-sha256": signature,
+      },
+      body: rawBody,
+    });
+
+    const result = await handleProviderWebhook("NUVEMSHOP", request, rawBody);
+
+    expect(result).toEqual({ received: true });
+    expect(mockedRepository.findByShopId).toHaveBeenCalledWith("NUVEMSHOP", "789");
+    expect(mockedRepository.recordEvent).toHaveBeenCalledWith("org_nuvemshop", {
+      provider: "NUVEMSHOP",
+      externalEventId: "nuvemshop:789:order/created:987",
+      connectorId: "conn_nuvemshop",
+      topic: "order/created",
+      payload: body,
+    });
+    expect(mockedEnqueue).toHaveBeenCalledWith({
+      organizationId: "org_nuvemshop",
+      provider: "NUVEMSHOP",
+      externalEventId: "nuvemshop:789:order/created:987",
+    });
     expect(mockedRepository.markEventProcessed).not.toHaveBeenCalled();
   });
 

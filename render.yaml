@@ -114,6 +114,18 @@ services:
         sync: false
       - key: SHOPEE_REDIRECT_URI
         sync: false
+      # Nuvemshop Partners application. The redirect URI is static and must
+      # equal the callback registered in the partner portal byte for byte.
+      - key: NUVEMSHOP_CLIENT_ID
+        sync: false
+      - key: NUVEMSHOP_CLIENT_SECRET
+        sync: false
+      - key: NUVEMSHOP_REDIRECT_URI
+        sync: false
+      - key: NUVEMSHOP_WEBHOOK_URL
+        sync: false
+      - key: NUVEMSHOP_USER_AGENT
+        sync: false
       # TikTok Shop Partner Center. Values containing `mock` intentionally
       # place the connector in PENDING_APPROVAL without crashing the service.
       - key: TIKTOK_APP_KEY
@@ -165,6 +177,20 @@ services:
         fromDatabase:
           name: brobond-db
           property: connectionString
+      # The sale worker decrypts each store token and fetches the authoritative
+      # Nuvemshop order before the idempotent Sale upsert.
+      - key: CONNECTOR_ENCRYPTION_KEY
+        sync: false
+      - key: NUVEMSHOP_CLIENT_ID
+        sync: false
+      - key: NUVEMSHOP_CLIENT_SECRET
+        sync: false
+      - key: NUVEMSHOP_REDIRECT_URI
+        sync: false
+      - key: NUVEMSHOP_WEBHOOK_URL
+        sync: false
+      - key: NUVEMSHOP_USER_AGENT
+        sync: false
       # Set this in Render. Startup fails loudly if it is absent or invalid.
       - key: REDIS_URL
         sync: false

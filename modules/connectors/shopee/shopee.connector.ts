@@ -7,6 +7,7 @@ import type {
   FetchContentOptions,
   NormalizedContent,
 } from "../core/connector.interface";
+import { getShopeeConfig } from "@/modules/marketplace/shopee/shopee.service";
 
 export class ShopeeConnectionRequiredError extends Error {
   constructor(message = "Connect a Shopee shop before synchronizing this connector.") {
@@ -40,6 +41,10 @@ export class ShopeeConnector implements Connector {
         "Shopee authorization requires an organization scope.",
       );
     }
+    // Production environment lock. The OAuth exchange is HMAC-SHA256 signed
+    // only with the official Partner ID/key configured on Render; there is no
+    // fallback or simplified mode.
+    getShopeeConfig();
     const { marketplaceService } = await import("@/modules/marketplace/core/connector.service");
     await marketplaceService.handleShopeeCallback(organizationId, { code, shop_id: shopId });
   }
@@ -54,6 +59,10 @@ export class ShopeeConnector implements Connector {
     if (!organizationId.trim()) {
       throw new ShopeeConnectionRequiredError("Shopee sync requires an organization scope.");
     }
+    // Resolve and validate both mandatory Render secrets before reading a
+    // seller token or issuing a catalog request. `fetchShopeeProducts()` uses
+    // this exact config to HMAC-SHA256 sign the official Open Platform call.
+    const shopeeConfig = getShopeeConfig();
     const [{ prisma }, { marketplaceService }, { fetchShopeeProducts }] = await Promise.all([
       import("@/lib/prisma"),
       import("@/modules/marketplace/core/connector.service"),
@@ -65,7 +74,7 @@ export class ShopeeConnector implements Connector {
     );
     if (!shopId) throw new ShopeeConnectionRequiredError();
 
-    const items = await fetchShopeeProducts(accessToken, shopId, limit);
+    const items = await fetchShopeeProducts(accessToken, shopId, limit, shopeeConfig);
     await Promise.all(
       items.map(async (item) => {
         const raw = item.raw ?? {};
@@ -114,14 +123,24 @@ export class ShopeeConnector implements Connector {
   }
 
   async testConnection(): Promise<ConnectorHealth> {
-    const configured = Boolean(process.env.SHOPEE_PARTNER_ID && process.env.SHOPEE_PARTNER_KEY);
-    return {
-      platform: this.platform,
-      ok: configured,
-      implemented: true,
-      message: configured
-        ? "Integração oficial pronta. Conecte uma loja Shopee para validar as permissões."
-        : "Configure SHOPEE_PARTNER_ID e SHOPEE_PARTNER_KEY no servidor para conectar uma loja.",
-    };
+    try {
+      // Uses the same strict parser as OAuth and sync (positive integer
+      // partner id + non-empty partner key), rather than a truthy env probe.
+      getShopeeConfig();
+      return {
+        platform: this.platform,
+        ok: true,
+        implemented: true,
+        message: "Integração oficial pronta. Conecte uma loja Shopee para validar as permissões.",
+      };
+    } catch {
+      return {
+        platform: this.platform,
+        ok: false,
+        implemented: true,
+        message:
+          "Configure SHOPEE_PARTNER_ID e SHOPEE_PARTNER_KEY no servidor para conectar uma loja.",
+      };
+    }
   }
 }

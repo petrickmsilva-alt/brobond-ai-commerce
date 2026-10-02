@@ -32,7 +32,8 @@ export interface SeedSaleDraft {
    * revenue split across Brobond, Mercado Livre, Shopee, TikTok Shop,
    * Mercado Pago and Instagram instead of everything landing on BROBOND.
    */
-  channel: "BROBOND" | "TIKTOK" | "INSTAGRAM" | "SHOPEE" | "MERCADOLIVRE" | "MERCADOPAGO";
+  channel:
+    "BROBOND" | "TIKTOK" | "INSTAGRAM" | "SHOPEE" | "NUVEMSHOP" | "MERCADOLIVRE" | "MERCADOPAGO";
 }
 
 /** Deterministic channel rotation — Brobond gets a heavier weight, matching a
@@ -43,6 +44,7 @@ const SEED_CHANNEL_ROTATION: SeedSaleDraft["channel"][] = [
   "MERCADOLIVRE",
   "BROBOND",
   "SHOPEE",
+  "NUVEMSHOP",
   "TIKTOK",
   "BROBOND",
   "MERCADOPAGO",
