@@ -44,6 +44,37 @@ export const CONNECTOR_PROVIDER_DESCRIPTIONS: Record<ConnectorProviderName, stri
   MERCADOPAGO: "Checkout e faturamento via Access Token de produção.",
 };
 
+/**
+ * What the operator connects, per provider — the object of the call to
+ * action (PR016.1). Kept here so the button label, the empty state and the
+ * error messages the backend writes can never drift apart: the Mercado Livre
+ * card reads exactly "Conectar Conta do Mercado Livre".
+ */
+export const CONNECTOR_PROVIDER_ACCOUNT_LABELS: Record<ConnectorProviderName, string> = {
+  TIKTOK: "Conta do TikTok Shop",
+  INSTAGRAM: "Conta do Instagram",
+  SHOPEE: "Conta da Shopee",
+  MERCADOLIVRE: "Conta do Mercado Livre",
+  MERCADOPAGO: "Credenciais do Mercado Pago",
+};
+
+/** What a successful connection unlocks — used in the "connect first" copy. */
+export const CONNECTOR_PROVIDER_CATALOG_LABELS: Record<ConnectorProviderName, string> = {
+  TIKTOK: "os vídeos e pedidos",
+  INSTAGRAM: "as publicações e produtos",
+  SHOPEE: "os produtos",
+  MERCADOLIVRE: "os anúncios",
+  MERCADOPAGO: "os pagamentos",
+};
+
+/**
+ * Label of the connect/reconnect button of one provider, e.g.
+ * `connectorConnectLabel("MERCADOLIVRE")` → "Conectar Conta do Mercado Livre".
+ */
+export function connectorConnectLabel(provider: ConnectorProviderName, connected = false): string {
+  return `${connected ? "Reconectar" : "Conectar"} ${CONNECTOR_PROVIDER_ACCOUNT_LABELS[provider]}`;
+}
+
 // ------------------------------------------------------------------
 // Detail routes (PR014 — isolated connector screens)
 // ------------------------------------------------------------------

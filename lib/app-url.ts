@@ -97,6 +97,47 @@ function forwardedOrigin(request: RedirectRequestContext | undefined): string {
 }
 
 /**
+ * Every browser-navigable base URL candidate, in precedence order and
+ * de-duplicated (may be empty).
+ *
+ * PRECEDENCE: `APP_URL` → `NEXTAUTH_URL` → `X-Forwarded-Host`/`Host` →
+ * `request.url`.
+ *
+ * `resolveRedirectBaseUrl()` takes the first entry; OAuth code exchanges take
+ * the whole list, because a `redirect_uri` that does not match the one the
+ * provider registered is rejected and the next candidate must be tried (see
+ * `modules/marketplace/mercadolivre/mercadolivre.service.ts`).
+ */
+export function listRedirectBaseUrls(
+  request?: RedirectRequestContext,
+  env: AppUrlEnv = process.env,
+): string[] {
+  // `keep` preserves a configured sub-path (https://host/brobond); the proxy
+  // header and `request.url` are reduced to their origin, since their path is
+  // the callback route itself — never the deployment's base.
+  const candidates: Array<{ value: string; keep: boolean }> = [
+    ...APP_URL_ENV_KEYS.map((key) => ({ value: normalize(env[key]), keep: true })),
+    { value: forwardedOrigin(request), keep: false },
+    { value: request?.url ?? "", keep: false },
+  ];
+
+  const resolved: string[] = [];
+  for (const { value, keep } of candidates) {
+    if (!value || !isNavigable(value)) continue;
+    let base = value;
+    if (!keep) {
+      try {
+        base = new URL(value).origin;
+      } catch {
+        continue;
+      }
+    }
+    if (!resolved.includes(base)) resolved.push(base);
+  }
+  return resolved;
+}
+
+/**
  * Absolute base URL to send a *browser* to (OAuth callbacks, redirects).
  *
  * `new URL(path, request.url)` is the obvious thing to write and is wrong
@@ -118,25 +159,40 @@ export function resolveRedirectBaseUrl(
   request?: RedirectRequestContext,
   env: AppUrlEnv = process.env,
 ): string {
-  // `keep` preserves a configured sub-path (https://host/brobond); the proxy
-  // header and `request.url` are reduced to their origin, since their path is
-  // the callback route itself — never the deployment's base.
-  const candidates: Array<{ value: string; keep: boolean }> = [
-    ...APP_URL_ENV_KEYS.map((key) => ({ value: normalize(env[key]), keep: true })),
-    { value: forwardedOrigin(request), keep: false },
-    { value: request?.url ?? "", keep: false },
-  ];
+  return listRedirectBaseUrls(request, env)[0] ?? LOCAL_FALLBACK_BASE_URL;
+}
 
-  for (const { value, keep } of candidates) {
-    if (!value || !isNavigable(value)) continue;
-    if (keep) return value;
+/**
+ * The public, absolute URL of the inbound request itself — path included,
+ * query string dropped.
+ *
+ * For an OAuth callback this is literally the `redirect_uri` the provider
+ * just used, so it is the ground truth when the configured `APP_URL` and the
+ * URI registered in the provider's developer console diverge. Deliberately
+ * header-first (the opposite of `resolveRedirectBaseUrl`): the question here
+ * is "where did the provider actually deliver the browser?", not "what is our
+ * canonical address?".
+ *
+ * Returns `""` when the request only resolves to an unroutable address.
+ */
+export function resolveRequestUrl(request: RedirectRequestContext | undefined): string {
+  if (!request) return "";
+  let pathname = "/";
+  try {
+    pathname = new URL(request.url).pathname;
+  } catch {
+    return "";
+  }
+  const forwarded = forwardedOrigin(request);
+  for (const candidate of [forwarded, request.url]) {
+    if (!candidate || !isNavigable(candidate)) continue;
     try {
-      return new URL(value).origin;
+      return `${new URL(candidate).origin}${pathname}`;
     } catch {
       continue;
     }
   }
-  return LOCAL_FALLBACK_BASE_URL;
+  return "";
 }
 
 /**

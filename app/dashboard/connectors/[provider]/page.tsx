@@ -39,7 +39,9 @@ import { marketplaceService } from "@/modules/marketplace/core/connector.service
 import {
   CONNECTOR_PROVIDER_DESCRIPTIONS,
   CONNECTOR_PROVIDER_LABELS,
+  connectorConnectLabel,
   connectorProviderFromSlug,
+  type ConnectorProviderName,
 } from "@/modules/marketplace/core/providers";
 import { saleChannelFromConnectorProvider } from "@/modules/sales/sales-channel";
 import { salesService } from "@/modules/sales/sales.service";
@@ -88,6 +90,29 @@ function formatDateTime(value: Date | string | null): string {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(
     typeof value === "string" ? new Date(value) : value,
   );
+}
+
+/**
+ * Turn the sanitized `?reason=` token emitted by an OAuth callback into an
+ * instruction an operator can act on (PR016.1). Unknown/absent tokens fall
+ * back to the generic message, so a future provider never leaks a payload.
+ */
+function oauthErrorMessage(provider: ConnectorProviderName, reason: string | undefined): string {
+  const label = CONNECTOR_PROVIDER_LABELS[provider];
+  switch (reason) {
+    case "denied":
+      return `A autorização em ${label} foi cancelada. Use "${connectorConnectLabel(provider)}" para tentar novamente e conceda as permissões solicitadas.`;
+    case "state":
+      return `A sessão de autorização de ${label} expirou antes da conclusão (o link é válido por 10 minutos e de uso único). Use "${connectorConnectLabel(provider)}" para iniciar uma nova conexão.`;
+    case "config":
+      return `A integração com ${label} está incompleta no servidor. Confirme as variáveis do aplicativo (client id, client secret e a URL de redirecionamento) no ambiente da Render e tente novamente.`;
+    case "exchange":
+      return `${label} recusou a troca do código de autorização. A causa mais comum é a URL de redirecionamento registrada no painel do desenvolvedor estar diferente de APP_URL/NEXTAUTH_URL — confira os valores registrados no log do servidor e tente novamente.`;
+    case "invalid_request":
+      return `O retorno de ${label} chegou incompleto. Use "${connectorConnectLabel(provider)}" para iniciar a conexão novamente.`;
+    default:
+      return `Não foi possível conectar ${label}. Verifique as credenciais do aplicativo e tente novamente.`;
+  }
 }
 
 interface ConnectorProviderPageProps {
@@ -150,8 +175,14 @@ export default async function ConnectorProviderPage({
   const isMember = user.role === UserRole.MEMBER;
 
   // OAuth feedback banner (set by the provider callback redirects, which
-  // land on this screen since PR014).
+  // land on this screen since PR014). `reason` is the sanitized failure
+  // token added in PR016.1 — never a provider payload.
   const oauthResult = typeof raw.oauth === "string" ? raw.oauth : undefined;
+  const oauthReason = typeof raw.reason === "string" ? raw.reason : undefined;
+
+  // An OAuth2 channel with no usable credential (never connected, expired or
+  // errored): the screen leads with the action that fixes it.
+  const needsAuthorization = card.authType === "oauth2" && !card.connected;
 
   return (
     <>
@@ -195,7 +226,27 @@ export default async function ConnectorProviderPage({
           className="mb-6 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"
         >
           <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-          {`Não foi possível conectar ${CONNECTOR_PROVIDER_LABELS[provider]}. Verifique as credenciais do aplicativo e tente novamente.`}
+          {oauthErrorMessage(provider, oauthReason)}
+        </p>
+      )}
+
+      {/* Durable authorization state — survives the reload the OAuth banner
+          does not. An OAuth2 channel without a live credential always shows
+          the next action here (PR016.1). */}
+      {needsAuthorization && oauthResult !== "error" && (
+        <p
+          role="status"
+          className="mb-6 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            {card.status === "DISCONNECTED"
+              ? `${CONNECTOR_PROVIDER_LABELS[provider]} ainda não foi autorizado neste workspace. Use "${connectorConnectLabel(provider)}" no card abaixo — o painel não consulta a API sem um token válido.`
+              : `A autorização de ${CONNECTOR_PROVIDER_LABELS[provider]} não está mais válida. Use "${connectorConnectLabel(provider, true)}" no card abaixo para reautenticar o canal.`}
+            {card.lastError && (
+              <span className="mt-1 block text-xs text-amber-200/60">{card.lastError}</span>
+            )}
+          </span>
         </p>
       )}
 

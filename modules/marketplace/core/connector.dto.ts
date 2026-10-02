@@ -113,6 +113,19 @@ export interface MarketplaceSyncResultDTO {
   syncedAt: string;
 }
 
-/** Uniform result for server actions (success or field/form errors). */
+/**
+ * Uniform result for server actions (success or field/form errors).
+ *
+ * `requiresReauth` is the serializable form of
+ * `MarketplaceError.requiresReauth`: the failure is an authorization one and
+ * the card must offer "Conectar Conta do …" instead of another retry
+ * (PR016.1). It carries no credential or provider payload.
+ */
 export type MarketplaceActionResult<T = undefined> =
-  { ok: true; data: T } | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
+  | { ok: true; data: T }
+  | {
+      ok: false;
+      error: string;
+      fieldErrors?: Record<string, string[]>;
+      requiresReauth?: boolean;
+    };

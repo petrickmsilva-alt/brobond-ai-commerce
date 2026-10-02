@@ -8,8 +8,19 @@ import type {
   NormalizedContent,
 } from "../core/connector.interface";
 
+/** The one action that resolves every Mercado Livre authorization failure. */
+const CONNECT_CTA = "Conectar Conta do Mercado Livre";
+
 export class MercadoLivreConnectionRequiredError extends Error {
-  constructor(message = "Connect a Mercado Livre account before synchronizing this connector.") {
+  /**
+   * Read by `requiresReauthentication()` (marketplace errors module) so the
+   * dashboard renders the connect call to action instead of a retry.
+   */
+  readonly requiresReauth = true;
+
+  constructor(
+    message = `A conta do Mercado Livre ainda não foi autorizada. Clique em "${CONNECT_CTA}" para liberar o acesso aos seus anúncios.`,
+  ) {
     super(message);
     this.name = "MercadoLivreConnectionRequiredError";
   }
@@ -32,16 +43,23 @@ export class MercadoLivreConnector implements Connector {
       );
     }
     // Lazy imports keep Prisma out of any browser-adjacent module graph.
-    const [{ marketplaceService }, { fetchMercadoLivreItems }] = await Promise.all([
-      import("@/modules/marketplace/core/connector.service"),
-      import("@/modules/marketplace/mercadolivre/mercadolivre.service"),
-    ]);
+    const [{ marketplaceService }, { fetchMercadoLivreItems, hasMercadoLivreAuthorization }] =
+      await Promise.all([
+        import("@/modules/marketplace/core/connector.service"),
+        import("@/modules/marketplace/mercadolivre/mercadolivre.service"),
+      ]);
     const { accessToken, shopId } = await marketplaceService.getValidAccessToken(
       options.organizationId,
       "MERCADOLIVRE",
     );
-    if (!shopId) throw new MercadoLivreConnectionRequiredError();
-    return fetchMercadoLivreItems(accessToken, shopId, options.limit ?? 50);
+    // No usable credential ⇒ never call the API. Listing anúncios with an
+    // empty bearer returned an opaque 401 that the panel showed as "Não foi
+    // possível listar os anúncios do Mercado Livre"; the operator now reads
+    // the action that actually fixes it (PR016.1).
+    if (!hasMercadoLivreAuthorization(accessToken, shopId)) {
+      throw new MercadoLivreConnectionRequiredError();
+    }
+    return fetchMercadoLivreItems(accessToken, shopId as string, options.limit ?? 50);
   }
 
   async testConnection(): Promise<ConnectorHealth> {

@@ -1,5 +1,63 @@
 # PROJECT STATE — Brobond AI Commerce OS
 
+### PR016.1 — Mercado Livre OAuth redirect URI + reautenticação (2026-10-02) — implemented
+
+- **Sintoma.** Com as chaves corretas e uma `CONNECTOR_ENCRYPTION_KEY` válida
+  (32 bytes em hex) configuradas na Render, toda sincronização do canal
+  respondia **"Não foi possível listar os anúncios do Mercado Livre"**. Três
+  falhas distintas se escondiam atrás da mesma frase.
+- **Causa 1 — `redirect_uri` divergente.** O Meli valida o `redirect_uri`
+  DUAS vezes (em `/authorization` e na troca do código) e exige que os dois
+  valores sejam idênticos ao registrado no DevCenter. O valor era recalculado
+  do ambiente no momento do callback, então qualquer divergência de domínio
+  (APP_URL desatualizada, apex vs. `www`, deploy respondendo em outro host)
+  derrubava a troca com `invalid_grant` — o tenant mantinha o token antigo e
+  toda chamada seguinte falhava.
+  **Correção.** `mercadoLivreRedirectUriCandidates()`
+  (`modules/marketplace/mercadolivre/mercadolivre.service.ts`) é a fonte única
+  do valor, resolvido em ordem: `MERCADOLIVRE_REDIRECT_URI` → `APP_URL` →
+  `NEXTAUTH_URL` → a URL pública do próprio request de callback
+  (`X-Forwarded-Host` atrás do proxy da Render) → `localhost:3000`. A troca
+  tenta os candidatos em ordem e só desiste depois do último, registrando no
+  log (sem segredos) qual URI foi apresentada — é o que diz ao operador o que
+  registrar no DevCenter. `lib/app-url.ts` ganhou `listRedirectBaseUrls()` e
+  `resolveRequestUrl()`; `resolveRedirectBaseUrl()` passou a ser o primeiro
+  item da lista (comportamento idêntico ao de PR014).
+- **Causa 2 — cliente inicializado sem token.** `fetchMercadoLivreItems()`
+  chamava `/users/{id}/items/search` mesmo sem `access_token` ou sem o
+  `shopId` do vendedor, transformando "conta nunca autorizada" em um 401
+  opaco. **Correção.** `assertMercadoLivreAuthorization()` roda ANTES de
+  qualquer `fetch` e levanta `ConnectorReauthRequiredError` com a ação no
+  texto; o adapter (`MercadoLivreConnector`) aplica a mesma guarda. A UI
+  passa a exibir **"Conectar Conta do Mercado Livre"** — rótulo canônico em
+  `connectorConnectLabel()` (`modules/marketplace/core/providers.ts`),
+  compartilhado entre botão, banner e mensagens de erro do backend.
+- **Causa 3 — erro genérico.** 401/403 (token revogado em "Minha conta →
+  Aplicações", refresh recusado, token de outro vendedor) e credenciais que
+  deixam de descriptografar após rotação da `CONNECTOR_ENCRYPTION_KEY`
+  viravam "erro inesperado". **Correção.** `MarketplaceError` ganhou o
+  contrato `requiresReauth` + o predicado `requiresReauthentication()`
+  (`modules/marketplace/core/errors.ts`): o sync grava o conector como
+  **EXPIRED** (não ERROR), a server action serializa a flag e o card renderiza
+  o CTA de reconexão em vez de outro "Sincronizar". 429 e 5xx continuam
+  retryáveis, com texto que tranquiliza sobre as credenciais.
+- **Callback.** `/api/mercadolivre/callback` repassa o request ao serviço
+  (para replicar o `redirect_uri` real) e redireciona com um `reason`
+  sanitizado (`denied` · `invalid_request` · `state` · `config` · `exchange`),
+  que a tela isolada do conector traduz em instrução — nenhum payload do
+  provedor chega ao browser. `/api/connectors/mercadolivre/callback` passa a
+  existir como alias do mesmo handler, para aplicações registradas naquele
+  namespace (antes: 404 silencioso depois de uma autorização bem-sucedida).
+- **Operação.** `.env.example` e `render.yaml` documentam `APP_URL`,
+  `CONNECTOR_ENCRYPTION_KEY` e o par Mercado Livre, incluindo a regra de
+  igualdade byte a byte do redirect URI.
+- **Tests.** +42 testes (`tests/mercadolivre-authorization.test.ts`,
+  `tests/mercadolivre-reauth-recovery.test.ts` e os contratos novos de
+  callback/`app-url`): precedência e deduplicação dos candidatos, retry da
+  troca, guarda sem token, tradução de 401/403/429/5xx/rede, EXPIRED vs.
+  ERROR no sync, rotação de chave de criptografia e o rótulo do CTA.
+  **2.975 passando.**
+
 ### PR014 — Motor Financeiro Unificado do Hub Multicanal (2026-10-01) — implemented
 
 - **Isolamento de telas de conectores.** Nova rota dinâmica

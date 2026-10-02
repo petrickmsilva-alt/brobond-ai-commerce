@@ -9,7 +9,7 @@ import {
 import type { NormalizedContent } from "@/modules/connectors/core/connector.interface";
 import { marketplaceRepository, type MarketplaceRepository } from "./connector.repository";
 import { marketplaceService, type createMarketplaceService } from "./connector.service";
-import { ConnectorNotConnectedError, MarketplaceError } from "./errors";
+import { ConnectorNotConnectedError, MarketplaceError, requiresReauthentication } from "./errors";
 import type { MarketplaceSyncResultDTO } from "./connector.dto";
 import { fetchInstagramContent } from "../instagram/instagram-bridge.service";
 import { fetchTikTokContent } from "../tiktok/tiktok-bridge.service";
@@ -121,9 +121,13 @@ export function createMarketplaceSyncService(deps: MarketplaceSyncDependencies =
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Falha desconhecida na sincronização.";
+        // An authorization failure is NOT a generic error: EXPIRED is what
+        // makes the card render the reconnect call to action instead of
+        // inviting another sync that can only fail the same way (PR016.1).
+        const reauth = requiresReauthentication(error);
         // Record the failure on BOTH stores so the cards show a real ERROR.
         await repository.recordSyncResult(organizationId, provider, {
-          status: "ERROR",
+          status: reauth ? "EXPIRED" : "ERROR",
           counters: { imported: 0, duplicated: 0, failed: 0 },
           lastError: message.slice(0, 500),
         });

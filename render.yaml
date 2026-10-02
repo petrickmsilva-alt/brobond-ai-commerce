@@ -52,6 +52,15 @@ services:
           property: connectionString
       - key: NEXTAUTH_URL
         sync: false
+      # Canonical public address of the deployment (no trailing slash), e.g.
+      # https://brobond-ai-commerce.onrender.com. Every browser-facing URL the
+      # platform builds is derived from it: invitation links and — critically —
+      # the OAuth `redirect_uri` sent to Mercado Livre / Shopee. It must match
+      # the URI registered in the provider's developer console byte for byte,
+      # otherwise the code exchange is refused and the channel never gets a
+      # token. Falls back to NEXTAUTH_URL, then to the forwarded host.
+      - key: APP_URL
+        sync: false
       # Keep each Render instance within the managed PostgreSQL connection cap.
       - key: DATABASE_POOL_MAX
         value: "5"
@@ -84,6 +93,18 @@ services:
       - key: MERCADOPAGO_ACCESS_TOKEN
         sync: false
       - key: MERCADOPAGO_PUBLIC_KEY
+        sync: false
+      # Encrypts every unified Connector credential at rest (AES-256-GCM).
+      # Exactly 32 bytes: 64 hex characters or base64/base64url.
+      # Rotating it invalidates every stored token — each channel must then
+      # be reconnected (the panel says so instead of failing opaquely).
+      - key: CONNECTOR_ENCRYPTION_KEY
+        sync: false
+      # Mercado Livre official API (DevCenter application). The redirect URI
+      # registered there must be ${APP_URL}/api/mercadolivre/callback.
+      - key: MERCADOLIVRE_CLIENT_ID
+        sync: false
+      - key: MERCADOLIVRE_CLIENT_SECRET
         sync: false
       # The web process may run without Redis, but does not start a worker.
       - key: REDIS_URL

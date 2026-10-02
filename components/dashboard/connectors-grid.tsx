@@ -22,8 +22,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { ConnectorCardDTO } from "@/modules/marketplace/core/connector.dto";
-import type { ConnectionStatus } from "@/modules/marketplace/core/providers";
-import { connectorProviderPath } from "@/modules/marketplace/core/providers";
+import type { ConnectionStatus, ConnectorProviderName } from "@/modules/marketplace/core/providers";
+import {
+  CONNECTOR_PROVIDER_CATALOG_LABELS,
+  connectorConnectLabel,
+  connectorProviderPath,
+} from "@/modules/marketplace/core/providers";
 import {
   connectMercadoPagoAction,
   disconnectProviderAction,
@@ -97,6 +101,12 @@ interface ConnectorsStatusResponse {
 interface Feedback {
   ok: boolean;
   message: string;
+  /**
+   * The failure is an authorization one (no token yet, token revoked or
+   * expired, refresh rejected). The card then offers the OAuth flow instead
+   * of a retry that can only fail the same way (PR016.1).
+   */
+  requiresReauth?: boolean;
 }
 
 function MarketplaceCard({
@@ -123,6 +133,18 @@ function MarketplaceCard({
   const status = isLockedMercadoPago
     ? LOCKED_STATUS_STYLE
     : (STATUS_STYLES[connector.status] ?? STATUS_STYLES.DISCONNECTED);
+
+  const provider = connector.provider as ConnectorProviderName;
+  const connectLabel = connectorConnectLabel(provider, connector.connected);
+  const catalogLabel = CONNECTOR_PROVIDER_CATALOG_LABELS[provider] ?? "o catálogo";
+  /**
+   * An OAuth2 channel without a live credential: the panel must send the
+   * operator through the authorization flow instead of pretending a sync is
+   * possible. EXPIRED/ERROR land here too — a revoked Mercado Livre token
+   * and a never-connected one need the exact same action (PR016.1).
+   */
+  const needsAuthorization =
+    !isLockedMercadoPago && connector.authType === "oauth2" && !connector.connected;
 
   useEffect(() => {
     if (!isLockedMercadoPago) return;
@@ -183,9 +205,11 @@ function MarketplaceCard({
               ok: true,
               message: `${result.data.imported} importados · ${result.data.duplicated} duplicados · ${result.data.failed} falhas.`,
             }
-          : { ok: false, message: result.error },
+          : { ok: false, message: result.error, requiresReauth: result.requiresReauth },
       );
-      if (result.ok) await refreshStatuses();
+      // Refresh on failure too: an authorization failure has just moved the
+      // connector to EXPIRED server-side, and the badge must say so.
+      await refreshStatuses();
     });
   }
 
@@ -378,10 +402,36 @@ function MarketplaceCard({
               </div>
             )}
 
+            {/* No live credential ⇒ authorization is the ONLY next step. The
+                card says so instead of offering a sync that would call the
+                provider API without a token (PR016.1). */}
+            {needsAuthorization && (
+              <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                <div>
+                  <p className="text-xs font-medium text-amber-100">
+                    {connector.status === "DISCONNECTED"
+                      ? "Autorização pendente"
+                      : "Autorização necessária"}
+                  </p>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-amber-100/60">
+                    {connector.status === "DISCONNECTED"
+                      ? `Conecte a conta para que o painel possa listar ${catalogLabel}. Nenhuma chamada à API é feita sem um token válido.`
+                      : `A autorização expirou ou foi revogada. Reautentique o canal para voltar a listar ${catalogLabel}.`}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="secondary" onClick={connect} disabled={isPending}>
+              <Button
+                size="sm"
+                variant={needsAuthorization ? "primary" : "secondary"}
+                onClick={connect}
+                disabled={isPending}
+              >
                 <Link2 className="h-3.5 w-3.5" />
-                {connector.connected ? "Reconectar" : "Conectar"}
+                {connectLabel}
               </Button>
               <Button size="sm" onClick={sync} disabled={isPending || !connector.connected}>
                 {isPending ? (
@@ -406,21 +456,32 @@ function MarketplaceCard({
         )}
 
         {feedback && (
-          <p
-            className={
-              feedback.ok
-                ? "flex items-start gap-1.5 text-xs text-emerald-400"
-                : "flex items-start gap-1.5 text-xs text-red-400"
-            }
-            role="status"
-          >
-            {feedback.ok ? (
-              <CircleCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            ) : (
-              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <div className="space-y-2">
+            <p
+              className={
+                feedback.ok
+                  ? "flex items-start gap-1.5 text-xs text-emerald-400"
+                  : "flex items-start gap-1.5 text-xs text-red-400"
+              }
+              role="status"
+            >
+              {feedback.ok ? (
+                <CircleCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              ) : (
+                <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              )}
+              {feedback.message}
+            </p>
+            {/* The backend classified the failure as "authorize again": put
+                the fix one click away instead of leaving the operator to
+                hunt for it (PR016.1). */}
+            {!feedback.ok && feedback.requiresReauth && canManage && (
+              <Button size="sm" variant="primary" onClick={connect} disabled={isPending}>
+                <Link2 className="h-3.5 w-3.5" />
+                {connectorConnectLabel(provider)}
+              </Button>
             )}
-            {feedback.message}
-          </p>
+          </div>
         )}
 
         {showDetailLink && (

@@ -14,7 +14,11 @@ import {
   mercadoPagoConnectSchema,
   syncMarketplaceSchema,
 } from "@/modules/marketplace/core/connector.validator";
-import { ConnectorNotConnectedError, MarketplaceError } from "@/modules/marketplace/core/errors";
+import {
+  ConnectorNotConnectedError,
+  MarketplaceError,
+  requiresReauthentication,
+} from "@/modules/marketplace/core/errors";
 import { marketplaceSyncService } from "@/modules/marketplace/core/sync.service";
 import type { ConnectorProvider } from "@prisma/client";
 
@@ -44,7 +48,23 @@ function fail(error: unknown): MarketplaceActionResult<never> {
     return { ok: false, error: "Você não tem permissão para executar esta ação." };
   }
   if (error instanceof ConnectorNotConnectedError || error instanceof MarketplaceError) {
-    return { ok: false, error: error.message };
+    // Sanitized, already-actionable domain message. `requiresReauth` tells
+    // the card to render the connect call to action (PR016.1).
+    return {
+      ok: false,
+      error: error.message,
+      ...(error.requiresReauth ? { requiresReauth: true } : {}),
+    };
+  }
+  // Framework adapters raise their own typed errors outside the marketplace
+  // hierarchy (e.g. MercadoLivreConnectionRequiredError) — honour the same
+  // contract instead of flattening them into "Erro inesperado".
+  if (requiresReauthentication(error)) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Reconecte a conta para continuar.",
+      requiresReauth: true,
+    };
   }
   console.error("[marketplace.actions]", error);
   return { ok: false, error: "Erro inesperado. Tente novamente." };
