@@ -16,13 +16,23 @@ export const dynamic = "force-dynamic";
  */
 const DASHBOARD_PATH = connectorProviderPath("MERCADOLIVRE");
 
-/**
- * Sanitized failure taxonomy. Only these fixed tokens ever reach the browser
- * (the panel maps each one to its own instruction) — never a provider
- * payload, a code or an OAuth error description.
- */
+/** Stable failure taxonomy consumed by the connector panel. */
 export type MercadoLivreCallbackReason =
   "denied" | "invalid_request" | "state" | "config" | "exchange";
+
+/**
+ * OAuth errors returned by Meli are safe to show as text after React escaping.
+ * Prefer the commercial explanation, falling back to the protocol error code.
+ * Authorization codes, state and credentials are never included.
+ */
+function mercadoLivreCallbackError(url: URL): { code: string; detail: string } | null {
+  const code = url.searchParams.get("error");
+  if (!code) return null;
+
+  const detail =
+    url.searchParams.get("error_description") ?? url.searchParams.get("message") ?? code;
+  return { code, detail };
+}
 
 /**
  * Final hop of the OAuth dance — a navigation the *browser* performs, so the
@@ -40,10 +50,12 @@ function redirectToDashboard(
   request: Request,
   result: "connected" | "error",
   reason?: MercadoLivreCallbackReason,
+  providerDetail?: string,
 ) {
   const url = new URL(`${resolveRedirectBaseUrl(request)}${DASHBOARD_PATH}`);
   url.searchParams.set("oauth", result);
   if (reason) url.searchParams.set("reason", reason);
+  if (providerDetail) url.searchParams.set("provider_detail", providerDetail);
   return NextResponse.redirect(url);
 }
 
@@ -68,9 +80,19 @@ function reasonOf(error: unknown): MercadoLivreCallbackReason {
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  if (url.searchParams.get("error")) {
-    console.warn("[mercadolivre.oauth.callback] autorização negada pelo vendedor");
-    return redirectToDashboard(request, "error", "denied");
+  const providerError = mercadoLivreCallbackError(url);
+  if (providerError) {
+    const reason = providerError.code === "access_denied" ? "denied" : "invalid_request";
+    console.warn("[mercadolivre.oauth.callback] Mercado Livre rejeitou a autorização", {
+      error: providerError.code,
+      detail: providerError.detail,
+    });
+    return redirectToDashboard(
+      request,
+      "error",
+      reason,
+      reason === "invalid_request" ? providerError.detail : undefined,
+    );
   }
 
   const parsed = mercadoLivreCallbackSchema.safeParse({

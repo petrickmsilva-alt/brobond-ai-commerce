@@ -152,10 +152,26 @@ describe("mercadoLivreRedirectUriCandidates() — the domain divergence fix", ()
     expect(url.origin).toBe("https://auth.mercadolivre.com.br");
     expect(url.searchParams.get("response_type")).toBe("code");
     expect(url.searchParams.get("client_id")).toBe(CONFIG.clientId);
+    expect(url.searchParams.get("scope")).toBe("read offline_access");
     expect(url.searchParams.get("state")).toBe("state-123");
     expect(url.searchParams.get("redirect_uri")).toBe(
       "https://app.brobond.ai/api/mercadolivre/callback",
     );
+  });
+
+  it("normalizes copied client ids and requests no write scopes", () => {
+    process.env.APP_URL = "https://app.brobond.ai";
+    const url = new URL(
+      buildMercadoLivreAuthorizationUrl("state-minimum-scope", {
+        ...CONFIG,
+        clientId: "  APP-CLIENT-ID///  ",
+        authBaseUrl: "  HTTPS://AUTH.MERCADOLIVRE.COM.BR/  ",
+      }),
+    );
+
+    expect(url.searchParams.get("client_id")).toBe("app-client-id");
+    expect(url.searchParams.getAll("scope")).toEqual(["read offline_access"]);
+    expect(url.searchParams.get("scope")).not.toMatch(/write/i);
   });
 });
 

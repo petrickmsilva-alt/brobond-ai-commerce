@@ -173,6 +173,10 @@ vi.mock("@/modules/marketplace/core/connector.service", () => ({
   marketplaceService: { handleMercadoLivreCallback },
 }));
 
+vi.mock("@/modules/marketplace/core/oauth-state.service", () => ({
+  ConnectorOAuthStateError: class ConnectorOAuthStateError extends Error {},
+}));
+
 const { GET } = await import("@/app/api/mercadolivre/callback/route");
 
 const ORIGINAL_ENV = { ...process.env };
@@ -213,6 +217,29 @@ describe("GET /api/mercadolivre/callback", () => {
 
     expect(response.headers.get("location")).toBe(
       "https://brobond-ai-commerce.onrender.com/dashboard/connectors/mercado-livre?oauth=error&reason=denied",
+    );
+    expect(handleMercadoLivreCallback).not.toHaveBeenCalled();
+    consoleWarn.mockRestore();
+  });
+
+  it("forwards Meli's exact invalid-parameter explanation to the connector panel", async () => {
+    process.env.NEXTAUTH_URL = "https://brobond-ai-commerce.onrender.com";
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const detail = "The requested scope is not allowed for this application";
+
+    const response = await GET(
+      new Request(
+        `http://0.0.0.0:10000/api/mercadolivre/callback?error=invalid_scope&error_description=${encodeURIComponent(detail)}`,
+      ),
+    );
+    const location = new URL(response.headers.get("location")!);
+
+    expect(location.searchParams.get("oauth")).toBe("error");
+    expect(location.searchParams.get("reason")).toBe("invalid_request");
+    expect(location.searchParams.get("provider_detail")).toBe(detail);
+    expect(consoleWarn).toHaveBeenCalledWith(
+      "[mercadolivre.oauth.callback] Mercado Livre rejeitou a autorização",
+      { error: "invalid_scope", detail },
     );
     expect(handleMercadoLivreCallback).not.toHaveBeenCalled();
     consoleWarn.mockRestore();

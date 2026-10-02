@@ -93,11 +93,19 @@ function formatDateTime(value: Date | string | null): string {
 }
 
 /**
- * Turn the sanitized `?reason=` token emitted by an OAuth callback into an
- * instruction an operator can act on (PR016.1). Unknown/absent tokens fall
- * back to the generic message, so a future provider never leaks a payload.
+ * Turn an OAuth callback into an instruction an operator can act on. Mercado
+ * Livre may also return its exact commercial rejection in `providerDetail`;
+ * React renders it as escaped text, never as markup.
  */
-function oauthErrorMessage(provider: ConnectorProviderName, reason: string | undefined): string {
+function oauthErrorMessage(
+  provider: ConnectorProviderName,
+  reason: string | undefined,
+  providerDetail?: string,
+): string {
+  if (provider === "MERCADOLIVRE" && providerDetail) {
+    return `Detalhe informado pelo Mercado Livre: ${providerDetail}`;
+  }
+
   const label = CONNECTOR_PROVIDER_LABELS[provider];
   switch (reason) {
     case "denied":
@@ -174,11 +182,14 @@ export default async function ConnectorProviderPage({
   const canManage = isAdmin(user.role);
   const isMember = user.role === UserRole.MEMBER;
 
-  // OAuth feedback banner (set by the provider callback redirects, which
-  // land on this screen since PR014). `reason` is the sanitized failure
-  // token added in PR016.1 — never a provider payload.
+  // OAuth feedback banner (set by the provider callback redirects). Meli's
+  // provider detail is rendered only on its own screen and React escapes it.
   const oauthResult = typeof raw.oauth === "string" ? raw.oauth : undefined;
   const oauthReason = typeof raw.reason === "string" ? raw.reason : undefined;
+  const oauthProviderDetail =
+    provider === "MERCADOLIVRE" && typeof raw.provider_detail === "string"
+      ? raw.provider_detail
+      : undefined;
 
   // An OAuth2 channel with no usable credential (never connected, expired or
   // errored): the screen leads with the action that fixes it.
@@ -226,7 +237,7 @@ export default async function ConnectorProviderPage({
           className="mb-6 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"
         >
           <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-          {oauthErrorMessage(provider, oauthReason)}
+          {oauthErrorMessage(provider, oauthReason, oauthProviderDetail)}
         </p>
       )}
 

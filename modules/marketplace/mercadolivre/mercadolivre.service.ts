@@ -132,16 +132,37 @@ export function getMercadoLivreRedirectUri(): string {
   return resolveMercadoLivreRedirectUri();
 }
 
-/** Seller authorization URL (official OAuth2, CSRF `state` supported). */
+const MERCADOLIVRE_MINIMUM_SCOPES = ["read", "offline_access"] as const;
+
+/**
+ * Normalize the public application identifier before it reaches Meli.
+ *
+ * Environment dashboards commonly preserve accidental whitespace and a
+ * copied trailing slash. Mercado Livre compares this value strictly, so the
+ * authorization request uses one canonical, lower-case identifier. The
+ * secret is deliberately never normalized here.
+ */
+function normalizeAuthorizationClientId(clientId: string): string {
+  return clientId.trim().toLowerCase().replace(/\/+$/, "");
+}
+
+/**
+ * Seller authorization URL (official OAuth2, CSRF `state` supported).
+ *
+ * Only the scopes required to read the initial catalogue and obtain a refresh
+ * token are requested. Write scopes require additional DevCenter approval and
+ * can make an otherwise valid seller/account pairing fail during consent.
+ */
 export function buildMercadoLivreAuthorizationUrl(
   state: string,
   config: MercadoLivreConfig = getMercadoLivreConfig(),
   request?: RedirectRequestContext,
 ): string {
-  const url = new URL("/authorization", config.authBaseUrl);
+  const url = new URL("/authorization", config.authBaseUrl.trim().toLowerCase());
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("client_id", config.clientId);
+  url.searchParams.set("client_id", normalizeAuthorizationClientId(config.clientId));
   url.searchParams.set("redirect_uri", resolveMercadoLivreRedirectUri(request));
+  url.searchParams.set("scope", MERCADOLIVRE_MINIMUM_SCOPES.join(" "));
   url.searchParams.set("state", state);
   return url.toString();
 }
