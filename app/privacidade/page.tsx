@@ -14,10 +14,8 @@ import { TERMS_ROUTE } from "@/lib/auth-routes";
  * connector (`modules/connectors/tiktok`) — OAuth tokens, products, orders,
  * creators — since that is the integration under review.
  *
- * ⚠️ PLACEHOLDERS: the legal entity, CNPJ, registered address, contact
- * e-mail and Data Protection Officer below are marked `[ ... ]`. Replace them
- * with the real operating company's details before this page is cited in a
- * TikTok Developers submission or shown to real users.
+ * Operating entity: Brobond Wear LTDA (CNPJ 52.426.369/0001-64), contact
+ * brobondwear@gmail.com — supplied directly by the business owner.
  */
 export const metadata: Metadata = {
   title: "Política de Privacidade",
@@ -30,8 +28,8 @@ export default function PrivacyPage() {
       <p>
         Esta Política de Privacidade descreve como {APP_NAME} (&quot;
         {APP_SHORT_NAME}&quot;, &quot;nós&quot;), operado por{" "}
-        <strong>[Razão social da empresa]</strong>, CNPJ{" "}
-        <strong>[00.000.000/0000-00]</strong>, coleta, usa, armazena e protege dados
+        <strong>Brobond Wear LTDA</strong>, CNPJ{" "}
+        <strong>52.426.369/0001-64</strong>, coleta, usa, armazena e protege dados
         pessoais, em conformidade com a Lei Geral de Proteção de Dados (LGPD — Lei nº
         13.709/2018).
       </p>
@@ -143,7 +141,7 @@ export default function PrivacyPage() {
       <LegalSection heading="10. Contato / Encarregado de dados (DPO)">
         <p>
           Para exercer seus direitos ou tirar dúvidas sobre esta política, contate{" "}
-          <strong>[suporte@seudominio.com]</strong>.
+          <strong>brobondwear@gmail.com</strong>.
         </p>
       </LegalSection>
 

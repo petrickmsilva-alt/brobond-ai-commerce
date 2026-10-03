@@ -11,11 +11,8 @@ import { PRIVACY_ROUTE } from "@/lib/auth-routes";
  * resolve and be visible on the Web/Desktop URL) and by the TikTok
  * "URL properties" ownership check, which can only verify a URL that exists.
  *
- * ⚠️ PLACEHOLDERS: the legal entity, CNPJ, registered address and contact
- * e-mail below are marked `[ ... ]`. Replace them with the real operating
- * company's details before this page is cited in a TikTok Developers
- * submission or shown to real users — TikTok reviewers do check that this
- * information is accurate, not just present.
+ * Operating entity: Brobond Wear LTDA (CNPJ 52.426.369/0001-64), contact
+ * brobondwear@gmail.com — supplied directly by the business owner.
  */
 export const metadata: Metadata = {
   title: "Termos de Serviço",
@@ -28,9 +25,8 @@ export default function TermsPage() {
       <p>
         Estes Termos de Serviço (&quot;Termos&quot;) regem o uso da plataforma{" "}
         {APP_NAME} (&quot;{APP_SHORT_NAME}&quot;, &quot;nós&quot;), operada por{" "}
-        <strong>[Razão social da empresa]</strong>, inscrita no CNPJ sob o nº{" "}
-        <strong>[00.000.000/0000-00]</strong>, com sede em{" "}
-        <strong>[endereço completo]</strong>. Ao criar uma conta ou utilizar o{" "}
+        <strong>Brobond Wear LTDA</strong>, inscrita no CNPJ sob o nº{" "}
+        <strong>52.426.369/0001-64</strong>. Ao criar uma conta ou utilizar o{" "}
         {APP_SHORT_NAME}, você concorda integralmente com estes Termos.
       </p>
 
@@ -84,7 +80,7 @@ export default function TermsPage() {
       <LegalSection heading="5. Propriedade intelectual">
         <p>
           O {APP_SHORT_NAME}, sua marca, interface e código-fonte pertencem a{" "}
-          <strong>[Razão social da empresa]</strong> ou a seus licenciadores. Os dados
+          <strong>Brobond Wear LTDA</strong> ou a seus licenciadores. Os dados
           que você insere ou sincroniza (produtos, pedidos, creators) continuam sendo
           de sua propriedade.
         </p>
@@ -126,7 +122,7 @@ export default function TermsPage() {
       <LegalSection heading="10. Contato">
         <p>
           Dúvidas sobre estes Termos podem ser enviadas para{" "}
-          <strong>[suporte@seudominio.com]</strong>.
+          <strong>brobondwear@gmail.com</strong>.
         </p>
       </LegalSection>
 
