@@ -11,7 +11,10 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
-  if (!code || !state) return NextResponse.redirect(new URL("/dashboard/connectors/nuvemshop?oauth=error&reason=invalid_request", url));
+  if (!code || !state)
+    return NextResponse.redirect(
+      new URL("/dashboard/connectors/nuvemshop?oauth=error&reason=invalid_request", url),
+    );
   try {
     const { organizationId } = await connectorOAuthStateService.consume(state, "NUVEMSHOP");
     const token = await exchangeNuvemshopCode(code);
@@ -25,6 +28,8 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/dashboard/connectors/nuvemshop?oauth=connected", url));
   } catch (error) {
     console.error("[nuvemshop.oauth]", error);
-    return NextResponse.redirect(new URL("/dashboard/connectors/nuvemshop?oauth=error&reason=exchange", url));
+    return NextResponse.redirect(
+      new URL("/dashboard/connectors/nuvemshop?oauth=error&reason=exchange", url),
+    );
   }
 }

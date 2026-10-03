@@ -51,7 +51,11 @@ export async function exchangeNuvemshopCode(code: string): Promise<NuvemshopToke
     cache: "no-store",
   });
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!response.ok || typeof payload.access_token !== "string" || payload.access_token.length === 0) {
+  if (
+    !response.ok ||
+    typeof payload.access_token !== "string" ||
+    payload.access_token.length === 0
+  ) {
     throw new Error(`Nuvemshop recusou a troca OAuth (${response.status}).`);
   }
   return {

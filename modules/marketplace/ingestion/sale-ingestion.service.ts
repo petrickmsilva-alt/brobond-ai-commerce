@@ -155,13 +155,19 @@ async function resolveNuvemshopDraft(
   const orderId = payload.id !== undefined ? String(payload.id) : "";
   if (!orderId) return null;
   const statusValue = String(payload.payment_status ?? payload.status ?? "").toLowerCase();
-  const status = statusValue.includes("paid") || statusValue.includes("pago") || statusValue.includes("completed")
-    ? SaleStatus.PAID
-    : statusValue.includes("cancel") ? SaleStatus.CANCELLED : SaleStatus.PENDING;
+  const status =
+    statusValue.includes("paid") ||
+    statusValue.includes("pago") ||
+    statusValue.includes("completed")
+      ? SaleStatus.PAID
+      : statusValue.includes("cancel")
+        ? SaleStatus.CANCELLED
+        : SaleStatus.PENDING;
   const total = Number(payload.total ?? payload.subtotal ?? 0);
   const amountCents = Math.round(total * 100);
   const products = Array.isArray(payload.products) ? payload.products : [];
-  const createdAt = typeof payload.created_at === "string" ? new Date(payload.created_at) : new Date();
+  const createdAt =
+    typeof payload.created_at === "string" ? new Date(payload.created_at) : new Date();
   return {
     externalOrderId: orderId,
     amountCents,
