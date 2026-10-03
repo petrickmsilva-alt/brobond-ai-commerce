@@ -52,6 +52,19 @@ export const INVITE_EXPIRED_ROUTE = "/invite/expired";
 export const SIGNUP_ROUTE = "/signup";
 
 /**
+ * Public legal pages (TikTok Developers app-review requirement).
+ *
+ * TikTok's App Review Guidelines require a Terms of Service URL and a
+ * Privacy Policy URL that (a) actually resolve to real content and (b) are
+ * linked from the Web/Desktop URL "without having to open a menu". Neither
+ * page existed before this route was added — the "Este URL não foi
+ * verificado" failure for both fields was not just an ownership-proof gap,
+ * it was a 404.
+ */
+export const TERMS_ROUTE = "/termos";
+export const PRIVACY_ROUTE = "/privacidade";
+
+/**
  * Domain-ownership verification endpoint for the TikTok Developers console.
  *
  * TikTok's validator fetches this exact path anonymously, from its own
@@ -62,6 +75,45 @@ export const SIGNUP_ROUTE = "/signup";
  * `proxy.ts`. If someone later adds a catch-all gate, this route survives it.
  */
 export const TIKTOK_SITE_VERIFICATION_ROUTE = "/tiktok-developers-site-verification";
+
+/**
+ * TikTok "URL properties" ownership verification — the *current* mechanism
+ * (as opposed to the legacy fixed-path probe above).
+ *
+ * Every time someone clicks "Verificar propriedades da URL" in the TikTok
+ * Developers console (Manage apps → URL properties → Verify by Domain / URL
+ * prefix → File method), TikTok mints a BRAND NEW token and asks for a file
+ * named `tiktok<TOKEN>.txt` to be hosted at the domain root (Domain
+ * verification) or at the exact URL being verified (URL-prefix
+ * verification — e.g. a Terms of Service page at `/termos`). The file's body
+ * must be exactly `tiktok-developers-site-verification=<TOKEN>`.
+ *
+ * A single hard-coded file (the old route above) therefore goes stale the
+ * moment someone re-runs verification or verifies a second URL: the token in
+ * the file name IS the token TikTok expects back in the body, so instead of
+ * shipping one static file we recognise the *pattern* at the edge and derive
+ * the response from whatever token is in the requested path. This makes every
+ * future "Verify" click — for the Terms of Service URL, the Privacy Policy
+ * URL and the Web/Desktop URL, at the domain root or nested under any of
+ * them — succeed without another code change or deploy.
+ */
+const TIKTOK_SITE_VERIFICATION_FILE_PATTERN = /\/tiktok([A-Za-z0-9_-]{8,})\.txt$/;
+
+/**
+ * Extracts the ownership token from a request path that matches TikTok's
+ * `tiktok<TOKEN>.txt` signature-file convention, at any depth (domain root or
+ * a nested URL prefix such as `/termos/tiktok<TOKEN>.txt`). Returns `null`
+ * for anything else, so callers can fall through to normal routing/404s.
+ */
+export function matchTiktokSiteVerificationFile(pathname: string): string | null {
+  const match = TIKTOK_SITE_VERIFICATION_FILE_PATTERN.exec(pathname);
+  return match ? match[1] : null;
+}
+
+/** The exact byte-for-byte body TikTok's validator expects for a given token. */
+export function buildTiktokSiteVerificationBody(token: string): string {
+  return `tiktok-developers-site-verification=${token}`;
+}
 
 /**
  * Route prefixes that require an authenticated session.

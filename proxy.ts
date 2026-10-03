@@ -4,9 +4,11 @@ import {
   DEFAULT_AUTHENTICATED_REDIRECT,
   LOGIN_ROUTE,
   NEXT_PARAM,
+  buildTiktokSiteVerificationBody,
   isAuthRoute,
   isProtectedRoute,
   isPublicRoute,
+  matchTiktokSiteVerificationFile,
   resolveNext,
 } from "@/lib/auth-routes";
 
@@ -59,6 +61,23 @@ function usesSecureCookies(request: NextRequest): boolean {
 
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+
+  // TikTok "URL properties" ownership verification (see `lib/auth-routes.ts`
+  // for the full rationale). This must win over everything else — no file
+  // system route needs to exist, no deploy is required when TikTok mints a
+  // new token for the Terms of Service URL, the Privacy Policy URL or the
+  // Web/Desktop URL, and the crawler carries no session cookie.
+  const tiktokToken = matchTiktokSiteVerificationFile(pathname);
+  if (tiktokToken) {
+    return new NextResponse(buildTiktokSiteVerificationBody(tiktokToken), {
+      status: 200,
+      headers: {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "public, max-age=3600, s-maxage=86400",
+        "x-content-type-options": "nosniff",
+      },
+    });
+  }
 
   // Auth endpoints, webhooks, OAuth callbacks and static assets are never
   // gated — some of them are how a session gets created in the first place.

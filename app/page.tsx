@@ -8,7 +8,9 @@ import { getCurrentUser } from "@/lib/session";
 import {
   DEFAULT_AUTHENTICATED_REDIRECT,
   LOGIN_ROUTE,
+  PRIVACY_ROUTE,
   SIGNUP_ROUTE,
+  TERMS_ROUTE,
   buildLoginUrl,
 } from "@/lib/auth-routes";
 
@@ -134,9 +136,21 @@ export default async function LandingPage() {
       </section>
 
       <footer className="border-t border-white/8 py-8">
-        <p className="text-center text-xs text-white/30">
-          © {new Date().getFullYear()} {APP_SHORT_NAME}. Enterprise AI Commerce OS.
-        </p>
+        <div className="mx-auto flex max-w-6xl flex-col items-center gap-3 px-6 text-center">
+          <p className="text-xs text-white/30">
+            © {new Date().getFullYear()} {APP_SHORT_NAME}. Enterprise AI Commerce OS.
+          </p>
+          {/* Required to be visible here — without opening a menu — by
+              TikTok's App Review Guidelines for the Web/Desktop URL. */}
+          <nav aria-label="Legal" className="flex items-center gap-4 text-xs text-white/40">
+            <Link href={TERMS_ROUTE} className="hover:text-white/70">
+              Termos de Serviço
+            </Link>
+            <Link href={PRIVACY_ROUTE} className="hover:text-white/70">
+              Política de Privacidade
+            </Link>
+          </nav>
+        </div>
       </footer>
     </div>
   );

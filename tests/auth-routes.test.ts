@@ -4,12 +4,16 @@ import {
   DEFAULT_AUTHENTICATED_REDIRECT,
   LOGIN_ROUTE,
   NEXT_PARAM,
+  PRIVACY_ROUTE,
   PROTECTED_ROUTES,
   PUBLIC_PREFIXES,
+  TERMS_ROUTE,
   buildLoginUrl,
+  buildTiktokSiteVerificationBody,
   isAuthRoute,
   isProtectedRoute,
   isPublicRoute,
+  matchTiktokSiteVerificationFile,
   matchesPrefix,
   resolveNext,
   sanitizeNext,
@@ -292,5 +296,51 @@ describe("buildLoginUrl() — the §1 Dashboard CTA", () => {
     const url = buildLoginUrl("/dashboard/analytics?range=30d");
     const encoded = url.split(`${NEXT_PARAM}=`)[1] as string;
     expect(decodeURIComponent(encoded)).toBe("/dashboard/analytics?range=30d");
+  });
+});
+
+describe("TikTok \"URL properties\" ownership verification", () => {
+  it("recognises a signature file at the domain root", () => {
+    expect(matchTiktokSiteVerificationFile("/tiktokAbC123XyZ9.txt")).toBe("AbC123XyZ9");
+  });
+
+  it("recognises a signature file nested under a URL prefix (Terms/Privacy pages)", () => {
+    expect(matchTiktokSiteVerificationFile(`${TERMS_ROUTE}/tiktokQweRty7890.txt`)).toBe(
+      "QweRty7890",
+    );
+    expect(matchTiktokSiteVerificationFile(`${PRIVACY_ROUTE}/tiktokQweRty7890.txt`)).toBe(
+      "QweRty7890",
+    );
+  });
+
+  it("rejects paths that are not the TikTok signature-file shape", () => {
+    expect(matchTiktokSiteVerificationFile("/termos")).toBeNull();
+    expect(matchTiktokSiteVerificationFile("/tiktok.txt")).toBeNull();
+    expect(matchTiktokSiteVerificationFile("/tiktokabc.json")).toBeNull();
+    expect(matchTiktokSiteVerificationFile("/not-tiktokAbC12345.txt")).toBeNull();
+  });
+
+  it("derives the exact byte-for-byte body TikTok's validator expects", () => {
+    expect(buildTiktokSiteVerificationBody("AbC123XyZ9")).toBe(
+      "tiktok-developers-site-verification=AbC123XyZ9",
+    );
+  });
+
+  it("round-trips: whatever token TikTok puts in the filename comes back in the body", () => {
+    const token = "2curKlcJu06uY8EYHsELz6YWP3VFqLLZ";
+    const extracted = matchTiktokSiteVerificationFile(`/tiktok${token}.txt`);
+    expect(extracted).toBe(token);
+    expect(buildTiktokSiteVerificationBody(extracted as string)).toBe(
+      `tiktok-developers-site-verification=${token}`,
+    );
+  });
+});
+
+describe("Legal pages — TikTok App Review requirement", () => {
+  it("are not auth routes and are not protected", () => {
+    expect(isAuthRoute(TERMS_ROUTE)).toBe(false);
+    expect(isAuthRoute(PRIVACY_ROUTE)).toBe(false);
+    expect(isProtectedRoute(TERMS_ROUTE)).toBe(false);
+    expect(isProtectedRoute(PRIVACY_ROUTE)).toBe(false);
   });
 });
