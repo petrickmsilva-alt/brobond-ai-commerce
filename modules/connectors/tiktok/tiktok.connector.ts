@@ -9,6 +9,12 @@ import {
   isTikTokAuthenticationError,
   throwTikTokPendingApproval,
 } from "./pending-approval.service";
+import {
+  TIKTOK_SANDBOX_MESSAGE,
+  getSimulatedSandboxProducts,
+  isTikTokSandboxMode,
+  markTikTokSandboxActive,
+} from "./sandbox.service";
 import type {
   Connector,
   ConnectorHealth,
@@ -41,6 +47,14 @@ export class TikTokConnector implements Connector {
       return throwTikTokPendingApproval(options.organizationId, "mock_credentials");
     }
 
+    const sandbox = isTikTokSandboxMode();
+    if (sandbox) {
+      // Sandbox never raises "pending approval": the channel is mapped as
+      // SANDBOX_ACTIVE (or the functional PENDING_APPROVAL fallback) and the
+      // sync keeps running against TikTok test shops.
+      await markTikTokSandboxActive(options.organizationId, "sandbox_sync").catch(() => {});
+    }
+
     // Importing account/token services lazily keeps this adapter safe to
     // describe in generic connector UI without constructing Prisma in a
     // browser-adjacent module graph.
@@ -49,12 +63,38 @@ export class TikTokConnector implements Connector {
       import("./auth/oauth.service"),
     ]);
     const accounts = await tiktokTokenRepository.findConnected(options.organizationId);
-    if (accounts.length === 0) throw new TikTokConnectionRequiredError();
+    if (accounts.length === 0) {
+      if (sandbox) return [];
+      throw new TikTokConnectionRequiredError();
+    }
 
     const items: NormalizedContent[] = [];
     try {
       for (const account of accounts) {
         const token = await tiktokOAuthService.getValidAccessToken(options.organizationId, account);
+
+        // Fully simulated sandbox session (no TikTok host reachable): serve
+        // the deterministic test catalog instead of signing a real request.
+        if (sandbox && token.startsWith("sandbox-access-")) {
+          for (const product of getSimulatedSandboxProducts(account.shopId)) {
+            items.push({
+              externalId: `product:${account.shopId}:${product.productId}`,
+              type: "PRODUCT",
+              title: product.name,
+              thumbnailUrl: product.imageUrl,
+              caption: product.description,
+              raw: {
+                provider: "tiktok-shop",
+                sandbox: true,
+                shopId: account.shopId,
+                productId: product.productId,
+              },
+            });
+            if (options.limit && items.length >= options.limit) return items;
+          }
+          continue;
+        }
+
         const response = await getProducts(new TikTokApiClient(getTikTokApiConfig()), {
           accessToken: token,
           shopCipher: account.shopCipher,
@@ -79,6 +119,12 @@ export class TikTokConnector implements Connector {
       }
       return items;
     } catch (error) {
+      if (sandbox) {
+        // Authentication noise from the sandbox must not be reported as a
+        // production approval failure; the channel simply has nothing to sync.
+        if (isTikTokAuthenticationError(error)) return items;
+        throw error;
+      }
       if (isTikTokAuthenticationError(error)) {
         return throwTikTokPendingApproval(options.organizationId, "authentication_rejected", error);
       }
@@ -88,6 +134,17 @@ export class TikTokConnector implements Connector {
 
   async testConnection(): Promise<ConnectorHealth> {
     const configured = Boolean(process.env.TIKTOK_APP_KEY && process.env.TIKTOK_APP_SECRET);
+    const sandbox = isTikTokSandboxMode();
+    if (sandbox) {
+      return {
+        platform: this.platform,
+        ok: configured,
+        implemented: true,
+        message: configured
+          ? TIKTOK_SANDBOX_MESSAGE
+          : "Configure TIKTOK_APP_KEY e TIKTOK_APP_SECRET (chaves de Sandbox) no servidor.",
+      };
+    }
     const awaitingApproval = hasMockTikTokCredentials();
     return {
       platform: this.platform,

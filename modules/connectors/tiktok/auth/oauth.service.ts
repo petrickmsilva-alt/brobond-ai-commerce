@@ -4,7 +4,20 @@ import { randomBytes } from "node:crypto";
 import type { Prisma, PrismaClient, TikTokAccount } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { tenantWhere } from "@/lib/tenant";
-import { TIKTOK_AUTH_BASE_URL, TikTokApiClient, getTikTokApiConfig } from "../api/client";
+import {
+  TIKTOK_API_BASE_URL,
+  TIKTOK_AUTH_BASE_URL,
+  TikTokApiClient,
+  getTikTokApiConfig,
+} from "../api/client";
+import {
+  TIKTOK_SANDBOX_CODE_PREFIX,
+  createSimulatedSandboxSession,
+  isSimulatedSandboxCode,
+  isTikTokSandboxMode,
+  markTikTokSandboxActive,
+  resolveTikTokEndpoints,
+} from "../sandbox.service";
 import {
   hasMockTikTokCredentials,
   isTikTokAuthenticationError,
@@ -85,10 +98,40 @@ export function getTikTokRedirectUri(): string {
   return `${appUrl.replace(/\/$/, "")}/api/tiktok/callback`;
 }
 
+const DEFAULT_SELLER_AUTH_URL = "https://services.tiktokshop.com/open/authorize";
+
+function endpoints() {
+  return resolveTikTokEndpoints(process.env, {
+    apiBaseUrl: TIKTOK_API_BASE_URL,
+    authBaseUrl: TIKTOK_AUTH_BASE_URL,
+    sellerAuthUrl: DEFAULT_SELLER_AUTH_URL,
+  });
+}
+
+/**
+ * Simulated consent screen for Sandbox test accounts (PR017).
+ *
+ * TikTok's production consent page refuses an unverified domain, which is
+ * exactly the trap the sandbox pivot avoids. In Sandbox mode the UI sends
+ * the seller to our own callback with a `sandbox_` auth code; the exchange
+ * below recognises the prefix and mints a deterministic local token set,
+ * so the entire OAuth round-trip is exercisable end to end.
+ */
+function getSimulatedAuthorizationUrl(state: string): string {
+  const url = new URL(getTikTokRedirectUri());
+  url.searchParams.set("code", `${TIKTOK_SANDBOX_CODE_PREFIX}${state.slice(0, 24)}`);
+  url.searchParams.set("state", state);
+  url.searchParams.set("sandbox", "true");
+  return url.toString();
+}
+
 function getSellerAuthorizationUrl(state: string): string {
-  const configured =
-    process.env.TIKTOK_SELLER_AUTH_URL?.trim() || "https://services.tiktokshop.com/open/authorize";
-  const url = new URL(configured);
+  const resolved = endpoints();
+  if (resolved.sandbox && !process.env.TIKTOK_SELLER_AUTH_URL?.trim()) {
+    // No explicit sandbox consent URL configured: run the simulated flow.
+    return getSimulatedAuthorizationUrl(state);
+  }
+  const url = new URL(resolved.sellerAuthUrl);
   // Seller OAuth calls this parameter service_id (the TikTok Shop app key).
   url.searchParams.set("service_id", required("TIKTOK_APP_KEY"));
   url.searchParams.set("state", state);
@@ -125,7 +168,7 @@ async function requestToken(
   doFetch: typeof fetch,
   path = "/api/v2/token/get",
 ): Promise<TikTokTokenResponseData> {
-  const url = new URL(path, process.env.TIKTOK_AUTH_BASE_URL?.trim() || TIKTOK_AUTH_BASE_URL);
+  const url = new URL(path, endpoints().authBaseUrl);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
 
   let response: Response;
@@ -192,6 +235,11 @@ export function createTikTokOAuthService(deps: TikTokOAuthDependencies = {}) {
       if (hasMockTikTokCredentials()) {
         return throwTikTokPendingApproval(scope.organizationId, "mock_credentials");
       }
+      const sandbox = isTikTokSandboxMode();
+      if (sandbox) {
+        // Best-effort status mapping; never blocks the authorization URL.
+        await markTikTokSandboxActive(scope.organizationId, "sandbox_credentials").catch(() => {});
+      }
       const state = randomState();
       const current = now();
       await db.tikTokOAuthState.deleteMany({
@@ -222,6 +270,33 @@ export function createTikTokOAuthService(deps: TikTokOAuthDependencies = {}) {
       });
       if (consumed.count !== 1) {
         throw new TikTokOAuthError("TikTok authorization state has already been used.");
+      }
+
+      // ---- Sandbox: simulated handshake, no production endpoint involved ----
+      if (isTikTokSandboxMode() && isSimulatedSandboxCode(input.code)) {
+        const session = createSimulatedSandboxSession(stored.organizationId, { now: current });
+        const sandboxAccounts = await Promise.all(
+          session.shops.map((shop) =>
+            tokenRepository.upsertAuthorizedShop(stored.organizationId, shop, {
+              accessToken: session.accessToken,
+              refreshToken: session.refreshToken,
+              expiresAt: session.expiresAt,
+            }),
+          ),
+        );
+        await markTikTokSandboxActive(stored.organizationId, "simulated_oauth").catch(() => {});
+        await db.auditLog.create({
+          data: {
+            organizationId: stored.organizationId,
+            action: "TIKTOK_CONNECTED",
+            entityType: "TikTokAccount",
+            metadata: {
+              sandbox: true,
+              shops: sandboxAccounts.map((account) => account.shopId),
+            } as Prisma.InputJsonValue,
+          },
+        });
+        return sandboxAccounts;
       }
 
       let tokenData: TikTokTokenResponseData;
@@ -284,6 +359,16 @@ export function createTikTokOAuthService(deps: TikTokOAuthDependencies = {}) {
       const account = await repository.findById(organizationId, accountId);
       if (!account) throw new TikTokOAuthError("TikTok account was not found for this workspace.");
       const { refreshToken } = decryptAccountTokens(account);
+      if (isTikTokSandboxMode() && refreshToken.startsWith("sandbox-refresh-")) {
+        const session = createSimulatedSandboxSession(organizationId, { now: now() });
+        const next: TikTokTokenSet = {
+          accessToken: session.accessToken,
+          refreshToken: session.refreshToken,
+          expiresAt: session.expiresAt,
+        };
+        await tokenRepository.saveRefreshedTokens(organizationId, account.id, next);
+        return next;
+      }
       try {
         const tokenData = await requestToken(
           {

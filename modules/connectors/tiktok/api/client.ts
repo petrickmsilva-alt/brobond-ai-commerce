@@ -2,6 +2,8 @@ import "server-only";
 
 import { createHmac } from "node:crypto";
 
+import { isTikTokSandboxMode, resolveTikTokEndpoints } from "../sandbox.service";
+
 export const TIKTOK_API_BASE_URL = "https://open-api.tiktokglobalshop.com";
 export const TIKTOK_AUTH_BASE_URL = "https://auth.tiktok-shops.com";
 
@@ -13,6 +15,8 @@ export interface TikTokApiConfig {
   sleep?: (milliseconds: number) => Promise<void>;
   now?: () => Date;
   maxRetries?: number;
+  /** True when the config targets the TikTok Developers Sandbox. */
+  sandbox?: boolean;
 }
 
 export interface TikTokApiResponse<T> {
@@ -65,13 +69,31 @@ function requiredEnv(name: "TIKTOK_APP_KEY" | "TIKTOK_APP_SECRET"): string {
   return value;
 }
 
-/** Returns only server-side config; neither secret is serializable to UI DTOs. */
+/**
+ * Returns only server-side config; neither secret is serializable to UI DTOs.
+ *
+ * SANDBOX (PR017): when the Render credentials are TikTok test keys — or the
+ * operator sets `TIKTOK_SANDBOX_MODE` — the client targets the Sandbox host
+ * instead of the rigid commercial production endpoints. The signing
+ * algorithm, headers and retry policy are identical; only the origin changes.
+ */
 export function getTikTokApiConfig(): TikTokApiConfig {
+  const endpoints = resolveTikTokEndpoints(process.env, {
+    apiBaseUrl: TIKTOK_API_BASE_URL,
+    authBaseUrl: TIKTOK_AUTH_BASE_URL,
+    sellerAuthUrl: "https://services.tiktokshop.com/open/authorize",
+  });
   return {
     appKey: requiredEnv("TIKTOK_APP_KEY"),
     appSecret: requiredEnv("TIKTOK_APP_SECRET"),
-    apiBaseUrl: process.env.TIKTOK_API_BASE_URL?.trim() || TIKTOK_API_BASE_URL,
+    apiBaseUrl: endpoints.apiBaseUrl,
+    sandbox: endpoints.sandbox,
   };
+}
+
+/** Whether the process-wide TikTok configuration points at the Sandbox. */
+export function isSandboxApiConfigured(): boolean {
+  return isTikTokSandboxMode();
 }
 
 function toQueryValue(value: string | number | boolean): string {

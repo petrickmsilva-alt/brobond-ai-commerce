@@ -212,6 +212,8 @@ enum TikTokConnectionStatus {
   DISCONNECTED
   EXPIRED
   ERROR
+  /// Connected through the TikTok Developers Sandbox (PR017).
+  SANDBOX_ACTIVE
 }
 
 /// Omnichannel delivery provider (PR010 — Omnichannel Delivery Engine).
@@ -335,6 +337,11 @@ enum ConnectionStatus {
   /// account re-encrypts with the current key — the panel renders the clean
   /// connect button instead of offering another sync (PR016.2).
   REAUTH_REQUIRED
+  /// TikTok Developers Sandbox mode (PR017): the channel is operating against
+  /// test shops/test accounts registered in the console. Fully functional —
+  /// never a failure state. Deployments whose database predates this value
+  /// degrade gracefully to PENDING_APPROVAL.
+  SANDBOX_ACTIVE
 }
 
 // ------------------------------------------------------------------

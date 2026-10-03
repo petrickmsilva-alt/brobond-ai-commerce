@@ -3,6 +3,7 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { tenantWhere } from "@/lib/tenant";
+import { isTikTokSandboxMode } from "./sandbox.service";
 
 export const TIKTOK_PENDING_APPROVAL_MESSAGE =
   "Aguardando homologação e aprovação do cadastro da loja no TikTok Seller Center";
@@ -17,8 +18,16 @@ export class TikTokPendingApprovalError extends Error {
   }
 }
 
-/** Test credentials and credentials explicitly marked as mock never reach TikTok. */
+/**
+ * Test credentials and credentials explicitly marked as mock never reach TikTok.
+ *
+ * SANDBOX (PR017): in Sandbox mode the very same credentials are *expected*
+ * — they are TikTok Developers test keys. Returning `true` there would park
+ * the channel in PENDING_APPROVAL and block the simulated OAuth flow, so the
+ * sandbox decision takes precedence and this guard reports `false`.
+ */
 export function hasMockTikTokCredentials(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (isTikTokSandboxMode(env)) return false;
   return [env.TIKTOK_APP_KEY, env.TIKTOK_APP_SECRET].some((value) =>
     value?.trim().toLowerCase().includes("mock"),
   );

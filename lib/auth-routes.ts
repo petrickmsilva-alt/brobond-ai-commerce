@@ -125,6 +125,14 @@ export const PUBLIC_PREFIXES: readonly string[] = [
   "/_next",
   "/favicon",
   "/invite",
+  // Legal pages required by the TikTok Developers console (sandbox and
+  // production review alike). They are fetched anonymously by TikTok's
+  // crawler and MUST answer 200 — listing them here keeps that guarantee
+  // even if a catch-all gate is added later.
+  "/terms",
+  "/privacy",
+  "/terms-of-service",
+  "/privacy-policy",
   // Third-party domain-ownership probes: anonymous by definition (see above).
   // Spread, so adding a verification path in one place exempts it here too.
   ...TIKTOK_VERIFICATION_PATHS,
