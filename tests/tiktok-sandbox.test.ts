@@ -38,31 +38,34 @@ const PRODUCTION_DEFAULTS = {
 
 describe("TikTok sandbox detection", () => {
   it("activates with an explicit operator flag", () => {
-    expect(isTikTokSandboxMode({ TIKTOK_SANDBOX_MODE: "true" } as NodeJS.ProcessEnv)).toBe(true);
-    expect(isTikTokSandboxMode({ TIKTOK_ENV: "sandbox" } as NodeJS.ProcessEnv)).toBe(true);
+    expect(isTikTokSandboxMode({ NODE_ENV: "test", TIKTOK_SANDBOX_MODE: "true" })).toBe(true);
+    expect(isTikTokSandboxMode({ NODE_ENV: "test", TIKTOK_ENV: "sandbox" })).toBe(true);
   });
 
   it("activates implicitly when Render carries TikTok test credentials", () => {
     expect(
       isTikTokSandboxMode({
+        NODE_ENV: "test",
         TIKTOK_APP_KEY: "sandbox_6h2k",
         TIKTOK_APP_SECRET: "abc",
-      } as NodeJS.ProcessEnv),
+      }),
     ).toBe(true);
     expect(
       isTikTokSandboxMode({
+        NODE_ENV: "test",
         TIKTOK_APP_KEY: "6h2k",
         TIKTOK_APP_SECRET: "test-secret",
-      } as NodeJS.ProcessEnv),
+      }),
     ).toBe(true);
   });
 
   it("stays off for genuine production credentials", () => {
     expect(
       isTikTokSandboxMode({
+        NODE_ENV: "test",
         TIKTOK_APP_KEY: "6hv1kabcdefgh",
         TIKTOK_APP_SECRET: "9f0a1b2c3d4e5f",
-      } as NodeJS.ProcessEnv),
+      }),
     ).toBe(false);
     expect(looksLikeSandboxCredential(undefined)).toBe(false);
   });
@@ -71,7 +74,7 @@ describe("TikTok sandbox detection", () => {
 describe("TikTok sandbox endpoints", () => {
   it("swaps the rigid production hosts for the sandbox ones", () => {
     const resolved = resolveTikTokEndpoints(
-      { TIKTOK_SANDBOX_MODE: "1" } as NodeJS.ProcessEnv,
+      { NODE_ENV: "test", TIKTOK_SANDBOX_MODE: "1" },
       PRODUCTION_DEFAULTS,
     );
     expect(resolved.sandbox).toBe(true);
@@ -82,7 +85,7 @@ describe("TikTok sandbox endpoints", () => {
 
   it("keeps production hosts when sandbox is off", () => {
     const resolved = resolveTikTokEndpoints(
-      { TIKTOK_APP_KEY: "6hv1kabcdefgh" } as NodeJS.ProcessEnv,
+      { NODE_ENV: "test", TIKTOK_APP_KEY: "6hv1kabcdefgh" },
       PRODUCTION_DEFAULTS,
     );
     expect(resolved.sandbox).toBe(false);
@@ -92,9 +95,10 @@ describe("TikTok sandbox endpoints", () => {
   it("always honours an explicit override", () => {
     const resolved = resolveTikTokEndpoints(
       {
+        NODE_ENV: "test",
         TIKTOK_SANDBOX_MODE: "true",
         TIKTOK_API_BASE_URL: "https://gateway.internal",
-      } as NodeJS.ProcessEnv,
+      },
       PRODUCTION_DEFAULTS,
     );
     expect(resolved.apiBaseUrl).toBe("https://gateway.internal");
@@ -103,12 +107,17 @@ describe("TikTok sandbox endpoints", () => {
 
 describe("mock credential guard under sandbox", () => {
   it("no longer parks the channel in PENDING_APPROVAL", () => {
-    const env = { TIKTOK_APP_KEY: "mock-key", TIKTOK_APP_SECRET: "mock-secret" };
-    expect(hasMockTikTokCredentials(env as NodeJS.ProcessEnv)).toBe(false);
+    const env: NodeJS.ProcessEnv = {
+      NODE_ENV: "test",
+      TIKTOK_APP_KEY: "mock-key",
+      TIKTOK_APP_SECRET: "mock-secret",
+    };
+    expect(hasMockTikTokCredentials(env)).toBe(false);
   });
 
   it("still blocks mock credentials when sandbox is explicitly disabled", () => {
-    const env = {
+    const env: NodeJS.ProcessEnv = {
+      NODE_ENV: "test",
       TIKTOK_SANDBOX_MODE: "false",
       TIKTOK_ENV: "production",
       TIKTOK_APP_KEY: "6hv1kabcdefgh",
@@ -116,7 +125,7 @@ describe("mock credential guard under sandbox", () => {
     };
     // The secret marks the credentials as non-production, so sandbox mode is
     // inferred — the flow stays functional instead of failing.
-    expect(hasMockTikTokCredentials(env as NodeJS.ProcessEnv)).toBe(false);
+    expect(hasMockTikTokCredentials(env)).toBe(false);
   });
 });
 
@@ -128,9 +137,9 @@ describe("simulated sandbox OAuth", () => {
 
   it("is deterministic per organization so reconnects upsert one shop", () => {
     const now = new Date("2026-10-03T12:00:00.000Z");
-    const first = createSimulatedSandboxSession("org-1", { now, env: {} as NodeJS.ProcessEnv });
-    const second = createSimulatedSandboxSession("org-1", { now, env: {} as NodeJS.ProcessEnv });
-    const other = createSimulatedSandboxSession("org-2", { now, env: {} as NodeJS.ProcessEnv });
+    const first = createSimulatedSandboxSession("org-1", { now, env: { NODE_ENV: "test" } });
+    const second = createSimulatedSandboxSession("org-1", { now, env: { NODE_ENV: "test" } });
+    const other = createSimulatedSandboxSession("org-2", { now, env: { NODE_ENV: "test" } });
 
     expect(first).toEqual(second);
     expect(first.shops[0]!.shopId).not.toBe(other.shops[0]!.shopId);
@@ -140,7 +149,7 @@ describe("simulated sandbox OAuth", () => {
 
   it("honours sandbox shop overrides from the TikTok console", () => {
     const session = createSimulatedSandboxSession("org-1", {
-      env: { TIKTOK_SANDBOX_SHOP_ID: "7495000000" } as NodeJS.ProcessEnv,
+      env: { NODE_ENV: "test", TIKTOK_SANDBOX_SHOP_ID: "7495000000" },
     });
     expect(session.shops[0]!.shopId).toBe("7495000000");
   });

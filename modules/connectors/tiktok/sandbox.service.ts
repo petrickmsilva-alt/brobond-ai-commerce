@@ -27,6 +27,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
+import type { ConnectionStatus } from "@prisma/client";
 
 /** Official TikTok Shop Sandbox hosts (test shops only, no production data). */
 export const TIKTOK_SANDBOX_API_BASE_URL = "https://open-api-sandbox.tiktokglobalshop.com";
@@ -263,7 +264,7 @@ export async function markTikTokSandboxActive(
   let status: TikTokSandboxStatusResult["status"] = TIKTOK_SANDBOX_STATUS;
   let connector: { id: string } | null = null;
   try {
-    connector = await write(TIKTOK_SANDBOX_STATUS);
+    connector = await write(TIKTOK_SANDBOX_STATUS as ConnectionStatus);
   } catch (error) {
     if (!isUnknownEnumValueError(error)) {
       console.error("[tiktok.sandbox] não foi possível persistir o status sandbox", {
@@ -273,7 +274,7 @@ export async function markTikTokSandboxActive(
     }
     status = TIKTOK_SANDBOX_FALLBACK_STATUS;
     try {
-      connector = await write(TIKTOK_SANDBOX_FALLBACK_STATUS);
+      connector = await write(TIKTOK_SANDBOX_FALLBACK_STATUS as ConnectionStatus);
     } catch (fallbackError) {
       console.error("[tiktok.sandbox] fallback PENDING_APPROVAL também falhou", {
         error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),

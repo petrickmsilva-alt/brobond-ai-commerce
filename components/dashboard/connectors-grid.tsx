@@ -57,6 +57,10 @@ const STATUS_STYLES: Record<ConnectionStatus, { label: string; className: string
     label: "Conectado",
     className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
   },
+  SANDBOX_ACTIVE: {
+    label: "Sandbox Ativo",
+    className: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+  },
   DISCONNECTED: {
     label: "Desconectado",
     className: "border-surface-600 bg-surface-800 text-white/50",
