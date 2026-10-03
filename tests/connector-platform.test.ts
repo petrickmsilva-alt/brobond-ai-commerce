@@ -42,7 +42,7 @@ import {
  */
 
 describe("ConnectorPlatform (Prisma enum)", () => {
-  it("has exactly the six platforms (MOCK + five real integrations)", () => {
+  it("has exactly the seven platforms (MOCK + six real integrations)", () => {
     expect(Object.values(ConnectorPlatform)).toEqual([
       "MOCK",
       "TIKTOK",
@@ -50,6 +50,7 @@ describe("ConnectorPlatform (Prisma enum)", () => {
       "SHOPEE",
       "MERCADOLIVRE",
       "MERCADOPAGO",
+      "NUVEMSHOP",
     ]);
   });
 
@@ -60,6 +61,7 @@ describe("ConnectorPlatform (Prisma enum)", () => {
     expect(ConnectorPlatform.SHOPEE).toBe("SHOPEE");
     expect(ConnectorPlatform.MERCADOLIVRE).toBe("MERCADOLIVRE");
     expect(ConnectorPlatform.MERCADOPAGO).toBe("MERCADOPAGO");
+    expect(ConnectorPlatform.NUVEMSHOP).toBe("NUVEMSHOP");
   });
 });
 
@@ -84,9 +86,17 @@ describe("CONNECTOR_PLATFORMS (client-safe mirror)", () => {
     expect([...PLACEHOLDER_CONNECTOR_PLATFORMS]).toEqual([]);
   });
 
-  it("registers MOCK plus the five real providers", () => {
+  it("registers MOCK plus the six real providers", () => {
     expect(
-      new Set(["MOCK", "TIKTOK", "INSTAGRAM", "SHOPEE", "MERCADOLIVRE", "MERCADOPAGO"]),
+      new Set([
+        "MOCK",
+        "TIKTOK",
+        "INSTAGRAM",
+        "SHOPEE",
+        "MERCADOLIVRE",
+        "MERCADOPAGO",
+        "NUVEMSHOP",
+      ]),
     ).toEqual(new Set(CONNECTOR_PLATFORMS));
   });
 });
@@ -184,7 +194,7 @@ describe("Zod schemas", () => {
 });
 
 describe("type guards", () => {
-  it("isConnectorPlatformName recognizes exactly the six platforms", () => {
+  it("isConnectorPlatformName recognizes exactly the seven platforms", () => {
     for (const platform of CONNECTOR_PLATFORMS) {
       expect(isConnectorPlatformName(platform)).toBe(true);
     }

@@ -6,7 +6,7 @@
  * they return and the client-safe mirrors of the Prisma enums.
  *
  * PR012 — REAL INTEGRATIONS: TikTok Shop, Instagram Shopping, Shopee,
- * Mercado Livre and Mercado Pago are server-only official API adapters
+ * Mercado Livre, Mercado Pago and Nuvemshop are server-only official API adapters
  * (OAuth2 / production API keys persisted encrypted on the unified
  * `Connector` model). `MOCK` remains the deterministic local dataset for
  * development and tests.
@@ -39,6 +39,7 @@ export const CONNECTOR_PLATFORMS = [
   "SHOPEE",
   "MERCADOLIVRE",
   "MERCADOPAGO",
+  "NUVEMSHOP",
 ] as const;
 
 export type ConnectorPlatformName = (typeof CONNECTOR_PLATFORMS)[number];
@@ -61,6 +62,7 @@ export const CONNECTOR_PLATFORM_LABELS: Record<ConnectorPlatformName, string> = 
   SHOPEE: "Shopee",
   MERCADOLIVRE: "Mercado Livre",
   MERCADOPAGO: "Mercado Pago",
+  NUVEMSHOP: "Nuvemshop",
 };
 
 // ------------------------------------------------------------------
@@ -196,7 +198,7 @@ export interface ConnectorHealth {
  * `getConnector(platform)` (`connector.factory.ts`) — never instantiated
  * ad hoc by callers and never chosen through a `switch` outside the factory.
  *
- * `MockConnector` returns a deterministic in-memory dataset; the five real
+ * `MockConnector` returns a deterministic in-memory dataset; the six real
  * platforms are server-only official API adapters keyed by the encrypted
  * credentials of the unified `Connector` model (PR012).
  */

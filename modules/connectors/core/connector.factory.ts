@@ -17,6 +17,7 @@ import { InstagramConnector } from "../instagram/instagram.connector";
 import { MercadoLivreConnector } from "../mercadolivre/mercadolivre.connector";
 import { MercadoPagoConnector } from "../mercadopago/mercadopago.connector";
 import { MockConnector } from "../mock/mock.connector";
+import { NuvemshopConnector } from "../nuvemshop/nuvemshop.connector";
 import { ShopeeConnector } from "../shopee/shopee.connector";
 import { TikTokConnector } from "../tiktok/tiktok.connector";
 import type { Connector } from "./connector.interface";
@@ -33,6 +34,7 @@ const CONNECTOR_BUILDERS: Record<ConnectorPlatform, () => Connector> = {
   SHOPEE: () => new ShopeeConnector(),
   MERCADOLIVRE: () => new MercadoLivreConnector(),
   MERCADOPAGO: () => new MercadoPagoConnector(),
+  NUVEMSHOP: () => new NuvemshopConnector(),
 };
 
 const instances = new Map<ConnectorPlatform, Connector>();

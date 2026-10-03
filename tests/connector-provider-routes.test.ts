@@ -42,5 +42,6 @@ describe("connector provider slug registry", () => {
     expect(connectorProviderPath("SHOPEE")).toBe("/dashboard/connectors/shopee");
     expect(connectorProviderPath("TIKTOK")).toBe("/dashboard/connectors/tiktok");
     expect(connectorProviderPath("INSTAGRAM")).toBe("/dashboard/connectors/instagram");
+    expect(connectorProviderPath("NUVEMSHOP")).toBe("/dashboard/connectors/nuvemshop");
   });
 });

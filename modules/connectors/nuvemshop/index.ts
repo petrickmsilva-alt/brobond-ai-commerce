@@ -1,3 +1,4 @@
+export { NuvemshopConnector, NuvemshopConnectionRequiredError } from "./nuvemshop.connector";
 export {
   buildNuvemshopAuthorizationUrl,
   exchangeNuvemshopCode,

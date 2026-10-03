@@ -55,7 +55,7 @@ import { salesService } from "@/modules/sales/sales.service";
  * stacked list of every provider. The slug registry
  * (`connectorProviderFromSlug`) is the single source of truth shared with
  * the sidebar links and the OAuth callbacks: `mercado-livre`, `shopee`,
- * `mercado-pago`, `tiktok` and `instagram` all resolve here; anything else
+ * `mercado-pago`, `nuvemshop`, `tiktok` and `instagram` all resolve here; anything else
  * renders the 404 page (`notFound()`).
  *
  * PR016 — this screen is a pure Server Component: every child that needs
@@ -128,6 +128,14 @@ interface ConnectorProviderPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
+// Route-backed providers are real connector platforms, excluding only the
+// legacy MOCK dataset. Keep this literal union aligned with Prisma
+// ConnectorPlatform and include NUVEMSHOP for the dynamic connector screen.
+type RouteConnectorPlatform = Extract<
+  ConnectorPlatform,
+  "TIKTOK" | "INSTAGRAM" | "SHOPEE" | "MERCADOLIVRE" | "MERCADOPAGO" | "NUVEMSHOP"
+>;
+
 export async function generateMetadata({ params }: ConnectorProviderPageProps): Promise<Metadata> {
   const { provider: slug } = await params;
   const provider = connectorProviderFromSlug(slug);
@@ -149,7 +157,7 @@ export default async function ConnectorProviderPage({
 
   // The enums are 1:1 by design — a connector provider IS a framework
   // platform and a sale channel (see `modules/sales/sales-channel.ts`).
-  const platform = provider as ConnectorPlatform;
+  const platform: RouteConnectorPlatform = provider;
   const channel = saleChannelFromConnectorProvider(provider);
 
   const [cards, contentPage, recentEvents, channelSummary, recentSales, raw] = await Promise.all([

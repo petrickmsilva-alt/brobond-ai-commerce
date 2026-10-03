@@ -14,6 +14,7 @@ import { InstagramConnector } from "@/modules/connectors/instagram/instagram.con
 import { ShopeeConnector } from "@/modules/connectors/shopee/shopee.connector";
 import { MercadoLivreConnector } from "@/modules/connectors/mercadolivre/mercadolivre.connector";
 import { MercadoPagoConnector } from "@/modules/connectors/mercadopago/mercadopago.connector";
+import { NuvemshopConnector } from "@/modules/connectors/nuvemshop/nuvemshop.connector";
 import type { Connector } from "@/modules/connectors/core/connector.interface";
 import { ConnectorNotRegisteredError } from "@/modules/connectors/core/connector.interface";
 
@@ -22,8 +23,8 @@ import { ConnectorNotRegisteredError } from "@/modules/connectors/core/connector
  *
  * `getConnector(platform)` is the ONLY supported way to obtain a connector.
  * MOCK is the deterministic local dataset; TikTok Shop, Instagram Shopping,
- * Shopee, Mercado Livre and Mercado Pago are real, server-only official API
- * adapters (PR012). No placeholders remain.
+ * Shopee, Mercado Livre, Mercado Pago and Nuvemshop are real,
+ * server-only official API adapters (PR012). No placeholders remain.
  */
 
 describe("getConnector", () => {
@@ -49,6 +50,10 @@ describe("getConnector", () => {
 
   it("resolves MERCADOPAGO to the real Mercado Pago adapter", () => {
     expect(getConnector(ConnectorPlatform.MERCADOPAGO)).toBeInstanceOf(MercadoPagoConnector);
+  });
+
+  it("resolves NUVEMSHOP to the real Nuvemshop adapter", () => {
+    expect(getConnector(ConnectorPlatform.NUVEMSHOP)).toBeInstanceOf(NuvemshopConnector);
   });
 
   it("every resolved connector declares its own platform", () => {
@@ -104,6 +109,7 @@ describe("registry helpers", () => {
       "SHOPEE",
       "MERCADOLIVRE",
       "MERCADOPAGO",
+      "NUVEMSHOP",
     ]);
   });
 
@@ -144,6 +150,7 @@ describe("real marketplace adapters (PR012)", () => {
     { platform: ConnectorPlatform.SHOPEE, errorName: "ShopeeConnectionRequiredError" },
     { platform: ConnectorPlatform.MERCADOLIVRE, errorName: "MercadoLivreConnectionRequiredError" },
     { platform: ConnectorPlatform.MERCADOPAGO, errorName: "MercadoPagoConnectionRequiredError" },
+    { platform: ConnectorPlatform.NUVEMSHOP, errorName: "NuvemshopConnectionRequiredError" },
   ];
 
   it("declares every marketplace adapter as implemented", () => {
