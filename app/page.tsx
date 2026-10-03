@@ -134,7 +134,11 @@ export default async function LandingPage() {
       </section>
 
       <footer className="border-t border-white/8 py-8">
-        <p className="text-center text-xs text-white/30">
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-white/40">
+          <Link href="/terms" className="transition-colors hover:text-white/80">Termos de Serviço</Link>
+          <Link href="/privacy" className="transition-colors hover:text-white/80">Política de Privacidade</Link>
+        </div>
+        <p className="mt-3 text-center text-xs text-white/30">
           © {new Date().getFullYear()} {APP_SHORT_NAME}. Enterprise AI Commerce OS.
         </p>
       </footer>
