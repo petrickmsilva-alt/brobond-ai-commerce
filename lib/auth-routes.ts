@@ -52,6 +52,18 @@ export const INVITE_EXPIRED_ROUTE = "/invite/expired";
 export const SIGNUP_ROUTE = "/signup";
 
 /**
+ * Domain-ownership verification endpoint for the TikTok Developers console.
+ *
+ * TikTok's validator fetches this exact path anonymously, from its own
+ * infrastructure, with no cookies. It must answer `200 text/plain` or the
+ * app's TikTok integration cannot be approved — so the path is pinned here as
+ * a named constant and listed in `PUBLIC_PREFIXES` below, rather than relying
+ * on the implicit "not protected, not auth → pass through" fallback in
+ * `proxy.ts`. If someone later adds a catch-all gate, this route survives it.
+ */
+export const TIKTOK_SITE_VERIFICATION_ROUTE = "/tiktok-developers-site-verification";
+
+/**
  * Route prefixes that require an authenticated session.
  *
  * Every entry is matched as "the path itself, or any path below it", so
@@ -102,6 +114,8 @@ export const PUBLIC_PREFIXES: readonly string[] = [
   "/_next",
   "/favicon",
   "/invite",
+  // Third-party domain-ownership probe: anonymous by definition (see above).
+  TIKTOK_SITE_VERIFICATION_ROUTE,
 ] as const;
 
 /** Whether `pathname` is exactly `prefix` or nested below it. */
