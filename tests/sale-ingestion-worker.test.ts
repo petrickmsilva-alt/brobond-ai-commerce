@@ -53,9 +53,9 @@ describe("requeuePendingSaleEvents", () => {
 
     expect(enqueued).toBe(2);
     expect(mockedListPending).toHaveBeenCalledWith({
-      providers: ["MERCADOLIVRE", "MERCADOPAGO"],
+      providers: ["MERCADOLIVRE", "MERCADOPAGO", "NUVEMSHOP"],
       before: new Date("2026-10-01T11:59:00.000Z"), // 60s grace
-      after: expect.any(Date), // 7-day dead-letter window
+      after: new Date("2026-09-24T12:00:00.000Z"), // 7-day dead-letter window
       limit: 50,
     });
     expect(mockedEnqueue).toHaveBeenCalledTimes(2);
