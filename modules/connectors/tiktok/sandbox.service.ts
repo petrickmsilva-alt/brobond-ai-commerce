@@ -221,6 +221,18 @@ function isUnknownEnumValueError(error: unknown): boolean {
   );
 }
 
+/**
+ * Minimal structural contract this module needs from the database layer.
+ * Declared loosely on purpose so both the real Prisma client and the unit
+ * test doubles can be injected without fighting Prisma's generated generics.
+ */
+export interface TikTokSandboxStatusDb {
+  // Method shorthand (bivariant) so test doubles declaring concrete argument
+  // shapes remain assignable while callers can still pass a plain object.
+  connector: { upsert(args: unknown): Promise<{ id: string }> };
+  auditLog: { create(args: unknown): Promise<unknown> };
+}
+
 export interface TikTokSandboxStatusResult {
   status: typeof TIKTOK_SANDBOX_STATUS | typeof TIKTOK_SANDBOX_FALLBACK_STATUS;
   persisted: boolean;
@@ -236,15 +248,15 @@ export async function markTikTokSandboxActive(
   organizationId: string,
   source: "sandbox_credentials" | "simulated_oauth" | "sandbox_sync" = "sandbox_credentials",
   deps: {
-    db?: {
-      connector: {
-        upsert: (args: unknown) => Promise<{ id: string }>;
-      };
-      auditLog: { create: (args: unknown) => Promise<unknown> };
-    };
+    db?: TikTokSandboxStatusDb;
   } = {},
 ): Promise<TikTokSandboxStatusResult> {
-  const db = deps.db ?? (await import("@/lib/prisma")).prisma;
+  // The real Prisma client exposes strongly-typed (and generic) `upsert` /
+  // `create` signatures that are structurally narrower than the test double.
+  // Both satisfy the behaviour this function depends on, so we normalise them
+  // to the minimal structural contract declared above.
+  const db = (deps.db ??
+    (await import("@/lib/prisma")).prisma) as unknown as TikTokSandboxStatusDb;
   const { tenantWhere } = await import("@/lib/tenant");
   const { organizationId: org } = tenantWhere(organizationId);
 
