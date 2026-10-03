@@ -96,14 +96,33 @@ export const TIKTOK_SITE_VERIFICATION_PATH = "/tiktok-developers-site-verificati
 export const TIKTOK_SITE_VERIFICATION_TXT_PATH = `${TIKTOK_SITE_VERIFICATION_PATH}.txt`;
 
 /**
- * The property reported by TikTok includes the case-sensitive `/Request/`
+ * An earlier property reported by TikTok included a case-sensitive `/Request/`
  * prefix. URL-prefix verification looks for the downloaded signature file
- * *inside that prefix*, not necessarily at the host root. Keep root aliases
- * as well, since they cover verification of the origin itself.
+ * *inside that prefix*, not necessarily at the host root. Keep it (and the
+ * root aliases) in place even though the current property has moved — a
+ * console retry against the old prefix must not regress.
  */
 export const TIKTOK_REQUEST_PREFIX = "/Request";
 export const TIKTOK_REQUEST_SIGNATURE_FILE_PATH = `${TIKTOK_REQUEST_PREFIX}${TIKTOK_SIGNATURE_FILE_PATH}`;
 export const TIKTOK_REQUEST_VERIFICATION_TXT_PATH = `${TIKTOK_REQUEST_PREFIX}${TIKTOK_SITE_VERIFICATION_TXT_PATH}`;
+
+/**
+ * The property TikTok currently reports is
+ * `https://<host>/terms-of-service/` — a URL prefix, not the host root. Its
+ * validator therefore fetches the signature file *under that prefix*:
+ *
+ *     https://<host>/terms-of-service/tiktok<SIGNATURE>.txt
+ *
+ * This is the same "signature not found" failure mode as the `/Request`
+ * property before it: the file existed, just not at the prefix the console
+ * actually checks. `app/terms-of-service/page.tsx` already renders through
+ * the root layout, so the meta-tag proof is covered for free; only the
+ * signature file needed a prefixed copy, shipped as a real static file in
+ * `public/terms-of-service/`.
+ */
+export const TIKTOK_TERMS_PREFIX = "/terms-of-service";
+export const TIKTOK_TERMS_SIGNATURE_FILE_PATH = `${TIKTOK_TERMS_PREFIX}${TIKTOK_SIGNATURE_FILE_PATH}`;
+export const TIKTOK_TERMS_VERIFICATION_TXT_PATH = `${TIKTOK_TERMS_PREFIX}${TIKTOK_SITE_VERIFICATION_TXT_PATH}`;
 
 /**
  * Every path that must answer `200 text/plain` with the token, anonymously
@@ -116,6 +135,8 @@ export const TIKTOK_VERIFICATION_PATHS: readonly string[] = [
   TIKTOK_SITE_VERIFICATION_TXT_PATH,
   TIKTOK_REQUEST_SIGNATURE_FILE_PATH,
   TIKTOK_REQUEST_VERIFICATION_TXT_PATH,
+  TIKTOK_TERMS_SIGNATURE_FILE_PATH,
+  TIKTOK_TERMS_VERIFICATION_TXT_PATH,
 ] as const;
 
 /** Pinned so the validator never has to negotiate or guess the encoding. */
