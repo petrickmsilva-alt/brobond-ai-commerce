@@ -96,6 +96,16 @@ export const TIKTOK_SITE_VERIFICATION_PATH = "/tiktok-developers-site-verificati
 export const TIKTOK_SITE_VERIFICATION_TXT_PATH = `${TIKTOK_SITE_VERIFICATION_PATH}.txt`;
 
 /**
+ * The property reported by TikTok includes the case-sensitive `/Request/`
+ * prefix. URL-prefix verification looks for the downloaded signature file
+ * *inside that prefix*, not necessarily at the host root. Keep root aliases
+ * as well, since they cover verification of the origin itself.
+ */
+export const TIKTOK_REQUEST_PREFIX = "/Request";
+export const TIKTOK_REQUEST_SIGNATURE_FILE_PATH = `${TIKTOK_REQUEST_PREFIX}${TIKTOK_SIGNATURE_FILE_PATH}`;
+export const TIKTOK_REQUEST_VERIFICATION_TXT_PATH = `${TIKTOK_REQUEST_PREFIX}${TIKTOK_SITE_VERIFICATION_TXT_PATH}`;
+
+/**
  * Every path that must answer `200 text/plain` with the token, anonymously
  * and forever. Consumed by `lib/auth-routes.ts` to exempt them from the auth
  * proxy, and by the test suite to assert each one is actually reachable.
@@ -104,6 +114,8 @@ export const TIKTOK_VERIFICATION_PATHS: readonly string[] = [
   TIKTOK_SIGNATURE_FILE_PATH,
   TIKTOK_SITE_VERIFICATION_PATH,
   TIKTOK_SITE_VERIFICATION_TXT_PATH,
+  TIKTOK_REQUEST_SIGNATURE_FILE_PATH,
+  TIKTOK_REQUEST_VERIFICATION_TXT_PATH,
 ] as const;
 
 /** Pinned so the validator never has to negotiate or guess the encoding. */

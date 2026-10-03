@@ -5,6 +5,8 @@ import { metadata } from "@/app/layout";
 import { GET, HEAD } from "@/app/tiktok-developers-site-verification/route";
 import { PUBLIC_PREFIXES, isPublicRoute, isProtectedRoute } from "@/lib/auth-routes";
 import {
+  TIKTOK_REQUEST_SIGNATURE_FILE_PATH,
+  TIKTOK_REQUEST_VERIFICATION_TXT_PATH,
   TIKTOK_SIGNATURE_FILE_PATH,
   TIKTOK_SITE_VERIFICATION_META_NAME,
   TIKTOK_SITE_VERIFICATION_PATH,
@@ -51,7 +53,12 @@ describe("verification constants", () => {
 });
 
 describe("static signature files in public/", () => {
-  const staticPaths = [TIKTOK_SIGNATURE_FILE_PATH, TIKTOK_SITE_VERIFICATION_TXT_PATH];
+  const staticPaths = [
+    TIKTOK_SIGNATURE_FILE_PATH,
+    TIKTOK_SITE_VERIFICATION_TXT_PATH,
+    TIKTOK_REQUEST_SIGNATURE_FILE_PATH,
+    TIKTOK_REQUEST_VERIFICATION_TXT_PATH,
+  ];
 
   it.each(staticPaths)("%s exists on disk", (path) => {
     expect(existsSync(join(PUBLIC_DIR, path))).toBe(true);
@@ -169,9 +176,11 @@ describe("middleware posture for the verification surface", () => {
     expect(isProtectedRoute(path)).toBe(false);
   });
 
-  it("covers all three serving strategies", () => {
+  it("covers root and /Request URL-prefix properties", () => {
     expect(TIKTOK_VERIFICATION_PATHS).toContain(TIKTOK_SIGNATURE_FILE_PATH);
     expect(TIKTOK_VERIFICATION_PATHS).toContain(TIKTOK_SITE_VERIFICATION_PATH);
     expect(TIKTOK_VERIFICATION_PATHS).toContain(TIKTOK_SITE_VERIFICATION_TXT_PATH);
+    expect(TIKTOK_VERIFICATION_PATHS).toContain(TIKTOK_REQUEST_SIGNATURE_FILE_PATH);
+    expect(TIKTOK_VERIFICATION_PATHS).toContain(TIKTOK_REQUEST_VERIFICATION_TXT_PATH);
   });
 });
