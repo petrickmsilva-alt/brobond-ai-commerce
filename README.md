@@ -394,6 +394,37 @@ Deployment is defined as code in [`render.yaml`](./render.yaml) (a Render Bluepr
    losing that variable can no longer take sign-in down with
    `UntrustedHost: Host must be trusted`. Set `AUTH_TRUST_HOST=false` to opt out.
 
+### TikTok URL-property verification
+
+Use one **Production → URL prefix** property for the deployment origin:
+
+```text
+https://brobond-ai-commerce.onrender.com/
+```
+
+The root prefix owns every same-host path, including `/terms-of-service/` and
+`/privacy-policy/`. Do not start separate property challenges for those pages:
+each new challenge can issue a different downloaded artifact, and copying the
+root token under another path does not satisfy that new challenge.
+
+The checked-in file must preserve both the exact filename and exact one-line
+body supplied by TikTok. It is currently available at:
+
+```text
+https://brobond-ai-commerce.onrender.com/tiktok2curKlcJu06uY8EYHsELz6YWP3VFqLLZ.txt
+```
+
+After Render deploys, run the no-redirect and byte-exact production preflight:
+
+```bash
+npm run verify:tiktok-property -- https://brobond-ai-commerce.onrender.com
+```
+
+It fails on any HTTP 3xx, non-200 legal page, wrong content type or changed
+signature body. TikTok defines URL prefixes with a trailing slash and does not
+accept redirects, so `skipTrailingSlashRedirect` is intentionally enabled in
+`next.config.ts`; both slash variants return the page directly.
+
 ### Render Prisma Migration Runtime
 
 The `preDeployCommand` runs **`npm run prisma:deploy`**, which first executes

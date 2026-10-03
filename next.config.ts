@@ -4,6 +4,12 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   output: "standalone",
+  // TikTok defines a URL-prefix property with a trailing slash and rejects
+  // HTTP 3xx responses. Next.js normally turns `/terms-of-service/` into a
+  // 308 to `/terms-of-service`, even though the former is the exact URL shown
+  // in the TikTok Developers console. Serve both spellings directly instead;
+  // internal links still use the canonical trailing-slash legal URLs below.
+  skipTrailingSlashRedirect: true,
   // Prisma's pg driver is Node-only. Externalizing it keeps node:fs/path/stream
   // out of non-Node webpack compilation while standalone tracing still copies
   // the packages into the production server bundle.

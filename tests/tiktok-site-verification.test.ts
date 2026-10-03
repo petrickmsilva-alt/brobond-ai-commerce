@@ -3,10 +3,13 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { metadata } from "@/app/layout";
 import { GET, HEAD } from "@/app/tiktok-developers-site-verification/route";
+import nextConfig from "@/next.config";
 import { PUBLIC_PREFIXES, isPublicRoute, isProtectedRoute } from "@/lib/auth-routes";
 import {
+  TIKTOK_CANONICAL_URL_PREFIX,
   TIKTOK_REQUEST_SIGNATURE_FILE_PATH,
   TIKTOK_REQUEST_VERIFICATION_TXT_PATH,
+  TIKTOK_SIGNATURE_FILE_NAME,
   TIKTOK_SIGNATURE_FILE_PATH,
   TIKTOK_SITE_VERIFICATION_META_NAME,
   TIKTOK_SITE_VERIFICATION_PATH,
@@ -41,11 +44,15 @@ describe("verification constants", () => {
     expect(TIKTOK_SITE_VERIFICATION_TOKEN).toBe(EXPECTED_TOKEN);
   });
 
-  it("points the signature file at the path TikTok's URL-prefix validator fetches", () => {
-    // TikTok issues a file named `tiktok<SIGNATURE>.txt`, NOT a file named
-    // after the `tiktok-developers-site-verification` key. Getting this wrong
-    // is what produced the original "signature not found" rejection.
-    expect(TIKTOK_SIGNATURE_FILE_PATH).toBe(`/tiktok${EXPECTED_SIGNATURE}.txt`);
+  it("preserves the exact downloaded filename instead of reconstructing it", () => {
+    // Filename and body are independent values owned by TikTok. Pinning both
+    // literals prevents another guessed filename from reaching production.
+    expect(TIKTOK_SIGNATURE_FILE_NAME).toBe("tiktok2curKlcJu06uY8EYHsELz6YWP3VFqLLZ.txt");
+    expect(TIKTOK_SIGNATURE_FILE_PATH).toBe(`/${TIKTOK_SIGNATURE_FILE_NAME}`);
+  });
+
+  it("uses the root URL prefix so one property owns all same-host app URLs", () => {
+    expect(TIKTOK_CANONICAL_URL_PREFIX).toBe("/");
   });
 
   it("uses the bare signature for the meta tag, not the full token", () => {
@@ -164,6 +171,20 @@ describe("homepage meta-tag proof", () => {
     // The usual way this check fails: pasting the whole token into `content`.
     expect(content).not.toBe(EXPECTED_TOKEN);
     expect(String(content)).not.toContain("=");
+  });
+});
+
+describe("URL-property reachability", () => {
+  it("does not 308-redirect TikTok's required trailing-slash prefixes", () => {
+    expect(nextConfig.skipTrailingSlashRedirect).toBe(true);
+  });
+
+  it("links the exact configured legal URLs directly from the public homepage", () => {
+    const landingPage = readFileSync(join(APP_DIR, "page.tsx"), "utf8");
+    expect(landingPage).toContain('href="/terms-of-service/"');
+    expect(landingPage).toContain('href="/privacy-policy/"');
+    expect(landingPage).not.toContain('href="/terms"');
+    expect(landingPage).not.toContain('href="/privacy"');
   });
 });
 

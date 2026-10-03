@@ -7,14 +7,13 @@
  *
  * WHY THIS MODULE EXISTS
  * ----------------------
- * The same 32-character signature has to appear in five unrelated places (a
- * route handler body, two static files, a `<meta>` tag and a DNS TXT record).
- * Before this module the literal was pasted into each of them, which is how a
- * verification silently rots: someone rotates the token in one spot and the
- * other four keep serving the old one. Everything derives from
- * `TIKTOK_SITE_VERIFICATION_SIGNATURE` below — rotate it there and the whole
- * surface moves together. `tests/tiktok-site-verification.test.ts` pins the
- * static files against these constants so a drifting copy fails CI.
+ * TikTok's downloaded proof has TWO byte-exact values: its filename and the
+ * signature in its body. They happen to contain the same opaque value for the
+ * current root-prefix proof, but that is not an API contract and they must not
+ * be reconstructed from one another. A newly requested property can issue a
+ * different file and signature. `tests/tiktok-site-verification.test.ts` pins
+ * the checked-in artifact against both independent constants so a rename,
+ * token rotation or stale copy fails CI.
  *
  * HOW TIKTOK ACTUALLY VERIFIES A URL
  * ----------------------------------
@@ -24,13 +23,14 @@
  * requests — and the validator reported "signature not found".
  *
  *   1. URL prefix (signature file). The console hands you a file to download
- *      named `tiktok<SIGNATURE>.txt` and fetches it from the root of the URL
- *      prefix you entered:
+ *      and fetches that EXACT filename from the URL prefix you entered. For
+ *      the selected root prefix (`https://<host>/`) the current artifact is:
  *
  *          https://<host>/tiktok2curKlcJu06uY8EYHsELz6YWP3VFqLLZ.txt
  *
- *      THIS IS THE PATH THE VALIDATOR HITS. It is `TIKTOK_SIGNATURE_FILE_PATH`
- *      and it is served as a real static file from `public/`.
+ *      THIS IS THE PATH THE VALIDATOR HITS. Do not invent the filename from
+ *      the body token: on rotation, copy the newly downloaded filename and
+ *      body verbatim. It is served as a real static file from `public/`.
  *
  *   2. Domain (DNS). A TXT record on the apex whose value is the full
  *      `name=signature` token — `TIKTOK_SITE_VERIFICATION_TOKEN`. Nothing in
@@ -73,13 +73,33 @@ export const TIKTOK_SITE_VERIFICATION_TOKEN = `tiktok-developers-site-verificati
 export const TIKTOK_SITE_VERIFICATION_META_NAME = "tiktok-developers-site-verification";
 
 /**
- * The canonical URL-prefix signature file: `/tiktok<SIGNATURE>.txt`.
+ * The exact filename downloaded from the root URL-prefix verification dialog.
+ *
+ * Keep this independent from `TIKTOK_SITE_VERIFICATION_SIGNATURE`. TikTok owns
+ * both values; even when they look related, deriving one instead of preserving
+ * the downloaded artifact can make the crawler request a path that does not
+ * exist and produce the misleading "verification signature not found" error.
+ */
+export const TIKTOK_SIGNATURE_FILE_NAME = "tiktok2curKlcJu06uY8EYHsELz6YWP3VFqLLZ.txt";
+
+/**
+ * Canonical root-prefix signature path.
  *
  * Shipped as a real file in `public/` so it is served by the static handler
  * with `content-type: text/plain` derived from the `.txt` extension, with no
  * server render and no dependency on the database or any env var.
  */
-export const TIKTOK_SIGNATURE_FILE_PATH = `/tiktok${TIKTOK_SITE_VERIFICATION_SIGNATURE}.txt`;
+export const TIKTOK_SIGNATURE_FILE_PATH = `/${TIKTOK_SIGNATURE_FILE_NAME}`;
+
+/**
+ * The single URL prefix operators must register in Production.
+ *
+ * `https://<host>/` owns every URL below it on the same host, including the
+ * Terms and Privacy pages. Starting a second verification for either legal
+ * page generates a new challenge; copying this root challenge into that path
+ * does not turn it into the new challenge.
+ */
+export const TIKTOK_CANONICAL_URL_PREFIX = "/";
 
 /**
  * Extensionless path, served by the App Router handler at
@@ -96,29 +116,26 @@ export const TIKTOK_SITE_VERIFICATION_PATH = "/tiktok-developers-site-verificati
 export const TIKTOK_SITE_VERIFICATION_TXT_PATH = `${TIKTOK_SITE_VERIFICATION_PATH}.txt`;
 
 /**
- * An earlier property reported by TikTok included a case-sensitive `/Request/`
- * prefix. URL-prefix verification looks for the downloaded signature file
- * *inside that prefix*, not necessarily at the host root. Keep it (and the
- * root aliases) in place even though the current property has moved — a
- * console retry against the old prefix must not regress.
+ * Compatibility aliases from earlier failed attempts.
+ *
+ * These make the existing artifact reachable under the historical `/Request/`
+ * prefix, but they are NOT a substitute for the exact file downloaded for a
+ * newly created `/Request/` property challenge. The supported flow verifies
+ * only the root prefix declared above.
  */
 export const TIKTOK_REQUEST_PREFIX = "/Request";
 export const TIKTOK_REQUEST_SIGNATURE_FILE_PATH = `${TIKTOK_REQUEST_PREFIX}${TIKTOK_SIGNATURE_FILE_PATH}`;
 export const TIKTOK_REQUEST_VERIFICATION_TXT_PATH = `${TIKTOK_REQUEST_PREFIX}${TIKTOK_SITE_VERIFICATION_TXT_PATH}`;
 
 /**
- * The property TikTok currently reports is
- * `https://<host>/terms-of-service/` — a URL prefix, not the host root. Its
- * validator therefore fetches the signature file *under that prefix*:
+ * Compatibility aliases from the `/terms-of-service/` retry.
  *
- *     https://<host>/terms-of-service/tiktok<SIGNATURE>.txt
- *
- * This is the same "signature not found" failure mode as the `/Request`
- * property before it: the file existed, just not at the prefix the console
- * actually checks. `app/terms-of-service/page.tsx` already renders through
- * the root layout, so the meta-tag proof is covered for free; only the
- * signature file needed a prefixed copy, shipped as a real static file in
- * `public/terms-of-service/`.
+ * The previous implementation incorrectly described a copy of the root proof
+ * as sufficient for a new Terms-prefix challenge. TikTok validates the exact
+ * downloaded artifact for the property being created. These paths remain live
+ * so old probes do not regress, but the reliable solution is to verify the
+ * root prefix once; it already owns `/terms-of-service/` and
+ * `/privacy-policy/` on the same host.
  */
 export const TIKTOK_TERMS_PREFIX = "/terms-of-service";
 export const TIKTOK_TERMS_SIGNATURE_FILE_PATH = `${TIKTOK_TERMS_PREFIX}${TIKTOK_SIGNATURE_FILE_PATH}`;

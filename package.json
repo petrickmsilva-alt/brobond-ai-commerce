@@ -22,6 +22,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:signup-e2e": "vitest run tests/signup-e2e.test.ts",
+    "verify:tiktok-property": "node scripts/verify-tiktok-url-property.mjs",
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
