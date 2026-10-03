@@ -1,8 +1,11 @@
+import { TIKTOK_VERIFICATION_PATHS } from "@/lib/tiktok-site-verification";
+
 /**
  * Protected-route map and safe-redirect primitives (PR010.2).
  *
- * PURE MODULE — imports nothing but types. It is consumed by three very
- * different runtimes and must stay free of Node, Prisma, NextAuth and React:
+ * PURE MODULE — its only import is `lib/tiktok-site-verification`, which is
+ * itself import-free. It is consumed by three very different runtimes and
+ * must stay free of Node, Prisma, NextAuth and React:
  *
  *   1. `proxy.ts`                    → Edge runtime
  *   2. Server Components / actions   → Node runtime
@@ -52,15 +55,23 @@ export const INVITE_EXPIRED_ROUTE = "/invite/expired";
 export const SIGNUP_ROUTE = "/signup";
 
 /**
- * Domain-ownership verification endpoint for the TikTok Developers console.
+ * Domain-ownership verification endpoints for the TikTok Developers console.
  *
- * TikTok's validator fetches this exact path anonymously, from its own
- * infrastructure, with no cookies. It must answer `200 text/plain` or the
- * app's TikTok integration cannot be approved — so the path is pinned here as
- * a named constant and listed in `PUBLIC_PREFIXES` below, rather than relying
- * on the implicit "not protected, not auth → pass through" fallback in
- * `proxy.ts`. If someone later adds a catch-all gate, this route survives it.
+ * TikTok's validator fetches these paths anonymously, from its own
+ * infrastructure, with no cookies and no `Accept` negotiation. They must
+ * answer `200 text/plain` or the app's TikTok integration cannot be approved
+ * — so every one of them is listed in `PUBLIC_PREFIXES` below rather than
+ * relying on the implicit "not protected, not auth → pass through" fallback
+ * in `proxy.ts`. If someone later adds a catch-all gate, they survive it.
+ *
+ * The canonical list (including `/tiktok<SIGNATURE>.txt`, the path the
+ * URL-prefix validator actually requests) lives in
+ * `lib/tiktok-site-verification.ts`; it is re-exported here so callers that
+ * already import from this module keep working.
  */
+export { TIKTOK_VERIFICATION_PATHS };
+
+/** @deprecated Prefer `TIKTOK_VERIFICATION_PATHS` — this covers one path of three. */
 export const TIKTOK_SITE_VERIFICATION_ROUTE = "/tiktok-developers-site-verification";
 
 /**
@@ -114,8 +125,9 @@ export const PUBLIC_PREFIXES: readonly string[] = [
   "/_next",
   "/favicon",
   "/invite",
-  // Third-party domain-ownership probe: anonymous by definition (see above).
-  TIKTOK_SITE_VERIFICATION_ROUTE,
+  // Third-party domain-ownership probes: anonymous by definition (see above).
+  // Spread, so adding a verification path in one place exempts it here too.
+  ...TIKTOK_VERIFICATION_PATHS,
 ] as const;
 
 /** Whether `pathname` is exactly `prefix` or nested below it. */

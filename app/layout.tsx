@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
 import { APP_DESCRIPTION } from "@/lib/constants";
+import {
+  TIKTOK_SITE_VERIFICATION_META_NAME,
+  TIKTOK_SITE_VERIFICATION_SIGNATURE,
+} from "@/lib/tiktok-site-verification";
 import "@/styles/globals.css";
 
 /**
@@ -26,6 +30,25 @@ export const metadata: Metadata = {
   description: APP_DESCRIPTION,
   icons: {
     icon: "/favicon.svg",
+  },
+  /**
+   * Third-party domain-ownership proofs.
+   *
+   * `verification.other` renders `<meta name="..." content="...">` into the
+   * `<head>` of EVERY page, which is what the TikTok Developers console's
+   * meta-tag method looks for on the homepage. It is the third independent
+   * proof alongside the signature file at `/tiktok<SIGNATURE>.txt` and the
+   * extensionless route handler — see `lib/tiktok-site-verification.ts`.
+   *
+   * The `content` is the BARE signature, NOT the full
+   * `tiktok-developers-site-verification=<signature>` token. Putting the
+   * whole token in here is the usual way this check fails: the validator
+   * compares `content` against the raw signature.
+   */
+  verification: {
+    other: {
+      [TIKTOK_SITE_VERIFICATION_META_NAME]: TIKTOK_SITE_VERIFICATION_SIGNATURE,
+    },
   },
 };
 
