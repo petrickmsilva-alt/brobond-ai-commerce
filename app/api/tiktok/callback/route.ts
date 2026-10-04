@@ -4,6 +4,11 @@ import { tiktokOAuthCallbackSchema } from "@/modules/connectors/tiktok/validator
 import { mirrorTikTokConnection } from "@/modules/marketplace/tiktok/tiktok-bridge.service";
 
 export const runtime = "nodejs";
+// OAuth callbacks depend on request query parameters and must never enter the
+// production static-generation pass. Login Kit v2 uses the namespaced callback
+// route; this legacy Shop endpoint remains dynamic while old registrations are
+// retired so it cannot destabilize a build.
+export const dynamic = "force-dynamic";
 
 function redirectToDashboard(request: Request, result: "connected" | "error") {
   const url = new URL("/dashboard/tiktok", request.url);

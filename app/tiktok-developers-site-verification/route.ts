@@ -41,13 +41,15 @@ import {
  *   - 200 on GET and HEAD. Nothing else is exported, so Next.js answers 405
  *     for POST/PUT/DELETE automatically.
  *
- * WHY `dynamic = "force-static"`
- * ------------------------------
- * The payload is a compile-time constant. Prerendering it means the validator
- * is served without waking a server instance, and the response can never fail
- * because of a cold database or a missing env var. This is deliberately the
- * opposite choice from the `/api/*` handlers, which are `force-dynamic`
- * because they read a session.
+ * WHY `dynamic = "force-dynamic"`
+ * -------------------------------
+ * The canonical proof remains the real `.txt` artifact in `public/`, which is
+ * served statically without invoking this handler. This extensionless backstop
+ * is deliberately excluded from static generation: Next's production
+ * prerender pass must never execute a verification route while it is also
+ * collecting the root-prefix public artifacts. The handler has no database or
+ * environment dependency, so serving this tiny fallback at request time is
+ * deterministic while keeping production compilation isolated from it.
  *
  * MIDDLEWARE
  * ----------
@@ -58,7 +60,7 @@ import {
  */
 
 export const runtime = "nodejs";
-export const dynamic = "force-static";
+export const dynamic = "force-dynamic";
 
 /**
  * Shared headers. `Link: rel="canonical"` points at the signature file that

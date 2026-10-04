@@ -40,8 +40,21 @@ export const TIKTOK_LOGIN_STATE_COOKIE = "brobond_tiktok_oauth_state";
 /** State lifetime — mirrors the 10 minute TTL used by every other connector. */
 export const TIKTOK_LOGIN_STATE_TTL_SECONDS = 600;
 
+export type TikTokLoginConfigErrorCode =
+  "MISSING_CREDENTIALS" | "INVALID_REDIRECT_URI" | "REDIRECT_URI_MISMATCH";
+
+/**
+ * A configuration failure the server-action layer can translate without
+ * parsing error text. In particular, callback alignment is operationally
+ * different from a missing client key: both are safe failures, but they need
+ * different remediation in the dashboard and must never become an opaque
+ * "Erro inesperado" response.
+ */
 export class TikTokLoginConfigError extends Error {
-  constructor(message: string) {
+  constructor(
+    readonly code: TikTokLoginConfigErrorCode,
+    message: string,
+  ) {
     super(message);
     this.name = "TikTokLoginConfigError";
   }
@@ -66,6 +79,7 @@ function requireEnv(env: NodeJS.ProcessEnv, name: string): string {
   const value = read(env, name);
   if (!value) {
     throw new TikTokLoginConfigError(
+      "MISSING_CREDENTIALS",
       `${name} is required for the TikTok Login Kit connector. Add it to .env (Sandbox) or to the Render environment (production).`,
     );
   }
@@ -101,17 +115,20 @@ export function normalizeTikTokRedirectUri(value: string | undefined): string | 
     parsed = new URL(normalized);
   } catch {
     throw new TikTokLoginConfigError(
+      "INVALID_REDIRECT_URI",
       "TIKTOK_REDIRECT_URI must be an absolute http:// or https:// URL.",
     );
   }
 
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new TikTokLoginConfigError(
+      "INVALID_REDIRECT_URI",
       "TIKTOK_REDIRECT_URI must use http:// (local development) or https:// (Render production).",
     );
   }
   if (parsed.username || parsed.password || parsed.search || parsed.hash) {
     throw new TikTokLoginConfigError(
+      "INVALID_REDIRECT_URI",
       "TIKTOK_REDIRECT_URI must be a plain callback URL with no credentials, query string or fragment.",
     );
   }
@@ -136,6 +153,7 @@ function resolveTikTokLoginRedirectUri(env: NodeJS.ProcessEnv): string {
   if (!configured) {
     if (appBaseUrl) {
       throw new TikTokLoginConfigError(
+        "REDIRECT_URI_MISMATCH",
         `TIKTOK_REDIRECT_URI is required when APP_URL or NEXTAUTH_URL is configured. Set it to ${appBaseUrl}${TIKTOK_LOGIN_CALLBACK_PATH}.`,
       );
     }
@@ -145,6 +163,7 @@ function resolveTikTokLoginRedirectUri(env: NodeJS.ProcessEnv): string {
   const callbackPath = new URL(configured).pathname;
   if (callbackPath !== TIKTOK_LOGIN_CALLBACK_PATH) {
     throw new TikTokLoginConfigError(
+      "REDIRECT_URI_MISMATCH",
       `TIKTOK_REDIRECT_URI must target ${TIKTOK_LOGIN_CALLBACK_PATH} for the TikTok Login Kit callback.`,
     );
   }
@@ -153,6 +172,7 @@ function resolveTikTokLoginRedirectUri(env: NodeJS.ProcessEnv): string {
     const expected = `${appBaseUrl}${TIKTOK_LOGIN_CALLBACK_PATH}`;
     if (configured !== expected) {
       throw new TikTokLoginConfigError(
+        "REDIRECT_URI_MISMATCH",
         `TIKTOK_REDIRECT_URI must equal APP_URL/NEXTAUTH_URL plus ${TIKTOK_LOGIN_CALLBACK_PATH} after trailing-slash normalization.`,
       );
     }

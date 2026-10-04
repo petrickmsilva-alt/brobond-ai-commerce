@@ -39,5 +39,25 @@ export interface TikTokSyncResult {
   finishedAt: string;
 }
 
+export type TikTokActionErrorCode =
+  | "INVALID_INPUT"
+  | "FORBIDDEN"
+  | "PENDING_APPROVAL"
+  | "NOT_FOUND"
+  | "LOGIN_KIT_NOT_CONFIGURED"
+  | "CALLBACK_MISALIGNED"
+  | "UNEXPECTED";
+
+/**
+ * Serializable server-action result. A stable code lets the UI and operators
+ * distinguish an OAuth callback alignment problem from an unknown execution
+ * failure without exposing secrets or relying on translated message text.
+ */
 export type TikTokActionResult<T = undefined> =
-  { ok: true; data: T } | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
+  | { ok: true; data: T }
+  | {
+      ok: false;
+      code: TikTokActionErrorCode;
+      error: string;
+      fieldErrors?: Record<string, string[]>;
+    };

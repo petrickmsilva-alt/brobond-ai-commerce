@@ -107,12 +107,18 @@ export async function proxy(request: NextRequest) {
 /**
  * Matcher — everything except Next.js internals and static files.
  *
+ * `.txt` is excluded explicitly so TikTok's byte-exact root-prefix artifact
+ * goes straight to Next's public-file server. It never needs an auth bundle,
+ * URL normalization or a static-route evaluation. OAuth callback paths have
+ * no extension and continue through this matcher, where `PUBLIC_PREFIXES`
+ * bypasses authentication before any JWT work.
+ *
  * The fine-grained decision lives in `lib/auth-routes.ts` (a pure, unit-tested
  * module) rather than in this regex, so the protected list stays readable and
  * is verified by tests instead of by eyeballing a pattern.
  */
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt)$).*)",
   ],
 };

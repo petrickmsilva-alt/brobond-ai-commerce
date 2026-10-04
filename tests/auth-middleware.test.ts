@@ -245,6 +245,9 @@ describe("matcher config", () => {
     const pattern = config.matcher[0] as string;
     expect(pattern).toContain("_next/static");
     expect(pattern).toContain("favicon.ico");
+    // TikTok's root-prefix proof is a public byte-exact .txt file. It must go
+    // straight to the static server rather than through URL/auth middleware.
+    expect(pattern).toContain("txt");
   });
 });
 

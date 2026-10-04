@@ -50,7 +50,18 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Build
+      # Compile with production-shaped Login Kit values and an intentionally
+      # unreachable database. `next build` must generate Prisma and collect
+      # every route without querying a tenant/database shadow, prerendering an
+      # OAuth callback, or rejecting the canonical no-slash callback URI.
+      - name: Build (strict production mock; database offline)
+        env:
+          APP_URL: https://ci.brobond.example
+          NEXTAUTH_URL: https://ci.brobond.example
+          TIKTOK_CLIENT_KEY: ci-login-kit-client-key
+          TIKTOK_CLIENT_SECRET: ci-login-kit-client-secret
+          TIKTOK_REDIRECT_URI: https://ci.brobond.example/api/connectors/tiktok/callback
+          CONNECTOR_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
         run: npm run build
 
       - name: Format check

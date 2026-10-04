@@ -2,7 +2,11 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { metadata } from "@/app/layout";
-import { GET, HEAD } from "@/app/tiktok-developers-site-verification/route";
+import {
+  GET,
+  HEAD,
+  dynamic as verificationRouteMode,
+} from "@/app/tiktok-developers-site-verification/route";
 import nextConfig from "@/next.config";
 import { PUBLIC_PREFIXES, isPublicRoute, isProtectedRoute } from "@/lib/auth-routes";
 import {
@@ -178,6 +182,18 @@ describe("URL-property reachability", () => {
   it("does not 308-redirect TikTok's required trailing-slash prefixes", () => {
     expect(nextConfig.skipTrailingSlashRedirect).toBe(true);
   });
+
+  it("keeps the extensionless fallback out of the production prerender pass", () => {
+    expect(verificationRouteMode).toBe("force-dynamic");
+  });
+
+  it.each(["api/connectors/tiktok/callback/route.ts", "api/tiktok/callback/route.ts"])(
+    "keeps %s dynamic during production route collection",
+    (routePath) => {
+      const source = readFileSync(join(APP_DIR, routePath), "utf8");
+      expect(source).toContain('export const dynamic = "force-dynamic"');
+    },
+  );
 
   it("links the exact configured legal URLs directly from the public homepage", () => {
     const landingPage = readFileSync(join(APP_DIR, "page.tsx"), "utf8");
