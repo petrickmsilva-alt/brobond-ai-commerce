@@ -23,4 +23,11 @@ describe("Render database deployment contract", () => {
       expect(blueprint).toContain(`- key: ${variable}`);
     },
   );
+
+  it.each(["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_REDIRECT_URI"])(
+    "declares the Login Kit v2 %s variable instead of relying on Shop credentials",
+    (variable) => {
+      expect(blueprint).toContain(`- key: ${variable}`);
+    },
+  );
 });
