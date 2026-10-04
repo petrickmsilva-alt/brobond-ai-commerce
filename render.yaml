@@ -122,6 +122,14 @@ services:
         sync: false
       - key: TIKTOK_ENCRYPTION_KEY
         sync: false
+      # TikTok Login Kit v2 — these are the credentials used by every live
+      # "Conectar TikTok" button. They are intentionally distinct from the
+      # dormant commercial TikTok Shop Partner credentials above; never fall
+      # back from one product's keys to the other product's OAuth flow.
+      - key: TIKTOK_CLIENT_KEY
+        sync: false
+      - key: TIKTOK_CLIENT_SECRET
+        sync: false
       # Login Kit callback. Set exactly to
       # ${APP_URL}/api/connectors/tiktok/callback (no trailing slash). The
       # OAuth initiator normalizes end slashes and rejects a different public
