@@ -6,6 +6,7 @@ import { plantOAuthStateCookie } from "@/lib/oauth-state-cookie";
 import { AuthorizationError } from "@/lib/rbac";
 import { requireAdmin } from "@/lib/session";
 import { marketplaceService } from "@/modules/marketplace/core/connector.service";
+import { TikTokLoginConfigError } from "@/modules/connectors/tiktok/auth/login-kit.config";
 import { revokeConnection } from "@/modules/connectors/tiktok/auth/oauth.service";
 import type { TikTokActionResult, TikTokSyncResult } from "@/modules/connectors/tiktok/dto";
 import { tiktokImporter } from "@/modules/connectors/tiktok/sync/importer";
@@ -18,18 +19,43 @@ function fail(error: unknown): TikTokActionResult<never> {
   if (error instanceof z.ZodError) {
     return {
       ok: false,
+      code: "INVALID_INPUT",
       error: "Dados inválidos.",
       fieldErrors: error.flatten().fieldErrors as Record<string, string[]>,
     };
   }
   if (error instanceof AuthorizationError) {
-    return { ok: false, error: "A conexão do TikTok Shop exige perfil ADMIN." };
+    return {
+      ok: false,
+      code: "FORBIDDEN",
+      error: "A conexão do TikTok exige perfil ADMIN.",
+    };
   }
   if (error instanceof TikTokPendingApprovalError) {
-    return { ok: false, error: error.message };
+    return { ok: false, code: "PENDING_APPROVAL", error: error.message };
+  }
+  if (error instanceof TikTokLoginConfigError) {
+    if (error.code === "MISSING_CREDENTIALS") {
+      return {
+        ok: false,
+        code: "LOGIN_KIT_NOT_CONFIGURED",
+        error:
+          "O Login Kit v2 do TikTok não está configurado. Defina TIKTOK_CLIENT_KEY e TIKTOK_CLIENT_SECRET na Render.",
+      };
+    }
+    return {
+      ok: false,
+      code: "CALLBACK_MISALIGNED",
+      error:
+        "A URL de retorno do TikTok está desalinhada. TIKTOK_REDIRECT_URI deve ser APP_URL + /api/connectors/tiktok/callback, sem barra final.",
+    };
   }
   console.error("[tiktok.actions]", error instanceof Error ? error.message : "unexpected error");
-  return { ok: false, error: "Não foi possível concluir a operação com TikTok Shop." };
+  return {
+    ok: false,
+    code: "UNEXPECTED",
+    error: "Não foi possível concluir a operação com TikTok.",
+  };
 }
 
 /**
@@ -80,7 +106,11 @@ export async function disconnectTikTokAction(
     revalidatePath(PATH);
     return disconnected
       ? { ok: true, data: { disconnected: true } }
-      : { ok: false, error: "Conta TikTok Shop não encontrada neste workspace." };
+      : {
+          ok: false,
+          code: "NOT_FOUND",
+          error: "Conta TikTok não encontrada neste workspace.",
+        };
   } catch (error) {
     return fail(error);
   }

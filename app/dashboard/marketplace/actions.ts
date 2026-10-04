@@ -22,6 +22,7 @@ import {
 } from "@/modules/marketplace/core/errors";
 import { marketplaceSyncService } from "@/modules/marketplace/core/sync.service";
 import type { ConnectorProvider } from "@prisma/client";
+import { TikTokLoginConfigError } from "@/modules/connectors/tiktok/auth/login-kit.config";
 import { TikTokPendingApprovalError } from "@/modules/connectors/tiktok/pending-approval.service";
 
 /**
@@ -51,6 +52,15 @@ function fail(error: unknown): MarketplaceActionResult<never> {
   }
   if (error instanceof TikTokPendingApprovalError) {
     return { ok: false, error: error.message };
+  }
+  if (error instanceof TikTokLoginConfigError) {
+    return {
+      ok: false,
+      error:
+        error.code === "MISSING_CREDENTIALS"
+          ? "O Login Kit v2 do TikTok não está configurado. Defina TIKTOK_CLIENT_KEY e TIKTOK_CLIENT_SECRET na Render."
+          : "A URL de retorno do TikTok está desalinhada. TIKTOK_REDIRECT_URI deve ser APP_URL + /api/connectors/tiktok/callback, sem barra final.",
+    };
   }
   if (error instanceof ConnectorNotConnectedError || error instanceof MarketplaceError) {
     // Sanitized, already-actionable domain message. `requiresReauth` tells

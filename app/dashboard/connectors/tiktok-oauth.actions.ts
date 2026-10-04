@@ -44,7 +44,9 @@ export async function startTikTokLoginAction(): Promise<TikTokAuthorizationActio
       return {
         ok: false,
         error:
-          "Credenciais do TikTok ausentes. Configure TIKTOK_CLIENT_KEY e TIKTOK_CLIENT_SECRET.",
+          error.code === "MISSING_CREDENTIALS"
+            ? "Credenciais do Login Kit v2 ausentes. Configure TIKTOK_CLIENT_KEY e TIKTOK_CLIENT_SECRET."
+            : "A URL de retorno do TikTok está desalinhada. Configure TIKTOK_REDIRECT_URI como APP_URL + /api/connectors/tiktok/callback, sem barra final.",
       };
     }
     console.error("[tiktok.login.action]", error);
