@@ -32,8 +32,6 @@ import type { ConnectionStatus } from "@prisma/client";
 /** Official TikTok Shop Sandbox hosts (test shops only, no production data). */
 export const TIKTOK_SANDBOX_API_BASE_URL = "https://open-api-sandbox.tiktokglobalshop.com";
 export const TIKTOK_SANDBOX_AUTH_BASE_URL = "https://auth-sandbox.tiktok-shops.com";
-export const TIKTOK_SANDBOX_SELLER_AUTH_URL =
-  "https://services.tiktokshop.com/open/authorize?sandbox=true";
 
 /** Status persisted for a channel that is live on the sandbox. */
 export const TIKTOK_SANDBOX_STATUS = "SANDBOX_ACTIVE" as const;
@@ -88,7 +86,16 @@ export function isTikTokSandboxMode(env: NodeJS.ProcessEnv = process.env): boole
 export interface TikTokSandboxEndpoints {
   apiBaseUrl: string;
   authBaseUrl: string;
-  sellerAuthUrl: string;
+  /**
+   * Seller (TikTok Shop) consent host. `null` unless an operator opts in
+   * explicitly through `TIKTOK_SELLER_AUTH_URL`.
+   *
+   * No commercial consent domain is hardcoded any more: the user-facing
+   * connector authorizes through TikTok Login Kit v2 on `tiktok.com`
+   * (`modules/connectors/tiktok/auth/login-kit.service.ts`), and the dormant
+   * Shop seller handshake must never fall back to a guessed provider origin.
+   */
+  sellerAuthUrl: string | null;
   sandbox: boolean;
 }
 
@@ -99,7 +106,7 @@ export interface TikTokSandboxEndpoints {
  */
 export function resolveTikTokEndpoints(
   env: NodeJS.ProcessEnv = process.env,
-  defaults: { apiBaseUrl: string; authBaseUrl: string; sellerAuthUrl: string },
+  defaults: { apiBaseUrl: string; authBaseUrl: string },
 ): TikTokSandboxEndpoints {
   const sandbox = isTikTokSandboxMode(env);
   return {
@@ -110,9 +117,7 @@ export function resolveTikTokEndpoints(
     authBaseUrl:
       env.TIKTOK_AUTH_BASE_URL?.trim() ||
       (sandbox ? TIKTOK_SANDBOX_AUTH_BASE_URL : defaults.authBaseUrl),
-    sellerAuthUrl:
-      env.TIKTOK_SELLER_AUTH_URL?.trim() ||
-      (sandbox ? TIKTOK_SANDBOX_SELLER_AUTH_URL : defaults.sellerAuthUrl),
+    sellerAuthUrl: env.TIKTOK_SELLER_AUTH_URL?.trim() || null,
   };
 }
 
@@ -255,8 +260,7 @@ export async function markTikTokSandboxActive(
   // `create` signatures that are structurally narrower than the test double.
   // Both satisfy the behaviour this function depends on, so we normalise them
   // to the minimal structural contract declared above.
-  const db = (deps.db ??
-    (await import("@/lib/prisma")).prisma) as unknown as TikTokSandboxStatusDb;
+  const db = (deps.db ?? (await import("@/lib/prisma")).prisma) as unknown as TikTokSandboxStatusDb;
   const { tenantWhere } = await import("@/lib/tenant");
   const { organizationId: org } = tenantWhere(organizationId);
 

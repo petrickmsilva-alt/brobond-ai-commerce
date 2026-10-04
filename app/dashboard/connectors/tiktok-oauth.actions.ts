@@ -1,6 +1,6 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { plantOAuthStateCookie } from "@/lib/oauth-state-cookie";
 import { AuthorizationError } from "@/lib/rbac";
 import { requireAdmin } from "@/lib/session";
 import {
@@ -29,14 +29,9 @@ export async function startTikTokLoginAction(): Promise<TikTokAuthorizationActio
     const { url, state } = await createTikTokAuthorization(organizationId);
 
     // HttpOnly double-submit cookie validated by the callback route.
-    const store = await cookies();
-    store.set({
+    await plantOAuthStateCookie({
       name: TIKTOK_LOGIN_STATE_COOKIE,
       value: state,
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
       maxAge: TIKTOK_LOGIN_STATE_TTL_SECONDS,
     });
 

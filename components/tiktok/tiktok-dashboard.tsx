@@ -5,6 +5,7 @@ import { CircleAlert, Link2, Loader2, LogOut, RefreshCw, ShieldCheck } from "luc
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { openOAuthTab } from "@/lib/oauth-window";
 import {
   connectTikTokAction,
   disconnectTikTokAction,
@@ -38,13 +39,25 @@ export function TikTokDashboard({ data, oauth }: { data: TikTokDashboardDTO; oau
 
   function connect() {
     setFeedback(null);
+
+    // Reserve the consent tab inside the click gesture: the authorization
+    // URL is only known after the server action resolves, and a
+    // `window.open` issued that late is swallowed by the popup blocker.
+    const consentTab = openOAuthTab();
+
     startTransition(async () => {
       const result = await connectTikTokAction();
       if (!result.ok) {
+        consentTab.close();
         setFeedback(result.error);
         return;
       }
-      // OAuth redirects away before any credential reaches the client.
+      // OAuth navigates away before any credential reaches the client.
+      if (consentTab.navigate(result.data.authorizationUrl)) {
+        setFeedback("Autorização aberta em uma nova aba. Conclua o acesso e volte para esta tela.");
+        return;
+      }
+      // Tab blocked by the browser: finish in place instead of stalling.
       window.location.assign(result.data.authorizationUrl);
     });
   }

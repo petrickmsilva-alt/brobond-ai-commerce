@@ -81,7 +81,6 @@ export function getTikTokApiConfig(): TikTokApiConfig {
   const endpoints = resolveTikTokEndpoints(process.env, {
     apiBaseUrl: TIKTOK_API_BASE_URL,
     authBaseUrl: TIKTOK_AUTH_BASE_URL,
-    sellerAuthUrl: "https://services.tiktokshop.com/open/authorize",
   });
   return {
     appKey: requiredEnv("TIKTOK_APP_KEY"),

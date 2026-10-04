@@ -33,7 +33,6 @@ import { isPublicRoute } from "@/lib/auth-routes";
 const PRODUCTION_DEFAULTS = {
   apiBaseUrl: "https://open-api.tiktokglobalshop.com",
   authBaseUrl: "https://auth.tiktok-shops.com",
-  sellerAuthUrl: "https://services.tiktokshop.com/open/authorize",
 };
 
 describe("TikTok sandbox detection", () => {
@@ -80,7 +79,9 @@ describe("TikTok sandbox endpoints", () => {
     expect(resolved.sandbox).toBe(true);
     expect(resolved.apiBaseUrl).toBe(TIKTOK_SANDBOX_API_BASE_URL);
     expect(resolved.authBaseUrl).toBe(TIKTOK_SANDBOX_AUTH_BASE_URL);
-    expect(resolved.sellerAuthUrl).toContain("sandbox=true");
+    // No commercial seller consent domain is hardcoded any more: the panel
+    // authorizes through TikTok Login Kit v2 on tiktok.com instead.
+    expect(resolved.sellerAuthUrl).toBeNull();
   });
 
   it("keeps production hosts when sandbox is off", () => {

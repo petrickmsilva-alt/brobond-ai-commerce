@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { plantOAuthStateCookie } from "@/lib/oauth-state-cookie";
 import { AuthorizationError } from "@/lib/rbac";
 import { requireAdmin } from "@/lib/session";
 import type {
@@ -76,7 +77,11 @@ function fail(error: unknown): MarketplaceActionResult<never> {
 
 /**
  * Start an OAuth2 connection: returns the provider's official authorization
- * URL — the client then redirects the browser. ADMIN only.
+ * URL — the client then sends the browser there. ADMIN only.
+ *
+ * Providers that use a double-submit CSRF state (TikTok Login Kit v2) also
+ * return the opaque state, which is planted here as an HttpOnly cookie. The
+ * cookie itself is NEVER serialized back to the browser's JS.
  */
 export async function startProviderOAuthAction(
   input: unknown,
@@ -84,11 +89,12 @@ export async function startProviderOAuthAction(
   try {
     const { organizationId } = await requireAdmin();
     const provider = connectorProviderSchema.parse(input);
-    const result = await marketplaceService.startOAuth(
+    const { authorizationUrl, stateCookie } = await marketplaceService.startOAuth(
       organizationId,
       provider as ConnectorProvider,
     );
-    return { ok: true, data: result };
+    if (stateCookie) await plantOAuthStateCookie(stateCookie);
+    return { ok: true, data: { authorizationUrl } };
   } catch (error) {
     return fail(error);
   }

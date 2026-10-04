@@ -114,6 +114,9 @@ beforeEach(() => {
   process.env.TIKTOK_APP_SECRET = "app-secret";
   process.env.TIKTOK_ENCRYPTION_KEY = KEY;
   process.env.NEXTAUTH_URL = "https://console.example.test";
+  // The dormant Shop seller handshake no longer ships a hardcoded consent
+  // domain, so it has to be opted into explicitly.
+  process.env.TIKTOK_SELLER_AUTH_URL = "https://seller-consent.example.test/open/authorize";
 });
 
 describe("TikTok OAuth service", () => {
@@ -130,6 +133,20 @@ describe("TikTok OAuth service", () => {
     );
     expect(db.states).toHaveLength(1);
     expect(db.states[0]!.stateHash).not.toContain("state-that-is-long");
+  });
+
+  it("never falls back to the obsolete commercial consent domain", async () => {
+    // Without an explicit opt-in the dormant seller flow must run the local
+    // simulated handshake instead of guessing a provider origin.
+    delete process.env.TIKTOK_SELLER_AUTH_URL;
+    const db = fakeDatabase();
+    const service = createTikTokOAuthService({
+      db: db as never,
+      randomState: () => "state-that-is-long-and-unpredictable-123456",
+    });
+    const { authorizationUrl } = await service.connectTikTok("org-1");
+    expect(authorizationUrl).not.toContain("tiktokshop.com");
+    expect(new URL(authorizationUrl).origin).toBe("https://console.example.test");
   });
 
   it("exchanges a one-time code server-side and persists only encrypted token ciphertext", async () => {

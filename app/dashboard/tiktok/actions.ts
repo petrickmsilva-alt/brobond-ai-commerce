@@ -2,9 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { plantOAuthStateCookie } from "@/lib/oauth-state-cookie";
 import { AuthorizationError } from "@/lib/rbac";
 import { requireAdmin } from "@/lib/session";
-import { connectTikTok, revokeConnection } from "@/modules/connectors/tiktok/auth/oauth.service";
+import { marketplaceService } from "@/modules/marketplace/core/connector.service";
+import { revokeConnection } from "@/modules/connectors/tiktok/auth/oauth.service";
 import type { TikTokActionResult, TikTokSyncResult } from "@/modules/connectors/tiktok/dto";
 import { tiktokImporter } from "@/modules/connectors/tiktok/sync/importer";
 import { tiktokDisconnectSchema } from "@/modules/connectors/tiktok/validators";
@@ -30,14 +32,26 @@ function fail(error: unknown): TikTokActionResult<never> {
   return { ok: false, error: "Não foi possível concluir a operação com TikTok Shop." };
 }
 
-/** Begins server-side OAuth. The browser receives only the provider redirect URL. */
+/**
+ * Begins server-side OAuth. The browser receives only the provider redirect
+ * URL — never the client key or secret.
+ *
+ * Both TikTok connect affordances (this screen and the connectors grid card)
+ * funnel through `marketplaceService.startOAuth("TIKTOK")`, so there is
+ * exactly ONE place that decides which TikTok gateway the panel talks to:
+ * Login Kit v2 on `tiktok.com`.
+ */
 export async function connectTikTokAction(): Promise<
   TikTokActionResult<{ authorizationUrl: string }>
 > {
   try {
     const user = await requireAdmin();
-    const data = await connectTikTok(user.organizationId);
-    return { ok: true, data };
+    const { authorizationUrl, stateCookie } = await marketplaceService.startOAuth(
+      user.organizationId,
+      "TIKTOK",
+    );
+    if (stateCookie) await plantOAuthStateCookie(stateCookie);
+    return { ok: true, data: { authorizationUrl } };
   } catch (error) {
     return fail(error);
   }

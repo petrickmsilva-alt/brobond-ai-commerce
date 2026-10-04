@@ -3,7 +3,11 @@ import "server-only";
 import type { Connector, ConnectorProvider, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { connectorRepository as connectorStatusRepository } from "@/modules/connectors/core/connector.repository";
-import { connectTikTok } from "@/modules/connectors/tiktok/auth/oauth.service";
+import {
+  TIKTOK_LOGIN_STATE_COOKIE,
+  TIKTOK_LOGIN_STATE_TTL_SECONDS,
+} from "@/modules/connectors/tiktok/auth/login-kit.config";
+import { createTikTokAuthorization } from "@/modules/connectors/tiktok/auth/login-kit.repository";
 import { connectInstagram } from "@/modules/delivery/instagram/auth.service";
 import { marketplaceRepository, type MarketplaceRepository } from "./connector.repository";
 import { connectorOAuthStateService } from "./oauth-state.service";
@@ -54,6 +58,26 @@ import {
  */
 
 const TOKEN_REFRESH_SKEW_MS = 5 * 60 * 1000;
+
+/**
+ * An opaque CSRF state the action layer must plant as an HttpOnly cookie
+ * before sending the browser to the provider.
+ *
+ * It is returned as DATA instead of being written here on purpose: this
+ * module is unit-tested outside a Next.js request scope, so it must never
+ * import `next/headers`. `lib/oauth-state-cookie.ts` performs the write.
+ */
+export interface ConnectorOAuthStateCookie {
+  readonly name: string;
+  readonly value: string;
+  readonly maxAge: number;
+}
+
+/** Result of `startOAuth`: where to send the browser, and what to remember. */
+export interface ConnectorAuthorizationStart {
+  readonly authorizationUrl: string;
+  readonly stateCookie?: ConnectorOAuthStateCookie;
+}
 
 /**
  * Decrypt a stored credential, translating a crypto failure into the action
@@ -237,18 +261,39 @@ export function createMarketplaceService(deps: MarketplaceServiceDependencies = 
 
     /**
      * Start an OAuth2 connection. Returns ONLY the provider authorization
-     * URL — the browser is then redirected by the caller. TikTok and
-     * Instagram reuse the PR009/PR010 official flows (hashed, single-use
-     * states); Shopee binds the tenant via the authenticated session on the
-     * callback; Mercado Livre consumes a PR012 single-use state.
+     * URL (plus, when the provider needs one, the opaque CSRF state the
+     * action layer must plant as an HttpOnly cookie) — the browser is then
+     * sent there by the caller.
+     *
+     * TikTok authorizes through **Login Kit v2 on `tiktok.com`**: the
+     * consumer/creator consent gateway registered in our Sandbox profile
+     * (`client_key`, `scope=user.info.stats`, `response_type=code`, the
+     * localhost `redirect_uri` and `state`). The commercial TikTok Shop
+     * seller gateway is deliberately NOT used here — it answers "this
+     * service does not exist" for this app.
+     *
+     * Instagram reuses the PR010 official flow; Shopee binds the tenant via
+     * the authenticated session on the callback; Mercado Livre consumes a
+     * PR012 single-use state.
      */
     async startOAuth(
       organizationId: string,
       provider: ConnectorProvider,
-    ): Promise<{ authorizationUrl: string }> {
+    ): Promise<ConnectorAuthorizationStart> {
       switch (provider) {
-        case "TIKTOK":
-          return connectTikTok(organizationId);
+        case "TIKTOK": {
+          // Hashed, single-use `ConnectorOAuthState` row resolves the tenant
+          // on the callback; the cookie below is the double-submit half.
+          const { url, state } = await createTikTokAuthorization(organizationId);
+          return {
+            authorizationUrl: url,
+            stateCookie: {
+              name: TIKTOK_LOGIN_STATE_COOKIE,
+              value: state,
+              maxAge: TIKTOK_LOGIN_STATE_TTL_SECONDS,
+            },
+          };
+        }
         case "INSTAGRAM":
           return connectInstagram(organizationId);
         case "SHOPEE":

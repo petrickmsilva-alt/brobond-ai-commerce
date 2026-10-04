@@ -21,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { openOAuthTab } from "@/lib/oauth-window";
 import type { ConnectorCardDTO } from "@/modules/marketplace/core/connector.dto";
 import type { ConnectionStatus, ConnectorProviderName } from "@/modules/marketplace/core/providers";
 import {
@@ -43,6 +44,14 @@ import {
  * resolver prefers the tenant's Connector row and falls back to the protected
  * Render environment pair. No credential value is ever sent to this module.
  */
+
+/**
+ * Providers whose consent screen is opened in a separate tab instead of
+ * replacing the dashboard. TikTok is listed here so the operator's panel
+ * state survives the round-trip; the remaining providers keep the in-place
+ * redirect they were verified with.
+ */
+const OAUTH_NEW_TAB_PROVIDERS = new Set<string>(["TIKTOK"]);
 
 const PROVIDER_ICONS = {
   TIKTOK: Music2,
@@ -184,13 +193,30 @@ function MarketplaceCard({
       setShowKeysForm((current) => !current);
       return;
     }
+
+    // TikTok consent opens in its own tab so the dashboard keeps its state
+    // here. The tab must be reserved NOW, inside the click gesture — the
+    // authorization URL only exists after the server action resolves, and by
+    // then the popup blocker would reject a fresh `window.open`.
+    const consentTab = OAUTH_NEW_TAB_PROVIDERS.has(connector.provider) ? openOAuthTab() : null;
+
     startTransition(async () => {
       const result = await startProviderOAuthAction(connector.provider);
-      if (result.ok) {
-        window.location.assign(result.data.authorizationUrl);
+      if (!result.ok) {
+        consentTab?.close();
+        setFeedback({ ok: false, message: result.error });
         return;
       }
-      setFeedback({ ok: false, message: result.error });
+      // `navigate` reports false only when the browser blocked the tab:
+      // finish in place rather than leaving a button that does nothing.
+      if (consentTab?.navigate(result.data.authorizationUrl)) {
+        setFeedback({
+          ok: true,
+          message: "Autorização aberta em uma nova aba. Conclua o acesso e volte para esta tela.",
+        });
+        return;
+      }
+      window.location.assign(result.data.authorizationUrl);
     });
   }
 
@@ -557,6 +583,24 @@ export function ConnectorsGrid({ connectors, canManage, detailLinks = true }: Co
 
   useEffect(() => {
     void refreshStatuses();
+  }, [refreshStatuses]);
+
+  /**
+   * TikTok consent now completes in a SEPARATE tab, so this one is never
+   * re-rendered by the callback redirect. Re-resolve the statuses whenever
+   * the operator comes back, otherwise a freshly connected card would keep
+   * claiming "Desconectado" until a manual reload.
+   */
+  useEffect(() => {
+    function resync() {
+      if (document.visibilityState === "visible") void refreshStatuses();
+    }
+    window.addEventListener("focus", resync);
+    document.addEventListener("visibilitychange", resync);
+    return () => {
+      window.removeEventListener("focus", resync);
+      document.removeEventListener("visibilitychange", resync);
+    };
   }, [refreshStatuses]);
 
   // PR014 — an isolated detail screen passes exactly one connector: render

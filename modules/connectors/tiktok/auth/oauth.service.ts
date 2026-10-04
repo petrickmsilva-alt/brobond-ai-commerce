@@ -103,13 +103,10 @@ export function getTikTokRedirectUri(): string {
   return `${appUrl.replace(/\/$/, "")}/api/tiktok/callback`;
 }
 
-const DEFAULT_SELLER_AUTH_URL = "https://services.tiktokshop.com/open/authorize";
-
 function endpoints() {
   return resolveTikTokEndpoints(process.env, {
     apiBaseUrl: TIKTOK_API_BASE_URL,
     authBaseUrl: TIKTOK_AUTH_BASE_URL,
-    sellerAuthUrl: DEFAULT_SELLER_AUTH_URL,
   });
 }
 
@@ -130,10 +127,21 @@ function getSimulatedAuthorizationUrl(state: string): string {
   return url.toString();
 }
 
+/**
+ * Dormant TikTok *Shop* (seller) consent URL.
+ *
+ * The user-facing TikTok connector no longer comes through here — it
+ * authorizes with Login Kit v2 on `tiktok.com` (see
+ * `modules/connectors/tiktok/auth/login-kit.service.ts`). This builder
+ * survives only so the Shop seller handshake can be revived once the app is
+ * approved, and it NEVER hardcodes a commercial consent domain: without an
+ * explicit `TIKTOK_SELLER_AUTH_URL` it runs the simulated sandbox flow.
+ */
 function getSellerAuthorizationUrl(state: string): string {
   const resolved = endpoints();
-  if (resolved.sandbox && !process.env.TIKTOK_SELLER_AUTH_URL?.trim()) {
-    // No explicit sandbox consent URL configured: run the simulated flow.
+  if (!resolved.sellerAuthUrl) {
+    // No seller consent URL configured: run the simulated local handshake
+    // instead of guessing a provider origin.
     return getSimulatedAuthorizationUrl(state);
   }
   const url = new URL(resolved.sellerAuthUrl);
