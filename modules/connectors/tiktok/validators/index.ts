@@ -22,3 +22,15 @@ export const tiktokWebhookPayloadSchema = z
   .passthrough();
 
 export type TikTokOAuthCallbackInput = z.infer<typeof tiktokOAuthCallbackSchema>;
+
+/**
+ * TikTok Login Kit v2 callback (`/api/connectors/tiktok/callback`).
+ * The state is a 256-bit base64url token, so it is never shorter than 40
+ * characters; the code is opaque and provider-sized.
+ */
+export const tiktokLoginCallbackSchema = z.object({
+  code: z.string().trim().min(1).max(2048),
+  state: z.string().trim().min(32).max(512),
+});
+
+export type TikTokLoginCallbackInput = z.infer<typeof tiktokLoginCallbackSchema>;

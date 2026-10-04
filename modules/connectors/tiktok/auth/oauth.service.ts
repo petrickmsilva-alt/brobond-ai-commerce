@@ -87,8 +87,13 @@ function required(name: "TIKTOK_APP_KEY" | "TIKTOK_APP_SECRET"): string {
 
 /** The redirect must match the one registered in TikTok Shop Partner Center. */
 export function getTikTokRedirectUri(): string {
+  // `TIKTOK_SHOP_REDIRECT_URI` wins. `TIKTOK_REDIRECT_URI` is shared with the
+  // Login Kit connector (`/api/connectors/tiktok/callback`), so it is only
+  // honoured here when it actually points at this Shop callback.
+  const shopExplicit = process.env.TIKTOK_SHOP_REDIRECT_URI?.trim();
+  if (shopExplicit) return shopExplicit;
   const explicit = process.env.TIKTOK_REDIRECT_URI?.trim();
-  if (explicit) return explicit;
+  if (explicit && explicit.endsWith("/api/tiktok/callback")) return explicit;
   const appUrl = process.env.NEXTAUTH_URL?.trim();
   if (!appUrl) {
     throw new TikTokOAuthError(
