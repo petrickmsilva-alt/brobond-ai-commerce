@@ -31,6 +31,7 @@ import {
   type TikTokTokenSet,
   type TikTokTokenDatabase,
 } from "./token.service";
+import { normalizeTikTokRedirectUri } from "./login-kit.config";
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const TOKEN_REFRESH_SKEW_MS = 5 * 60 * 1000;
@@ -89,18 +90,20 @@ function required(name: "TIKTOK_APP_KEY" | "TIKTOK_APP_SECRET"): string {
 export function getTikTokRedirectUri(): string {
   // `TIKTOK_SHOP_REDIRECT_URI` wins. `TIKTOK_REDIRECT_URI` is shared with the
   // Login Kit connector (`/api/connectors/tiktok/callback`), so it is only
-  // honoured here when it actually points at this Shop callback.
-  const shopExplicit = process.env.TIKTOK_SHOP_REDIRECT_URI?.trim();
+  // honoured here when it actually points at this Shop callback. Normalize
+  // either environment value first: a trailing slash would otherwise evade
+  // the path check and make the provider compare a different redirect string.
+  const shopExplicit = normalizeTikTokRedirectUri(process.env.TIKTOK_SHOP_REDIRECT_URI);
   if (shopExplicit) return shopExplicit;
-  const explicit = process.env.TIKTOK_REDIRECT_URI?.trim();
-  if (explicit && explicit.endsWith("/api/tiktok/callback")) return explicit;
+  const explicit = normalizeTikTokRedirectUri(process.env.TIKTOK_REDIRECT_URI);
+  if (explicit && new URL(explicit).pathname === "/api/tiktok/callback") return explicit;
   const appUrl = process.env.NEXTAUTH_URL?.trim();
   if (!appUrl) {
     throw new TikTokOAuthError(
       "NEXTAUTH_URL (or TIKTOK_REDIRECT_URI) is required to construct the TikTok OAuth callback URL.",
     );
   }
-  return `${appUrl.replace(/\/$/, "")}/api/tiktok/callback`;
+  return `${appUrl.replace(/\/+$/, "")}/api/tiktok/callback`;
 }
 
 function endpoints() {

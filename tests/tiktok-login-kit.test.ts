@@ -6,6 +6,7 @@ import {
   TIKTOK_LOGIN_TOKEN_URL,
   TikTokLoginConfigError,
   getTikTokLoginConfig,
+  normalizeTikTokRedirectUri,
 } from "@/modules/connectors/tiktok/auth/login-kit.config";
 import {
   buildTikTokAuthorizationUrl,
@@ -30,6 +31,51 @@ describe("tiktok login kit — configuration", () => {
     expect(config.redirectUri).toBe("http://localhost:3000/api/connectors/tiktok/callback");
     expect(config.authorizeUrl).toBe(TIKTOK_LOGIN_AUTHORIZE_URL);
     expect(config.tokenUrl).toBe(TIKTOK_LOGIN_TOKEN_URL);
+  });
+
+  it("normalizes trailing redirect slashes before the authorize and exchange contracts use it", () => {
+    const config = getTikTokLoginConfig({
+      ...SANDBOX_ENV,
+      APP_URL: "https://brobond-ai-commerce.onrender.com/",
+      TIKTOK_REDIRECT_URI:
+        " https://brobond-ai-commerce.onrender.com/api/connectors/tiktok/callback/// ",
+    });
+
+    expect(config.redirectUri).toBe(
+      "https://brobond-ai-commerce.onrender.com/api/connectors/tiktok/callback",
+    );
+    expect(normalizeTikTokRedirectUri("https://app.example/callback///")).toBe(
+      "https://app.example/callback",
+    );
+  });
+
+  it("strictly requires the normalized callback URI to use the configured public host", () => {
+    expect(() =>
+      getTikTokLoginConfig({
+        ...SANDBOX_ENV,
+        APP_URL: "https://brobond-ai-commerce.onrender.com/",
+        TIKTOK_REDIRECT_URI: "https://other-host.example/api/connectors/tiktok/callback/",
+      }),
+    ).toThrow(/must equal APP_URL\/NEXTAUTH_URL/);
+  });
+
+  it("requires an explicit callback URI when a public deployment URL is configured", () => {
+    const env: NodeJS.ProcessEnv = {
+      ...SANDBOX_ENV,
+      APP_URL: "https://brobond-ai-commerce.onrender.com",
+      TIKTOK_REDIRECT_URI: undefined,
+    };
+
+    expect(() => getTikTokLoginConfig(env)).toThrow(/TIKTOK_REDIRECT_URI is required/);
+  });
+
+  it("rejects a redirect URI that cannot reach the Login Kit callback route", () => {
+    expect(() =>
+      getTikTokLoginConfig({
+        ...SANDBOX_ENV,
+        TIKTOK_REDIRECT_URI: "https://brobond-ai-commerce.onrender.com/api/tiktok/callback",
+      }),
+    ).toThrow(TikTokLoginConfigError);
   });
 
   it("refuses to run without a client key", () => {

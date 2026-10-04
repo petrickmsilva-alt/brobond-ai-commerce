@@ -182,6 +182,7 @@ describe("public routes are never gated", () => {
     "/api/webhooks/tiktok",
     "/api/webhooks/whatsapp",
     "/api/webhooks/instagram",
+    "/api/connectors/tiktok/callback",
     "/api/tiktok/callback",
     "/api/instagram/callback",
     "/api/whatsapp/callback",

@@ -119,6 +119,11 @@ export const AUTH_ROUTES: readonly string[] = [
 export const PUBLIC_PREFIXES: readonly string[] = [
   "/api/auth",
   "/api/webhooks",
+  // TikTok Login Kit's third-party callback is intentionally outside the
+  // authenticated dashboard surface. The callback itself double-submits its
+  // HttpOnly state cookie and consumes a one-time server state, so bypassing
+  // the proxy cannot grant access; it only ensures TikTok can return to it.
+  "/api/connectors/tiktok/callback",
   "/api/tiktok",
   "/api/instagram",
   "/api/whatsapp",

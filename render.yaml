@@ -122,6 +122,10 @@ services:
         sync: false
       - key: TIKTOK_ENCRYPTION_KEY
         sync: false
+      # Login Kit callback. Set exactly to
+      # ${APP_URL}/api/connectors/tiktok/callback (no trailing slash). The
+      # OAuth initiator normalizes end slashes and rejects a different public
+      # host before it creates the CSRF state cookie.
       - key: TIKTOK_REDIRECT_URI
         sync: false
       # Meta Graph API v21.0: Instagram Shopping OAuth and signed webhooks.

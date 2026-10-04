@@ -425,6 +425,22 @@ signature body. TikTok defines URL prefixes with a trailing slash and does not
 accept redirects, so `skipTrailingSlashRedirect` is intentionally enabled in
 `next.config.ts`; both slash variants return the page directly.
 
+### TikTok Login Kit callback on Render
+
+Set Render's server-only `TIKTOK_REDIRECT_URI` to the exact Login Kit callback
+registered in TikTok Developers, with no ending slash:
+
+```text
+https://brobond-ai-commerce.onrender.com/api/connectors/tiktok/callback
+```
+
+The OAuth initiator trims accidental trailing slashes and then strictly compares
+the URI with `APP_URL` (falling back to `NEXTAUTH_URL`) plus the callback path
+before it creates the HttpOnly CSRF state cookie. A host mismatch is rejected
+before redirecting to TikTok, rather than failing later with an opaque
+`state_mismatch` when TikTok returns to a different cookie host. The same
+normalized URI is sent in both the authorize and token-exchange requests.
+
 ### Render Prisma Migration Runtime
 
 The `preDeployCommand` runs **`npm run prisma:deploy`**, which first executes
